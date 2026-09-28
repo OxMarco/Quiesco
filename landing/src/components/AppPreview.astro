@@ -1,0 +1,217 @@
+---
+import { sampleNight, summarize } from '../lib/night';
+
+const pts = sampleNight();
+const night = summarize(pts, 1000);
+
+// Chart geometry: 22:00–07:00 across, 400–1,400 ppm up.
+const W = 340, H = 190, L = 40, R = 8, T = 10, B = 26;
+const Y0 = 400, Y1 = 1400;
+const sx = (h: number) => L + (h / 9) * (W - L - R);
+const sy = (v: number) => T + (1 - (v - Y0) / (Y1 - Y0)) * (H - T - B);
+const line = pts.map((p, i) => `${i ? 'L' : 'M'}${sx(p.h).toFixed(1)} ${sy(p.v).toFixed(1)}`).join('');
+const area = `${line}L${sx(9)} ${sy(Y0)}L${sx(0)} ${sy(Y0)}Z`;
+const grid = [400, 800, 1000, 1400];
+const hours = [
+  { h: 0, label: '22:00', anchor: 'start' },
+  { h: 3, label: '01:00', anchor: 'middle' },
+  { h: 6, label: '04:00', anchor: 'middle' },
+  { h: 9, label: '07:00', anchor: 'end' },
+];
+const fmt = (n: number) => n.toLocaleString('en');
+---
+
+<section id="app">
+  <div class="app">
+    <div>
+      <p class="eyebrow">The app</p>
+      <h2 class="h2">Sync in the morning. See how the night went</h2>
+      <div class="points">
+        <div>
+          <h3>Your readings stay on your phone</h3>
+          <p>
+            The unit talks to the app over Bluetooth. There is no account, no Wi-Fi and no server, so nobody else sees
+            how you sleep.
+          </p>
+        </div>
+        <div>
+          <h3>Judged by your sleep window</h3>
+          <p>
+            Tell the app when you go to bed and wake up. It judges the room from an hour before bedtime until morning,
+            and leaves you alone during the day unless CO₂ or noise gets unhealthy.
+          </p>
+        </div>
+        <div>
+          <h3>One sentence, then the detail</h3>
+          <p>Each night opens with what went wrong and when. Tap a reading to see its full chart and the research behind the range.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="phone" aria-label="The Nights screen of the Quiesco app, with a sample night">
+      <p class="title">Nights</p>
+      <p class="sub">Sample night · bedtime 23:00, wake 07:00</p>
+      <div class="story">
+        <p class="verdict">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.6"></circle>
+            <path d="M8 4.2v4.6M8 11.2v.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+          </svg>
+          Stuffy night
+        </p>
+        <p>
+          CO₂ passed <span class="num">1,000 ppm</span> at <span class="num">{night.from}</span> and stayed there for
+          <span class="num">{night.duration}</span>, peaking at <span class="num">{fmt(night.peak.v)} ppm</span>. Leave
+          the door or a window ajar tonight.
+        </p>
+      </div>
+      <svg class="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="CO₂ in parts per million from 22:00 to 07:00">
+        {
+          grid.map((v) => (
+            <>
+              <line x1={L} x2={W - R} y1={sy(v)} y2={sy(v)} class="grid" />
+              <text x={L - 6} y={sy(v) + 4} text-anchor="end">{fmt(v)}</text>
+            </>
+          ))
+        }
+        <rect x={L} y={sy(1400)} width={W - L - R} height={sy(1000) - sy(1400)} class="zone-bad" />
+        <rect x={L} y={sy(1000)} width={W - L - R} height={sy(800) - sy(1000)} class="zone-warn" />
+        <text x={W - R - 4} y={sy(1400) + 13} text-anchor="end" class="lbl bad">Bad</text>
+        <text x={W - R - 4} y={sy(1000) + 13} text-anchor="end" class="lbl warn">Stuffy</text>
+        {hours.map((t) => <text x={sx(t.h)} y={H - 8} text-anchor={t.anchor}>{t.label}</text>)}
+        <path d={area} class="area" />
+        <path d={line} class="line" />
+        <circle cx={sx(night.peak.h)} cy={sy(night.peak.v)} r="3.5" class="peak" />
+      </svg>
+      <div class="tabs"><span>Room</span><span class="on">Nights</span><span>Unit</span></div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .app {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 56px;
+    align-items: center;
+  }
+  .points {
+    display: grid;
+    gap: 26px;
+    margin-top: 32px;
+  }
+  .points h3 {
+    font-family: var(--text);
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .points p {
+    color: var(--muted);
+    font-size: 16px;
+  }
+  .phone {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 36px;
+    padding: 26px 22px 22px;
+    box-shadow: var(--shadow);
+    max-width: 400px;
+    width: 100%;
+    justify-self: center;
+  }
+  .title {
+    font-family: var(--display);
+    font-size: 26px;
+  }
+  .sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .story {
+    margin-top: 18px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: var(--bg);
+    font-size: 15px;
+  }
+  .verdict {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    color: var(--bad);
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+  .verdict svg {
+    width: 16px;
+    height: 16px;
+    flex: none;
+  }
+  .chart {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin-top: 16px;
+  }
+  .chart text {
+    font-family: var(--text);
+    font-size: 11px;
+    fill: var(--muted);
+  }
+  .chart .lbl {
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .chart .lbl.bad {
+    fill: var(--bad);
+  }
+  .chart .lbl.warn {
+    fill: var(--warn);
+  }
+  .grid {
+    stroke: var(--line);
+    stroke-width: 1;
+  }
+  .zone-bad {
+    fill: var(--bad);
+    opacity: 0.1;
+  }
+  .zone-warn {
+    fill: var(--warn);
+    opacity: 0.1;
+  }
+  .area {
+    fill: var(--tide);
+    opacity: 0.12;
+  }
+  .line {
+    fill: none;
+    stroke: var(--tide);
+    stroke-width: 2;
+    stroke-linejoin: round;
+  }
+  .peak {
+    fill: var(--tide);
+  }
+  .tabs {
+    display: flex;
+    justify-content: space-around;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .tabs .on {
+    color: var(--tide);
+    font-weight: 600;
+  }
+  @media (max-width: 860px) {
+    .app {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

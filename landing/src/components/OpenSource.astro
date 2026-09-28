@@ -1,0 +1,116 @@
+---
+const specs: [string, string][] = [
+  ['Processor', 'nRF52840 (Seeed XIAO nRF52840 Plus)'],
+  ['Connection', 'Bluetooth Low Energy'],
+  ['CO₂, temperature, humidity', 'Sensirion SCD41'],
+  ['Light', 'VEML7700'],
+  ['Noise', 'SPH0641 MEMS microphone, A-weighted'],
+  ['Display', '1.54″ e-ink, 152 × 152'],
+  ['Storage', '64 Mb SPI flash'],
+  ['Power', 'Rechargeable LiPo, deep sleep between samples'],
+  ['Sampling', '10 s to 10 min, default 60 s'],
+  ['Licence', 'GPLv3'],
+];
+---
+
+<section id="open">
+  <div class="head">
+    <div>
+      <p class="eyebrow">Open source</p>
+      <h2>Yours to open, reflash and change</h2>
+    </div>
+    <p>
+      Hardware, firmware and app live in one repository under GPLv3. The unit runs the Arduino bootloader, so you can
+      change the firmware from the Arduino IDE and flash it over USB.
+    </p>
+  </div>
+  <div class="open">
+    <div class="body">
+      <p>
+        Temperature and humidity come from the SCD41, the same sensor that measures CO₂, instead of a board sensor that
+        warms itself up. There is no VOC sensor: it draws too much current for a battery device and its number is hard
+        to act on.
+      </p>
+      <p>
+        Each sample wakes the sensors in turn, takes a burst of readings and filters it into one value with an error
+        estimate, so a reading far from the trend can be dropped. Between samples the unit sleeps.
+      </p>
+      <blockquote>
+        I own an Airvalent and a couple of Xiaomi sensors, and I felt these little devices could do more. I wanted data
+        you can act on: high CO₂, open a window; too much light, use a sleep mask; too much noise, try earplugs.
+        <cite>From the maker, who started Quiesco in 2026</cite>
+      </blockquote>
+    </div>
+    <div class="specs-wrap">
+      <table>
+        <tbody>
+          {
+            specs.map(([k, v]) => (
+              <tr>
+                <th scope="row">{k}</th>
+                <td>{v}</td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<style>
+  .open {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 56px;
+  }
+  .body p {
+    color: var(--muted);
+  }
+  .body p + p {
+    margin-top: 14px;
+  }
+  blockquote {
+    margin: 28px 0 0;
+    padding-left: 18px;
+    border-left: 2px solid var(--drift);
+    font-family: var(--display);
+    font-weight: 300;
+    font-size: 19px;
+    line-height: 1.55;
+  }
+  cite {
+    display: block;
+    margin-top: 10px;
+    font-family: var(--text);
+    font-style: normal;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .specs-wrap {
+    overflow-x: auto;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 15px;
+  }
+  th,
+  td {
+    text-align: left;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  th {
+    font-weight: 500;
+    color: var(--muted);
+    width: 38%;
+    padding-right: 16px;
+  }
+  @media (max-width: 860px) {
+    .open {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

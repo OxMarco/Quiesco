@@ -1,0 +1,13 @@
+# Exact dependency versions; see SOFTWARE.md §2 and THIRD_PARTY_NOTICES.md.
+# Display and BLE remain gated candidates until their hardware spikes pass.
+core Seeeduino:mbed 2.9.3
+library Adafruit BME280 Library 2.3.0 production
+library Adafruit BusIO 1.17.4 transitive
+library Adafruit Unified Sensor 1.1.15 transitive
+library Adafruit VEML7700 Library 2.1.6 production
+library Sensirion I2C SCD4x 1.1.0 production
+library Sensirion Core 0.7.3 transitive
+library Adafruit GFX Library 1.12.6 production
+library GxEPD2 1.6.9 gated-display-candidate
+library ArduinoBLE 2.1.0 gated-ble-candidate
+library FlashDB 2.2.0 vendored-production

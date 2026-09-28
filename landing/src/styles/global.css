@@ -1,0 +1,179 @@
+/* Tide & Sand, the palette of app/src/theme. Day follows light mode, Night dark.
+   Warn and bad are for verdicts only; driftwood is brand-only, never beside data. */
+:root {
+  color-scheme: light;
+  --bg: #eee8dc;
+  --surface: #f8f4ec;
+  --raised: #e4ddce;
+  --line: #d8d0c0;
+  --ink: #1e2b2d;
+  --muted: #5e6b6b;
+  --tide: #2f6468;
+  --on-tide: #f8f4ec;
+  --warn: #a87a00;
+  --bad: #c83a62;
+  --drift: #a85a2e;
+  --paper: #eee8dc;
+  --chassis: #f8f4ec;
+  --chassis-edge: #d8d0c0;
+  --shadow: 0 30px 60px -30px rgba(30, 43, 45, 0.35);
+
+  --display: 'Kiwi Maru', Georgia, 'Times New Roman', serif;
+  --read: 'Fredoka', 'Nunito', 'Arial Rounded MT Bold', system-ui, sans-serif;
+  --text: 'Noto Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0f1718;
+    --surface: #182324;
+    --raised: #213033;
+    --line: #2a3a3c;
+    --ink: #e8e4da;
+    --muted: #9aa5a4;
+    --tide: #7db3b3;
+    --on-tide: #0f1718;
+    --warn: #b5880c;
+    --bad: #e35d82;
+    --drift: #e8a77f;
+    --chassis: #213033;
+    --chassis-edge: #2a3a3c;
+    --shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.7);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  scroll-behavior: smooth;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--text);
+  font-size: 17px;
+  line-height: 1.6;
+  padding-inline: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+img,
+svg {
+  max-width: 100%;
+}
+a {
+  color: var(--tide);
+  text-underline-offset: 3px;
+}
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--tide);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  font-weight: 400;
+  text-wrap: balance;
+  margin: 0;
+  line-height: 1.2;
+}
+p {
+  margin: 0;
+}
+
+.wrap {
+  max-width: 1080px;
+  margin-inline: auto;
+}
+.eyebrow {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--drift);
+}
+.num {
+  font-family: var(--read);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.lede {
+  font-size: 19px;
+  color: var(--muted);
+  max-width: 34em;
+}
+
+.ctas {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 22px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 16px;
+  text-decoration: none;
+  border: 1.5px solid var(--tide);
+}
+.btn.primary {
+  background: var(--tide);
+  color: var(--on-tide);
+}
+.btn.ghost {
+  color: var(--tide);
+}
+
+section {
+  padding-block: 72px;
+  border-top: 1px solid var(--line);
+}
+.head {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 40px;
+  align-items: end;
+  margin-bottom: 44px;
+}
+.head h2,
+.h2 {
+  font-size: clamp(28px, 3.6vw, 40px);
+  font-weight: 300;
+  margin-top: 10px;
+}
+.head > p {
+  color: var(--muted);
+  max-width: 36em;
+}
+
+@media (max-width: 860px) {
+  .head {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  section {
+    padding-block: 56px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

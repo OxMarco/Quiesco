@@ -1,0 +1,30 @@
+---
+import { LINKS } from '../site';
+---
+
+<div class="end">
+  <h2>A calmer bedroom, one reading at a time</h2>
+  <p class="lede">Get the app for iOS or Android, then build a unit from the guide on GitHub. Follow along for news.</p>
+  <div class="ctas">
+    <a class="btn primary" href={LINKS.kickstarter}>Get on Kickstarter</a>
+    <a class="btn ghost" href={LINKS.x}>Follow us</a>
+  </div>
+</div>
+
+<style>
+  .end {
+    padding-block: 80px 72px;
+    border-top: 1px solid var(--line);
+  }
+  h2 {
+    font-size: clamp(30px, 4vw, 46px);
+    font-weight: 300;
+    max-width: 16em;
+  }
+  .lede {
+    margin-top: 14px;
+  }
+  .ctas {
+    margin-top: 26px;
+  }
+</style>

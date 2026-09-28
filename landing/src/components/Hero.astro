@@ -1,0 +1,82 @@
+---
+import { LINKS } from '../site';
+import UnitDemo from './UnitDemo.astro';
+---
+
+<header class="hero">
+  <div>
+    <p class="eyebrow">Open-source bedroom environment monitor</p>
+    <h1>Measure your bedroom. <em>Sleep better in it</em></h1>
+    <ul class="pillars">
+      <li><b>Made for sleep</b><span>Judged against sleep research, not office air standards</span></li>
+      <li><b>Five sensors</b><span>CO₂, temperature, humidity, light and noise</span></li>
+      <li><b>Open source</b><span>Hardware, firmware and app, all GPLv3</span></li>
+      <li><b>Costs less, does more</b><span>Cheaper than commercial monitors, and yours to reflash and extend</span></li>
+    </ul>
+    <div class="ctas">
+      <a class="btn primary" href={LINKS.kickstarter}>Get yours</a>
+      <a class="btn ghost" href={LINKS.buildYourOwn}>Build your own</a>
+    </div>
+  </div>
+  <UnitDemo />
+</header>
+
+<style>
+  .hero {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 56px;
+    align-items: center;
+    padding-block: 48px 72px;
+  }
+  h1 {
+    margin-top: 14px;
+    font-size: clamp(36px, 5.2vw, 58px);
+    font-weight: 300;
+    letter-spacing: -0.01em;
+  }
+  h1 em {
+    font-style: normal;
+    color: var(--tide);
+    font-weight: 400;
+  }
+  .pillars {
+    list-style: none;
+    margin: 28px 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 28px;
+    max-width: 34em;
+  }
+  .pillars li {
+    display: grid;
+    gap: 2px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .pillars b {
+    font-weight: 600;
+    font-size: 16px;
+  }
+  .pillars span {
+    font-size: 15px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .ctas {
+    margin-top: 32px;
+  }
+  @media (max-width: 860px) {
+    .hero {
+      grid-template-columns: 1fr;
+      gap: 44px;
+      padding-block: 24px 56px;
+    }
+  }
+  @media (max-width: 480px) {
+    .pillars {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

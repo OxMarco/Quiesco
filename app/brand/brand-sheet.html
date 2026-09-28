@@ -1,0 +1,303 @@
+<title>Quiesco App Identity</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@300;400&family=Fredoka:wght@400;500;600&family=Noto+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#F3F6FC; --surface:#FFFFFF; --surface2:#E8EEFA; --line:#D5DDEE;
+  --text:#141A33; --text2:#4A5475; --muted:#6E7899; --accent:#4564FF; --lamp:#9A7300;
+  --display:"Kiwi Maru",Georgia,serif; --num:"Fredoka","Noto Sans",system-ui,sans-serif; --body:"Noto Sans",system-ui,-apple-system,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#120B20; --surface:#1B1330; --surface2:#251A40; --line:#362A55;
+  --text:#EEE9F8; --text2:#B3A8CC; --muted:#8C81A8; --accent:#7C8CFF; --lamp:#F6D365; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#120B20; --surface:#1B1330; --surface2:#251A40; --line:#362A55;
+  --text:#EEE9F8; --text2:#B3A8CC; --muted:#8C81A8; --accent:#7C8CFF; --lamp:#F6D365; color-scheme:dark;}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font:15px/1.6 var(--body);padding-inline:20px;padding-block:40px 72px}
+.wrap{max-width:1040px;margin:0 auto;display:grid;gap:72px}
+h1,h2,h3{margin:0;font-weight:400;text-wrap:balance}
+h2{font-family:var(--display);font-size:1.75rem;line-height:1.2}
+h3{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+p{margin:0;max-width:62ch;color:var(--text2)}
+section{display:grid;gap:24px}
+.lede{display:grid;gap:8px}
+code{font:500 .8rem/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* header */
+header{display:flex;gap:28px;align-items:center;flex-wrap:wrap}
+header svg{width:76px;height:auto;flex:none}
+header h1{font-family:var(--display);font-weight:300;font-size:clamp(2.6rem,6vw,4rem);line-height:1;letter-spacing:.01em}
+header p{margin-top:10px}
+
+/* mark */
+.mark-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px}
+.icon{display:grid;gap:10px;justify-items:start}
+.icon svg{width:100%;max-width:220px;border-radius:22.5%;display:block;box-shadow:0 1px 0 var(--line)}
+.icon small{color:var(--muted);font-size:.8rem}
+.story{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px 32px}
+.story div{display:grid;gap:4px;border-top:1px solid var(--line);padding-top:12px}
+.story b{font-weight:600;font-size:.9rem}
+.story p{font-size:.9rem}
+.sizes{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap}
+.sizes svg{display:block;border-radius:22.5%}
+
+/* swatches */
+.themes{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px}
+.theme{border-radius:18px;padding:22px;display:grid;gap:16px;border:1px solid var(--line)}
+.theme.night{background:#120B20;color:#EEE9F8;border-color:#362A55}
+.theme.day{background:#F3F6FC;color:#141A33;border-color:#D5DDEE}
+.theme header{gap:10px}
+.theme h3{color:inherit;opacity:.7}
+.theme .sub{font-size:.85rem;opacity:.75;color:inherit;max-width:none}
+.sw{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center}
+.chip{width:44px;height:44px;border-radius:12px;box-shadow:inset 0 0 0 1px rgba(127,127,160,.28)}
+.sw .n{font-weight:600;font-size:.88rem;line-height:1.25}
+.sw .r{font-size:.78rem;opacity:.7}
+.sw code{opacity:.85}
+.list{display:grid;gap:10px}
+
+/* status */
+.status{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
+.st{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:16px;display:grid;gap:10px}
+.st .pair{display:flex;gap:8px}
+.st .pair span{flex:1;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 .72rem/1 ui-monospace,Menlo,monospace}
+.st .lbl{display:flex;gap:8px;align-items:center;font-weight:600}
+.st p{font-size:.84rem}
+.series{display:flex;gap:28px;flex-wrap:wrap;align-items:center}
+.series .row{display:flex;gap:6px}
+.series .row i{width:30px;height:30px;border-radius:8px;display:block}
+.series .row.dk{background:#1B1330;padding:6px;border-radius:12px}
+.series .row.lt{background:#fff;padding:6px;border-radius:12px;box-shadow:inset 0 0 0 1px #D5DDEE}
+
+/* type */
+.type{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
+.type > div{border-top:1px solid var(--line);padding-top:14px;display:grid;gap:6px;align-content:start}
+.t-wm{font-family:var(--display);font-weight:300;font-size:2.6rem;line-height:1.1}
+.t-num{font-family:var(--num);font-weight:600;font-size:2.6rem;line-height:1.1;font-variant-numeric:tabular-nums}
+.t-body{font-family:var(--body);font-size:1.05rem;line-height:1.5;color:var(--text)}
+
+/* phones */
+.phones{display:flex;gap:28px;flex-wrap:wrap;justify-content:center}
+.phone{width:300px;max-width:100%;border-radius:40px;padding:10px;background:#0B0714;box-shadow:0 24px 60px -30px rgba(20,10,50,.6)}
+.scr{border-radius:31px;overflow:hidden;padding:20px 16px 18px;display:grid;gap:12px;font-family:var(--body)}
+.scr.night{background:linear-gradient(#1C1233,#120B20 55%);color:#EEE9F8}
+.scr.day{background:linear-gradient(#DDE9FA,#F3F6FC 55%);color:#141A33}
+.bar{display:flex;justify-content:space-between;align-items:center;font-size:.72rem;opacity:.75}
+.top{display:flex;justify-content:space-between;align-items:center}
+.top .wm{font-family:var(--display);font-weight:300;font-size:1.35rem}
+.pill{font-size:.68rem;font-weight:600;padding:4px 9px;border-radius:99px;display:inline-flex;gap:5px;align-items:center}
+.night .pill{background:#251A40;color:#B3A8CC}
+.day .pill{background:#fff;color:#4A5475}
+.pill i{width:6px;height:6px;border-radius:50%;display:block}
+.verdict{display:flex;gap:12px;align-items:center;padding:12px;border-radius:16px}
+.night .verdict{background:#1B1330}
+.day .verdict{background:#fff}
+.verdict b{display:block;font-size:.95rem}
+.verdict span{font-size:.76rem;opacity:.7}
+.hero{border-radius:18px;padding:14px 14px 10px;display:grid;gap:2px}
+.night .hero{background:#1B1330}
+.day .hero{background:#fff}
+.hero .k{font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;opacity:.65;font-weight:600}
+.hero .v{font-family:var(--num);font-weight:600;font-size:3rem;line-height:1;font-variant-numeric:tabular-nums}
+.hero .v small{font-size:.95rem;font-weight:500;opacity:.6;margin-left:4px}
+.hero svg{width:100%;height:46px;display:block;margin-top:6px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tile{border-radius:14px;padding:10px 12px;display:grid;gap:0}
+.night .tile{background:#1B1330}
+.day .tile{background:#fff}
+.tile .v{font-family:var(--num);font-weight:600;font-size:1.45rem;font-variant-numeric:tabular-nums;line-height:1.2}
+.tile .k{font-size:.72rem;opacity:.65;display:flex;justify-content:space-between;align-items:center}
+.tile.warn .k em{font-style:normal;font-weight:600}
+.cta{border-radius:99px;padding:11px;text-align:center;font-weight:600;font-size:.85rem}
+.night .cta{background:#F6D365;color:#1A1230}
+.day .cta{background:#4564FF;color:#fff}
+.caption{text-align:center;font-size:.8rem;color:var(--muted);margin-top:10px}
+
+.note{border-left:3px solid var(--accent);padding:4px 0 4px 16px;display:grid;gap:4px}
+.note p{font-size:.92rem}
+@media (max-width:520px){ body{padding-block:28px 56px} .wrap{gap:56px} }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="q" viewBox="0 0 100 100">
+      <path d="M48 12a33 33 0 1 0 0.001 0Z M53.5 20a23 23 0 1 1 -0.001 0Z" fill="currentColor" fill-rule="evenodd"/>
+      <path d="M59.5 73 C61.5 85.5 67 91 75 91 C79.5 91 82.5 89 85.5 85" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round"/>
+    </symbol>
+    <linearGradient id="nightbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A1B4D"/><stop offset="1" stop-color="#120B20"/></linearGradient>
+    <radialGradient id="glow"><stop offset="0" stop-color="#F6D365" stop-opacity=".6"/><stop offset="1" stop-color="#F6D365" stop-opacity="0"/></radialGradient>
+    <symbol id="icon-night" viewBox="0 0 1024 1024">
+      <rect width="1024" height="1024" fill="url(#nightbg)"/>
+      <g transform="translate(158 142) scale(6.8)" color="#EEE9F8"><use href="#q" width="100" height="100"/>
+        <circle cx="85.5" cy="85" r="13" fill="url(#glow)"/><circle cx="85.5" cy="85" r="5" fill="#F6D365"/></g>
+    </symbol>
+    <symbol id="icon-day" viewBox="0 0 1024 1024">
+      <rect width="1024" height="1024" fill="#4564FF"/>
+      <g transform="translate(158 142) scale(6.8)" color="#FFFFFF"><use href="#q" width="100" height="100"/></g>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+<header>
+  <svg viewBox="10 8 84 90" style="color:var(--accent)" role="img" aria-label="Quiesco mark"><use href="#q" x="0" y="0" width="100" height="100"/></svg>
+  <div>
+    <h1>Quiesco</h1>
+    <p>App identity for the sleep-environment sensor: the mark, two themes that follow the landing page's day and night rooms, and the colours that carry the device's comfort verdicts onto the phone.</p>
+  </div>
+</header>
+
+<section>
+  <div class="lede">
+    <h3>The mark</h3>
+    <h2>A Q that sets like a moon</h2>
+  </div>
+  <div class="mark-grid">
+    <div class="icon"><svg viewBox="0 0 1024 1024" role="img" aria-label="Night app icon"><use href="#icon-night"/></svg><small>App icon · Night (default)</small></div>
+    <div class="icon"><svg viewBox="0 0 1024 1024" role="img" aria-label="Day app icon"><use href="#icon-day"/></svg><small>App icon · Day / marketing</small></div>
+    <div class="icon" style="align-content:end">
+      <div class="sizes">
+        <svg width="60" height="60" viewBox="0 0 1024 1024"><use href="#icon-night"/></svg>
+        <svg width="40" height="40" viewBox="0 0 1024 1024"><use href="#icon-night"/></svg>
+        <svg width="29" height="29" viewBox="0 0 1024 1024"><use href="#icon-night"/></svg>
+        <svg width="20" height="20" viewBox="0 0 1024 1024"><use href="#icon-day"/></svg>
+      </div>
+      <small>60 · 40 · 29 · 20 pt: the crescent and the lamp still read at settings-list size</small>
+    </div>
+  </div>
+  <div class="story">
+    <div><b>Kept from the landing logo</b><p>The round Q and its curled tail from <code>landing/logo.png</code>, so the site, the README and the app share one letter.</p></div>
+    <div><b>Counter pushed off-centre</b><p>The ring thickens at lower left and thins at upper right, so it reads as a crescent: the device's job starts when the light goes out.</p></div>
+    <div><b>Tail ends on the lamp</b><p>The amber dot is the bedside lamp from <code>night.png</code>, the one warm point in a violet room. It's the only place the icon uses gold.</p></div>
+    <div><b>Square, like the unit</b><p>The icon ground stays plain and square to echo the 53 × 53 mm case. No gloss or frame, so the OS mask shapes it on both iOS and Android.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="lede">
+    <h3>Colour</h3>
+    <h2>Two rooms, one palette</h2>
+    <p>The landing page slides between a violet night room and a blue day room, and the app does the same. Night is the default because the app is mostly opened at bedtime: deep violet grounds keep screen glare low, and the one warm accent is the lamp. Day follows the system light setting and uses the brand blue.</p>
+  </div>
+  <div class="themes">
+    <div class="theme night">
+      <div><h3>Night · dark theme</h3><p class="sub">Grounds sampled from the walls and floor of <code>night.png</code>, then darkened for OLED.</p></div>
+      <div class="list">
+        <div class="sw"><span class="chip" style="background:#120B20"></span><div><div class="n">Midnight</div><div class="r">Background</div></div><code>#120B20</code></div>
+        <div class="sw"><span class="chip" style="background:#1B1330"></span><div><div class="n">Dusk</div><div class="r">Cards, sheets</div></div><code>#1B1330</code></div>
+        <div class="sw"><span class="chip" style="background:#251A40"></span><div><div class="n">Duvet</div><div class="r">Raised, pressed, inputs</div></div><code>#251A40</code></div>
+        <div class="sw"><span class="chip" style="background:#362A55"></span><div><div class="n">Seam</div><div class="r">Dividers, outlines</div></div><code>#362A55</code></div>
+        <div class="sw"><span class="chip" style="background:#EEE9F8"></span><div><div class="n">Moonlight</div><div class="r">Primary text, mark</div></div><code>#EEE9F8</code></div>
+        <div class="sw"><span class="chip" style="background:#B3A8CC"></span><div><div class="n">Lavender</div><div class="r">Secondary text</div></div><code>#B3A8CC</code></div>
+        <div class="sw"><span class="chip" style="background:#7C8CFF"></span><div><div class="n">Quiesco Blue, lifted</div><div class="r">Links, selection, chart line</div></div><code>#7C8CFF</code></div>
+        <div class="sw"><span class="chip" style="background:#F6D365"></span><div><div class="n">Lamp</div><div class="r">One primary action per screen</div></div><code>#F6D365</code></div>
+      </div>
+    </div>
+    <div class="theme day">
+      <div><h3>Day · light theme</h3><p class="sub">Grounds from the sky and walls of <code>day.png</code>; ink from the landing's <code>#1A1A2E</code>.</p></div>
+      <div class="list">
+        <div class="sw"><span class="chip" style="background:#F3F6FC"></span><div><div class="n">Morning</div><div class="r">Background</div></div><code>#F3F6FC</code></div>
+        <div class="sw"><span class="chip" style="background:#FFFFFF"></span><div><div class="n">Sheet</div><div class="r">Cards, sheets</div></div><code>#FFFFFF</code></div>
+        <div class="sw"><span class="chip" style="background:#E8EEFA"></span><div><div class="n">Pillow</div><div class="r">Raised, pressed, inputs</div></div><code>#E8EEFA</code></div>
+        <div class="sw"><span class="chip" style="background:#D5DDEE"></span><div><div class="n">Seam</div><div class="r">Dividers, outlines</div></div><code>#D5DDEE</code></div>
+        <div class="sw"><span class="chip" style="background:#141A33"></span><div><div class="n">Ink</div><div class="r">Primary text</div></div><code>#141A33</code></div>
+        <div class="sw"><span class="chip" style="background:#4A5475"></span><div><div class="n">Slate</div><div class="r">Secondary text</div></div><code>#4A5475</code></div>
+        <div class="sw"><span class="chip" style="background:#4564FF"></span><div><div class="n">Quiesco Blue</div><div class="r">Primary action, links, chart line</div></div><code>#4564FF</code></div>
+        <div class="sw"><span class="chip" style="background:#9A7300"></span><div><div class="n">Lamp, text-safe</div><div class="r">Highlights on light grounds</div></div><code>#9A7300</code></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="lede">
+    <h3>Comfort verdicts</h3>
+    <h2>The device's three bands, in colour</h2>
+    <p>The e-ink panel is 1-bit, so it marks a problem by inverting a tile. The phone has colour, and it uses these three for the same verdicts, with the thresholds from <code>ui/ComfortEvaluation</code>. They're reserved for verdicts: never a brand accent, never a chart series. Each always appears with an icon and a word, and the words are the nudges the device already prints.</p>
+  </div>
+  <div class="status">
+    <div class="st"><div class="lbl"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 9.5c1.6 1.8 4.4 1.8 6 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Comfortable</div>
+      <div class="pair"><span style="background:#1F9D74;color:#fff">#1F9D74</span><span style="background:#2FA57A;color:#0E0A18">#2FA57A</span></div>
+      <p>CO₂ ≤ 800 ppm · 20–26 °C · 30–60 % RH · ≤ 55 dB</p></div>
+    <div class="st"><div class="lbl"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 10h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Warn · “getting stuffy”</div>
+      <div class="pair"><span style="background:#B58A00;color:#fff">#B58A00</span><span style="background:#B38C18;color:#0E0A18">#B38C18</span></div>
+      <p>800–1200 ppm · 18–20 or 26–28 °C · 25–30 or 60–70 % · 55–70 dB</p></div>
+    <div class="st"><div class="lbl"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 11c1.6-1.8 4.4-1.8 6 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Bad · “open a window”</div>
+      <div class="pair"><span style="background:#D6365A;color:#fff">#D6365A</span><span style="background:#E04E6E;color:#0E0A18">#E04E6E</span></div>
+      <p>&gt; 1200 ppm · &lt; 18 or &gt; 28 °C · &lt; 25 or &gt; 70 % · &gt; 70 dB</p></div>
+  </div>
+  <p style="font-size:.85rem">Each pair is Day / Night. The status set and the series set below were run through a colour-vision check against the White and Dusk card grounds. Every adjacent pair separates for deuteranopia, protanopia and tritanopia (ΔE ≥ 8.9), and all colours clear 3:1 against their card.</p>
+  <div class="series">
+    <div><h3 style="margin-bottom:8px">Series · comparing nights</h3>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <div class="row lt"><i style="background:#4564FF"></i><i style="background:#D9692E"></i><i style="background:#1E9BB0"></i><i style="background:#9B4FC9"></i></div>
+        <div class="row dk"><i style="background:#6F80FF"></i><i style="background:#D96E36"></i><i style="background:#2AA9A0"></i><i style="background:#B46FDC"></i></div>
+      </div></div>
+    <p style="font-size:.88rem;flex:1;min-width:240px">Each metric gets its own chart and axis, so metrics don't need their own hues. A chart normally draws one line in Quiesco Blue over its comfort band. These four colours, used in this order, are for overlaying up to four nights of the <em>same</em> metric. There's no gold series, because gold would read as warn.</p>
+  </div>
+</section>
+
+<section>
+  <div class="lede">
+    <h3>Type</h3>
+    <h2>The phone uses the same numerals as the glass</h2>
+  </div>
+  <div class="type">
+    <div><span class="t-wm">Quiesco</span><h3>Kiwi Maru 300 · wordmark</h3><p>The landing page's brand face. Used for the name and screen titles only.</p></div>
+    <div><span class="t-num">612 <span style="font-size:1rem;opacity:.6">ppm</span></span><h3>Fredoka 600 · readings</h3><p>The face the firmware renders on the e-ink panel, so a number on the phone looks like the number on the unit. Use tabular figures.</p></div>
+    <div><span class="t-body">Open a window, CO₂ has been above 1,200 ppm since 03:10.</span><h3>Noto Sans · interface</h3><p>The landing page's body face. It covers labels, advice and settings, and it has a proper CO₂ subscript.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="lede">
+    <h3>In use</h3>
+    <h2>The home screen, both themes</h2>
+    <p>A sketch to test the palette, laid out like the device's bento screen: CO₂ is the hero and the other four readings sit in a 2 × 2 grid. The readings are example values, not real device data.</p>
+  </div>
+  <div class="phones">
+    <div>
+      <div class="phone"><div class="scr night">
+        <div class="bar"><span>23:41</span><span>●●● 82%</span></div>
+        <div class="top"><span class="wm">Bedroom</span><span class="pill"><i style="background:#2FA57A"></i>Synced 2 min ago</span></div>
+        <div class="verdict"><svg width="34" height="34" viewBox="0 0 16 16" style="color:#B38C18;flex:none"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5.8" cy="6.4" r=".9" fill="currentColor"/><circle cx="10.2" cy="6.4" r=".9" fill="currentColor"/><path d="M5 10.4h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><div><b>Getting stuffy</b><span>CO₂ is rising. Crack a window before sleep.</span></div></div>
+        <div class="hero"><span class="k">CO₂</span><span class="v">942<small>ppm</small></span>
+          <svg viewBox="0 0 260 46" preserveAspectRatio="none"><rect x="0" y="26" width="260" height="20" fill="#2FA57A" opacity=".14"/><path d="M0 36 L40 34 L80 31 L120 28 L160 22 L200 17 L240 12 L260 10" fill="none" stroke="#7C8CFF" stroke-width="2" stroke-linejoin="round"/><circle cx="260" cy="10" r="3.5" fill="#7C8CFF"/></svg></div>
+        <div class="tiles">
+          <div class="tile"><span class="v">21.4°</span><span class="k">Temperature</span></div>
+          <div class="tile"><span class="v">48%</span><span class="k">Humidity</span></div>
+          <div class="tile"><span class="v">3 lx</span><span class="k">Light</span></div>
+          <div class="tile"><span class="v">31 dB</span><span class="k">Noise</span></div>
+        </div>
+        <div class="cta">Sync last night</div>
+      </div></div>
+      <div class="caption">Night · default</div>
+    </div>
+    <div>
+      <div class="phone"><div class="scr day">
+        <div class="bar"><span>07:12</span><span>●●● 79%</span></div>
+        <div class="top"><span class="wm">Bedroom</span><span class="pill"><i style="background:#1F9D74"></i>Synced just now</span></div>
+        <div class="verdict"><svg width="34" height="34" viewBox="0 0 16 16" style="color:#1F9D74;flex:none"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5.8" cy="6.4" r=".9" fill="currentColor"/><circle cx="10.2" cy="6.4" r=".9" fill="currentColor"/><path d="M5 9.6c1.6 1.8 4.4 1.8 6 0" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><div><b>Good night's air</b><span>Everything stayed in its comfort band.</span></div></div>
+        <div class="hero"><span class="k">CO₂</span><span class="v">644<small>ppm</small></span>
+          <svg viewBox="0 0 260 46" preserveAspectRatio="none"><rect x="0" y="22" width="260" height="24" fill="#1F9D74" opacity=".12"/><path d="M0 30 L40 26 L80 24 L120 25 L160 27 L200 30 L240 32 L260 33" fill="none" stroke="#4564FF" stroke-width="2" stroke-linejoin="round"/><circle cx="260" cy="33" r="3.5" fill="#4564FF"/></svg></div>
+        <div class="tiles">
+          <div class="tile"><span class="v">22.1°</span><span class="k">Temperature</span></div>
+          <div class="tile"><span class="v">52%</span><span class="k">Humidity</span></div>
+          <div class="tile"><span class="v">640 lx</span><span class="k">Light</span></div>
+          <div class="tile"><span class="v">44 dB</span><span class="k">Noise</span></div>
+        </div>
+        <div class="cta">See last night</div>
+      </div></div>
+      <div class="caption">Day · follows system light mode</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="note"><b>Files</b><p><code>app/brand/mark.svg</code>, <code>icon-night.svg</code> and <code>icon-day.svg</code> are the sources. The Expo app's icon, adaptive icon and splash will be exported from them, and these tokens become the app's <code>theme.ts</code>.</p></div>
+</section>
+
+</div>

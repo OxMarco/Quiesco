@@ -1,0 +1,43 @@
+---
+import '@fontsource/kiwi-maru/300.css';
+import '@fontsource/kiwi-maru/400.css';
+import '@fontsource/fredoka/500.css';
+import '@fontsource/fredoka/600.css';
+import '@fontsource/noto-sans/400.css';
+import '@fontsource/noto-sans/500.css';
+import '@fontsource/noto-sans/600.css';
+import '../styles/global.css';
+import { SITE } from '../site';
+
+// The home page is canonical without a trailing slash; any other page keeps its path.
+const canonical = Astro.url.pathname === '/' ? SITE.url : new URL(Astro.url.pathname, SITE.url).href;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{SITE.title}</title>
+    <meta name="description" content={SITE.description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#EEE8DC" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0F1718" media="(prefers-color-scheme: dark)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={SITE.title} />
+    <meta property="og:description" content={SITE.description} />
+    <meta property="og:url" content={canonical} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:site" content="@QuiescoRest" />
+  </head>
+  <body>
+    <div class="wrap">
+      <slot />
+    </div>
+    <script>
+      import { applyFahrenheit, usesFahrenheit } from '../lib/units';
+      if (usesFahrenheit()) applyFahrenheit();
+    </script>
+  </body>
+</html>

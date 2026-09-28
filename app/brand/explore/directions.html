@@ -1,0 +1,205 @@
+<title>Quiesco Identity Directions</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@300;400&family=Fredoka:wght@500;600&family=Noto+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#F2F1EE; --surface:#FFFFFF; --line:#DEDBD4; --text:#1E1D1B; --text2:#55524C; --muted:#7A766E;
+  --display:"Kiwi Maru",Georgia,serif; --num:"Fredoka","Noto Sans",system-ui,sans-serif; --body:"Noto Sans",system-ui,-apple-system,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151513;--surface:#1E1E1B;--line:#34332F;--text:#EDEBE6;--text2:#BDB9B0;--muted:#8F8B83;color-scheme:dark;}}
+:root[data-theme="dark"]{--bg:#151513;--surface:#1E1E1B;--line:#34332F;--text:#EDEBE6;--text2:#BDB9B0;--muted:#8F8B83;color-scheme:dark;}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font:15px/1.6 var(--body);padding-inline:20px;padding-block:40px 72px}
+.wrap{max-width:1120px;margin:0 auto;display:grid;gap:40px}
+h1,h2,h3{margin:0;font-weight:400;text-wrap:balance}
+p{margin:0;color:var(--text2);max-width:62ch}
+code{font:500 .72rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}
+.intro{display:grid;gap:10px}
+.intro h1{font-family:var(--display);font-weight:300;font-size:clamp(2.2rem,5vw,3.2rem);line-height:1.1}
+.jump{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.jump a{display:flex;gap:8px;align-items:center;padding:6px 12px 6px 6px;border:1px solid var(--line);border-radius:99px;color:var(--text);text-decoration:none;font-size:.85rem;background:var(--surface)}
+.jump a:hover,.jump a:focus-visible{border-color:var(--text2)}
+.jump svg{border-radius:7px;display:block}
+
+.dir{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:24px;display:grid;gap:20px;scroll-margin-top:16px}
+.dir-head{display:flex;gap:14px;align-items:center}
+.letter{font-family:var(--num);font-weight:600;font-size:1rem;width:34px;height:34px;border-radius:50%;border:1.5px solid var(--text);display:grid;place-items:center;flex:none}
+.dir h2{font-family:var(--display);font-size:1.6rem;line-height:1.15}
+.logo-name{font-size:.8rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.dir-body{display:grid;grid-template-columns:200px minmax(0,1fr) 250px;gap:28px;align-items:start}
+.marks{display:grid;gap:14px}
+.big{width:100%;max-width:200px;border-radius:22.5%;display:block}
+.sizes{display:flex;gap:12px;align-items:flex-end}
+.sizes svg{border-radius:22.5%;display:block}
+.lockup{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:14px;justify-self:start}
+.lockup svg{border-radius:22.5%;display:block}
+.lockup span{font-family:var(--display);font-weight:300;font-size:1.5rem;line-height:1}
+.info{display:grid;gap:14px}
+.note{font-size:.88rem;color:var(--muted)}
+.pals{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:4px}
+.pals h3{font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:8px}
+.sw{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;padding:4px 0}
+.sw i{width:28px;height:28px;border-radius:8px;display:block;box-shadow:inset 0 0 0 1px rgba(128,120,110,.3)}
+.sw span{display:grid;line-height:1.25;min-width:0}
+.sw b{font-weight:600;font-size:.82rem}
+.sw em{font-style:normal;font-size:.72rem;color:var(--muted)}
+.samples{display:grid;gap:12px}
+.sample{border-radius:20px;padding:14px;display:grid;gap:8px;box-shadow:inset 0 0 0 1px rgba(128,120,110,.22)}
+.s-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.s-wm{font-family:var(--display);font-weight:300;font-size:1.15rem}
+.s-pill{font-size:.64rem;font-weight:600;padding:3px 8px;border-radius:99px}
+.s-card{border-radius:14px;padding:10px 12px;display:grid}
+.s-k{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;font-weight:600}
+.s-card.sm .s-k{letter-spacing:0;text-transform:none;font-weight:500;font-size:.7rem}
+.s-v{font-family:var(--num);font-weight:600;font-size:2.1rem;line-height:1.05;font-variant-numeric:tabular-nums}
+.s-v small{font-size:.8rem;font-weight:500;margin-left:4px}
+.s-v2{font-family:var(--num);font-weight:600;font-size:1.15rem;line-height:1.3;font-variant-numeric:tabular-nums}
+.s-card svg{width:100%;height:34px;display:block;margin-top:4px}
+.s-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.s-btn{border-radius:99px;padding:8px;text-align:center;font-weight:600;font-size:.78rem}
+.s-hl{font-size:.7rem;font-weight:600}
+.footer{display:grid;gap:6px;border-top:1px solid var(--line);padding-top:20px}
+@media (max-width:980px){.dir-body{grid-template-columns:180px minmax(0,1fr)}.samples{grid-column:1/-1;grid-template-columns:1fr 1fr}}
+@media (max-width:620px){.dir{padding:18px}.dir-body{grid-template-columns:1fr}.marks{grid-template-columns:120px 1fr;align-items:end}.big{max-width:120px}.lockup{grid-column:1/-1}.pals{grid-template-columns:1fr}.samples{grid-template-columns:1fr}}
+</style>
+<div class="wrap">
+<div class="intro">
+  <h1>Four directions</h1>
+  <p>Each one pairs a logo with a warm, natural palette, and each takes its idea from a different part of the device or the landing page. The type stays as you approved it: Kiwi Maru for the name, Fredoka for readings, Noto Sans for everything else. Logos and palettes can be mixed. Verdict colours (comfortable, warn, bad) get tuned to whichever palette you pick, so they aren't shown here.</p>
+  <nav class="jump" aria-label="Directions"><a href="#horizon"><svg width="24" height="24" viewBox="0 0 100 100"><rect width="100" height="100" fill="#3F5A45"/><rect x="20" y="20" width="60" height="60" rx="15" fill="none" stroke="#EDE9DF" stroke-width="6"/><path d="M34 63a16 16 0 0 1 32 0Z" fill="#D9C774"/><path d="M32 63H68" stroke="#EDE9DF" stroke-width="6" stroke-linecap="round"/></svg>A · Window & Moss</a><a href="#face"><svg width="24" height="24" viewBox="0 0 100 100"><rect width="100" height="100" fill="#2F6468"/><rect x="21" y="21" width="58" height="58" rx="14" fill="#EEE8DC"/><path d="M34 46q6 6 12 0M54 46q6 6 12 0M42 60q8 6 16 0" fill="none" stroke="#1E2B2D" stroke-width="5" stroke-linecap="round"/></svg>B · Tide & Sand</a><a href="#wave"><svg width="24" height="24" viewBox="0 0 100 100"><rect width="100" height="100" fill="#3A2436"/><path d="M19 50C23 31 31 31 35 50S46 64 50 50S58 42 61 50S66 54 68 50L81 50" fill="none" stroke="#F0B283" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>C · Dusk & Apricot</a><a href="#squareq"><svg width="24" height="24" viewBox="0 0 100 100"><rect width="100" height="100" fill="#E6AE4E"/><path fill-rule="evenodd" fill="#2B2118" d="M40 17h16a23 23 0 0 1 23 23v16a23 23 0 0 1-23 23h-16a23 23 0 0 1-23-23v-16a23 23 0 0 1 23-23ZM43 30h10a13 13 0 0 1 13 13v10a13 13 0 0 1-13 13h-10a13 13 0 0 1-13-13v-10a13 13 0 0 1 13-13Z"/><path d="M62 74C64 83 68 87 75 87C79 87 82 85 85 81" fill="none" stroke="#2B2118" stroke-width="9" stroke-linecap="round"/></svg>D · Beeswax & Olive</a></nav>
+</div>
+
+<article class="dir" id="horizon">
+  <div class="dir-head">
+    <span class="letter">A</span>
+    <div><h2>Window & Moss</h2><p class="logo-name">Logo: Horizon</p></div>
+  </div>
+  <div class="dir-body">
+    <div class="marks">
+      <svg class="big" viewBox="0 0 100 100" role="img" aria-label="Horizon app icon"><rect width="100" height="100" fill="#3F5A45"/><rect x="20" y="20" width="60" height="60" rx="15" fill="none" stroke="#EDE9DF" stroke-width="6"/><path d="M34 63a16 16 0 0 1 32 0Z" fill="#D9C774"/><path d="M32 63H68" stroke="#EDE9DF" stroke-width="6" stroke-linecap="round"/></svg>
+      <div class="sizes"><svg width="44" height="44" viewBox="0 0 100 100"><rect width="100" height="100" fill="#3F5A45"/><rect x="20" y="20" width="60" height="60" rx="15" fill="none" stroke="#EDE9DF" stroke-width="6"/><path d="M34 63a16 16 0 0 1 32 0Z" fill="#D9C774"/><path d="M32 63H68" stroke="#EDE9DF" stroke-width="6" stroke-linecap="round"/></svg><svg width="29" height="29" viewBox="0 0 100 100"><rect width="100" height="100" fill="#3F5A45"/><rect x="20" y="20" width="60" height="60" rx="15" fill="none" stroke="#EDE9DF" stroke-width="6"/><path d="M34 63a16 16 0 0 1 32 0Z" fill="#D9C774"/><path d="M32 63H68" stroke="#EDE9DF" stroke-width="6" stroke-linecap="round"/></svg><svg width="20" height="20" viewBox="0 0 100 100"><rect width="100" height="100" fill="#3F5A45"/><rect x="20" y="20" width="60" height="60" rx="15" fill="none" stroke="#EDE9DF" stroke-width="6"/><path d="M34 63a16 16 0 0 1 32 0Z" fill="#D9C774"/><path d="M32 63H68" stroke="#EDE9DF" stroke-width="6" stroke-linecap="round"/></svg></div>
+      <div class="lockup" style="background:#ECEAE3;color:#1F2A24"><svg width="30" height="30" viewBox="0 0 100 100"><rect width="100" height="100" fill="#3F5A45"/><rect x="20" y="20" width="60" height="60" rx="15" fill="none" stroke="#EDE9DF" stroke-width="6"/><path d="M34 63a16 16 0 0 1 32 0Z" fill="#D9C774"/><path d="M32 63H68" stroke="#EDE9DF" stroke-width="6" stroke-linecap="round"/></svg><span>Quiesco</span></div>
+    </div>
+    <div class="info">
+      <p>The square case with its low window, and a sun setting on the window line. The green comes from the pine forest outside the landing page&#x27;s window; the gold is its low sun.</p>
+      <p class="note">Drawn from the case: the rounded square is the 53 mm puck, the line is where the e-ink window sits.</p>
+      <div class="pals"><div><h3>Day</h3><div class="sw"><i style="background:#ECEAE3"></i><span><b>Stone</b><em>Background</em></span><code>#ECEAE3</code></div><div class="sw"><i style="background:#F7F5F0"></i><span><b>Linen</b><em>Cards</em></span><code>#F7F5F0</code></div><div class="sw"><i style="background:#1F2A24"></i><span><b>Pine ink</b><em>Text</em></span><code>#1F2A24</code></div><div class="sw"><i style="background:#5F6B62"></i><span><b>Lichen grey</b><em>Secondary</em></span><code>#5F6B62</code></div><div class="sw"><i style="background:#3F5A45"></i><span><b>Moss</b><em>Primary</em></span><code>#3F5A45</code></div><div class="sw"><i style="background:#8A7A22"></i><span><b>Low sun</b><em>Highlight</em></span><code>#8A7A22</code></div></div><div><h3>Night</h3><div class="sw"><i style="background:#111814"></i><span><b>Forest night</b><em>Background</em></span><code>#111814</code></div><div class="sw"><i style="background:#1A231E"></i><span><b>Understory</b><em>Cards</em></span><code>#1A231E</code></div><div class="sw"><i style="background:#E6EAE2"></i><span><b>Mist</b><em>Text</em></span><code>#E6EAE2</code></div><div class="sw"><i style="background:#9AA59C"></i><span><b>Fern grey</b><em>Secondary</em></span><code>#9AA59C</code></div><div class="sw"><i style="background:#8FB08F"></i><span><b>Sage</b><em>Primary</em></span><code>#8FB08F</code></div><div class="sw"><i style="background:#D9C774"></i><span><b>Low sun</b><em>Highlight</em></span><code>#D9C774</code></div></div></div>
+    </div>
+    <div class="samples"><div class="sample" style="background:#ECEAE3;color:#1F2A24">
+  <div class="s-top"><span class="s-wm">Bedroom</span><span class="s-pill" style="background:#F7F5F0;color:#5F6B62">Synced 2 min ago</span></div>
+  <div class="s-card" style="background:#F7F5F0"><span class="s-k" style="color:#5F6B62">CO₂</span><span class="s-v">644<small style="color:#5F6B62">ppm</small></span>
+   <svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 22 L30 19 L60 17 L90 18 L120 20 L150 23 L180 24 L200 25" fill="none" stroke="#3F5A45" stroke-width="2" stroke-linejoin="round"/><circle cx="197" cy="25" r="3" fill="#3F5A45"/></svg></div>
+  <div class="s-row"><div class="s-card sm" style="background:#F7F5F0"><span class="s-v2">21.4°</span><span class="s-k" style="color:#5F6B62">Temperature</span></div><div class="s-card sm" style="background:#F7F5F0"><span class="s-v2">31 dB</span><span class="s-k" style="color:#5F6B62">Noise</span></div></div>
+  <div class="s-btn" style="background:#3F5A45;color:#FFFFFF">See last night</div>
+  <span class="s-hl" style="color:#8A7A22">● Highlight</span>
+</div><div class="sample" style="background:#111814;color:#E6EAE2">
+  <div class="s-top"><span class="s-wm">Bedroom</span><span class="s-pill" style="background:#1A231E;color:#9AA59C">Synced 2 min ago</span></div>
+  <div class="s-card" style="background:#1A231E"><span class="s-k" style="color:#9AA59C">CO₂</span><span class="s-v">942<small style="color:#9AA59C">ppm</small></span>
+   <svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 30 L30 28 L60 25 L90 22 L120 17 L150 13 L180 9 L200 7" fill="none" stroke="#8FB08F" stroke-width="2" stroke-linejoin="round"/><circle cx="197" cy="7" r="3" fill="#8FB08F"/></svg></div>
+  <div class="s-row"><div class="s-card sm" style="background:#1A231E"><span class="s-v2">21.4°</span><span class="s-k" style="color:#9AA59C">Temperature</span></div><div class="s-card sm" style="background:#1A231E"><span class="s-v2">31 dB</span><span class="s-k" style="color:#9AA59C">Noise</span></div></div>
+  <div class="s-btn" style="background:#8FB08F;color:#111814">Sync last night</div>
+  <span class="s-hl" style="color:#D9C774">● Highlight</span>
+</div></div>
+  </div>
+</article>
+<article class="dir" id="face">
+  <div class="dir-head">
+    <span class="letter">B</span>
+    <div><h2>Tide & Sand</h2><p class="logo-name">Logo: Resting face</p></div>
+  </div>
+  <div class="dir-body">
+    <div class="marks">
+      <svg class="big" viewBox="0 0 100 100" role="img" aria-label="Resting face app icon"><rect width="100" height="100" fill="#2F6468"/><rect x="21" y="21" width="58" height="58" rx="14" fill="#EEE8DC"/><path d="M34 46q6 6 12 0M54 46q6 6 12 0M42 60q8 6 16 0" fill="none" stroke="#1E2B2D" stroke-width="5" stroke-linecap="round"/></svg>
+      <div class="sizes"><svg width="44" height="44" viewBox="0 0 100 100"><rect width="100" height="100" fill="#2F6468"/><rect x="21" y="21" width="58" height="58" rx="14" fill="#EEE8DC"/><path d="M34 46q6 6 12 0M54 46q6 6 12 0M42 60q8 6 16 0" fill="none" stroke="#1E2B2D" stroke-width="5" stroke-linecap="round"/></svg><svg width="29" height="29" viewBox="0 0 100 100"><rect width="100" height="100" fill="#2F6468"/><rect x="21" y="21" width="58" height="58" rx="14" fill="#EEE8DC"/><path d="M34 46q6 6 12 0M54 46q6 6 12 0M42 60q8 6 16 0" fill="none" stroke="#1E2B2D" stroke-width="5" stroke-linecap="round"/></svg><svg width="20" height="20" viewBox="0 0 100 100"><rect width="100" height="100" fill="#2F6468"/><rect x="21" y="21" width="58" height="58" rx="14" fill="#EEE8DC"/><path d="M34 46q6 6 12 0M54 46q6 6 12 0M42 60q8 6 16 0" fill="none" stroke="#1E2B2D" stroke-width="5" stroke-linecap="round"/></svg></div>
+      <div class="lockup" style="background:#EEE8DC;color:#1E2B2D"><svg width="30" height="30" viewBox="0 0 100 100"><rect width="100" height="100" fill="#2F6468"/><rect x="21" y="21" width="58" height="58" rx="14" fill="#EEE8DC"/><path d="M34 46q6 6 12 0M54 46q6 6 12 0M42 60q8 6 16 0" fill="none" stroke="#1E2B2D" stroke-width="5" stroke-linecap="round"/></svg><span>Quiesco</span></div>
+    </div>
+    <div class="info">
+      <p>The device&#x27;s own face screen, asleep: the e-ink panel with closed eyes. Slate-teal and sand read like a quiet shoreline: calm, and cool enough for a bedroom at night, with a driftwood-orange accent for warmth.</p>
+      <p class="note">Drawn from the firmware&#x27;s face screen, the one that only speaks when something is wrong.</p>
+      <div class="pals"><div><h3>Day</h3><div class="sw"><i style="background:#EEE8DC"></i><span><b>Sand</b><em>Background</em></span><code>#EEE8DC</code></div><div class="sw"><i style="background:#F8F4EC"></i><span><b>Shell</b><em>Cards</em></span><code>#F8F4EC</code></div><div class="sw"><i style="background:#1E2B2D"></i><span><b>Deep water</b><em>Text</em></span><code>#1E2B2D</code></div><div class="sw"><i style="background:#5E6B6B"></i><span><b>Wet stone</b><em>Secondary</em></span><code>#5E6B6B</code></div><div class="sw"><i style="background:#2F6468"></i><span><b>Tide</b><em>Primary</em></span><code>#2F6468</code></div><div class="sw"><i style="background:#A85A2E"></i><span><b>Driftwood</b><em>Highlight</em></span><code>#A85A2E</code></div></div><div><h3>Night</h3><div class="sw"><i style="background:#0F1718"></i><span><b>Night sea</b><em>Background</em></span><code>#0F1718</code></div><div class="sw"><i style="background:#182324"></i><span><b>Kelp</b><em>Cards</em></span><code>#182324</code></div><div class="sw"><i style="background:#E8E4DA"></i><span><b>Foam</b><em>Text</em></span><code>#E8E4DA</code></div><div class="sw"><i style="background:#9AA5A4"></i><span><b>Pebble</b><em>Secondary</em></span><code>#9AA5A4</code></div><div class="sw"><i style="background:#7DB3B3"></i><span><b>Shallows</b><em>Primary</em></span><code>#7DB3B3</code></div><div class="sw"><i style="background:#E8A77F"></i><span><b>Driftwood</b><em>Highlight</em></span><code>#E8A77F</code></div></div></div>
+    </div>
+    <div class="samples"><div class="sample" style="background:#EEE8DC;color:#1E2B2D">
+  <div class="s-top"><span class="s-wm">Bedroom</span><span class="s-pill" style="background:#F8F4EC;color:#5E6B6B">Synced 2 min ago</span></div>
+  <div class="s-card" style="background:#F8F4EC"><span class="s-k" style="color:#5E6B6B">CO₂</span><span class="s-v">644<small style="color:#5E6B6B">ppm</small></span>
+   <svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 22 L30 19 L60 17 L90 18 L120 20 L150 23 L180 24 L200 25" fill="none" stroke="#2F6468" stroke-width="2" stroke-linejoin="round"/><circle cx="197" cy="25" r="3" fill="#2F6468"/></svg></div>
+  <div class="s-row"><div class="s-card sm" style="background:#F8F4EC"><span class="s-v2">21.4°</span><span class="s-k" style="color:#5E6B6B">Temperature</span></div><div class="s-card sm" style="background:#F8F4EC"><span class="s-v2">31 dB</span><span class="s-k" style="color:#5E6B6B">Noise</span></div></div>
+  <div class="s-btn" style="background:#2F6468;color:#FFFFFF">See last night</div>
+  <span class="s-hl" style="color:#A85A2E">● Highlight</span>
+</div><div class="sample" style="background:#0F1718;color:#E8E4DA">
+  <div class="s-top"><span class="s-wm">Bedroom</span><span class="s-pill" style="background:#182324;color:#9AA5A4">Synced 2 min ago</span></div>
+  <div class="s-card" style="background:#182324"><span class="s-k" style="color:#9AA5A4">CO₂</span><span class="s-v">942<small style="color:#9AA5A4">ppm</small></span>
+   <svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 30 L30 28 L60 25 L90 22 L120 17 L150 13 L180 9 L200 7" fill="none" stroke="#7DB3B3" stroke-width="2" stroke-linejoin="round"/><circle cx="197" cy="7" r="3" fill="#7DB3B3"/></svg></div>
+  <div class="s-row"><div class="s-card sm" style="background:#182324"><span class="s-v2">21.4°</span><span class="s-k" style="color:#9AA5A4">Temperature</span></div><div class="s-card sm" style="background:#182324"><span class="s-v2">31 dB</span><span class="s-k" style="color:#9AA5A4">Noise</span></div></div>
+  <div class="s-btn" style="background:#7DB3B3;color:#0F1718">Sync last night</div>
+  <span class="s-hl" style="color:#E8A77F">● Highlight</span>
+</div></div>
+  </div>
+</article>
+<article class="dir" id="wave">
+  <div class="dir-head">
+    <span class="letter">C</span>
+    <div><h2>Dusk & Apricot</h2><p class="logo-name">Logo: Settling wave</p></div>
+  </div>
+  <div class="dir-body">
+    <div class="marks">
+      <svg class="big" viewBox="0 0 100 100" role="img" aria-label="Settling wave app icon"><rect width="100" height="100" fill="#3A2436"/><path d="M19 50C23 31 31 31 35 50S46 64 50 50S58 42 61 50S66 54 68 50L81 50" fill="none" stroke="#F0B283" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div class="sizes"><svg width="44" height="44" viewBox="0 0 100 100"><rect width="100" height="100" fill="#3A2436"/><path d="M19 50C23 31 31 31 35 50S46 64 50 50S58 42 61 50S66 54 68 50L81 50" fill="none" stroke="#F0B283" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg width="29" height="29" viewBox="0 0 100 100"><rect width="100" height="100" fill="#3A2436"/><path d="M19 50C23 31 31 31 35 50S46 64 50 50S58 42 61 50S66 54 68 50L81 50" fill="none" stroke="#F0B283" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg><svg width="20" height="20" viewBox="0 0 100 100"><rect width="100" height="100" fill="#3A2436"/><path d="M19 50C23 31 31 31 35 50S46 64 50 50S58 42 61 50S66 54 68 50L81 50" fill="none" stroke="#F0B283" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="lockup" style="background:#F1E8E1;color:#2D1F2B"><svg width="30" height="30" viewBox="0 0 100 100"><rect width="100" height="100" fill="#3A2436"/><path d="M19 50C23 31 31 31 35 50S46 64 50 50S58 42 61 50S66 54 68 50L81 50" fill="none" stroke="#F0B283" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Quiesco</span></div>
+    </div>
+    <div class="info">
+      <p>A sound wave that settles into a still line: noise fading as the room goes quiet. Plum and apricot are the dusk sky in the landing page&#x27;s night window, kept warm.</p>
+      <p class="note">Drawn from the noise sensor and the idea of the room settling. It has no letter, so it works beside any wordmark.</p>
+      <div class="pals"><div><h3>Day</h3><div class="sw"><i style="background:#F1E8E1"></i><span><b>Blush sand</b><em>Background</em></span><code>#F1E8E1</code></div><div class="sw"><i style="background:#FBF6F2"></i><span><b>Porcelain</b><em>Cards</em></span><code>#FBF6F2</code></div><div class="sw"><i style="background:#2D1F2B"></i><span><b>Aubergine</b><em>Text</em></span><code>#2D1F2B</code></div><div class="sw"><i style="background:#6E5C69"></i><span><b>Mauve grey</b><em>Secondary</em></span><code>#6E5C69</code></div><div class="sw"><i style="background:#8E4A66"></i><span><b>Plum</b><em>Primary</em></span><code>#8E4A66</code></div><div class="sw"><i style="background:#A6592A"></i><span><b>Apricot, deep</b><em>Highlight</em></span><code>#A6592A</code></div></div><div><h3>Night</h3><div class="sw"><i style="background:#1A1119"></i><span><b>Late dusk</b><em>Background</em></span><code>#1A1119</code></div><div class="sw"><i style="background:#251A24"></i><span><b>Fig</b><em>Cards</em></span><code>#251A24</code></div><div class="sw"><i style="background:#F0E6EC"></i><span><b>Petal</b><em>Text</em></span><code>#F0E6EC</code></div><div class="sw"><i style="background:#AD9CA8"></i><span><b>Heather</b><em>Secondary</em></span><code>#AD9CA8</code></div><div class="sw"><i style="background:#D48FAE"></i><span><b>Orchid</b><em>Primary</em></span><code>#D48FAE</code></div><div class="sw"><i style="background:#F0B283"></i><span><b>Apricot</b><em>Highlight</em></span><code>#F0B283</code></div></div></div>
+    </div>
+    <div class="samples"><div class="sample" style="background:#F1E8E1;color:#2D1F2B">
+  <div class="s-top"><span class="s-wm">Bedroom</span><span class="s-pill" style="background:#FBF6F2;color:#6E5C69">Synced 2 min ago</span></div>
+  <div class="s-card" style="background:#FBF6F2"><span class="s-k" style="color:#6E5C69">CO₂</span><span class="s-v">644<small style="color:#6E5C69">ppm</small></span>
+   <svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 22 L30 19 L60 17 L90 18 L120 20 L150 23 L180 24 L200 25" fill="none" stroke="#8E4A66" stroke-width="2" stroke-linejoin="round"/><circle cx="197" cy="25" r="3" fill="#8E4A66"/></svg></div>
+  <div class="s-row"><div class="s-card sm" style="background:#FBF6F2"><span class="s-v2">21.4°</span><span class="s-k" style="color:#6E5C69">Temperature</span></div><div class="s-card sm" style="background:#FBF6F2"><span class="s-v2">31 dB</span><span class="s-k" style="color:#6E5C69">Noise</span></div></div>
+  <div class="s-btn" style="background:#8E4A66;color:#FFFFFF">See last night</div>
+  <span class="s-hl" style="color:#A6592A">● Highlight</span>
+</div><div class="sample" style="background:#1A1119;color:#F0E6EC">
+  <div class="s-top"><span class="s-wm">Bedroom</span><span class="s-pill" style="background:#251A24;color:#AD9CA8">Synced 2 min ago</span></div>
+  <div class="s-card" style="background:#251A24"><span class="s-k" style="color:#AD9CA8">CO₂</span><span class="s-v">942<small style="color:#AD9CA8">ppm</small></span>
+   <svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 30 L30 28 L60 25 L90 22 L120 17 L150 13 L180 9 L200 7" fill="none" stroke="#D48FAE" stroke-width="2" stroke-linejoin="round"/><circle cx="197" cy="7" r="3" fill="#D48FAE"/></svg></div>
+  <div class="s-row"><div class="s-card sm" style="background:#251A24"><span class="s-v2">21.4°</span><span class="s-k" style="color:#AD9CA8">Temperature</span></div><div class="s-card sm" style="background:#251A24"><span class="s-v2">31 dB</span><span class="s-k" style="color:#AD9CA8">Noise</span></div></div>
+  <div class="s-btn" style="background:#D48FAE;color:#1A1119">Sync last night</div>
+  <span class="s-hl" style="color:#F0B283">● Highlight</span>
+</div></div>
+  </div>
+</article>
+<article class="dir" id="squareq">
+  <div class="dir-head">
+    <span class="letter">D</span>
+    <div><h2>Beeswax & Olive</h2><p class="logo-name">Logo: Square Q</p></div>
+  </div>
+  <div class="dir-body">
+    <div class="marks">
+      <svg class="big" viewBox="0 0 100 100" role="img" aria-label="Square Q app icon"><rect width="100" height="100" fill="#E6AE4E"/><path fill-rule="evenodd" fill="#2B2118" d="M40 17h16a23 23 0 0 1 23 23v16a23 23 0 0 1-23 23h-16a23 23 0 0 1-23-23v-16a23 23 0 0 1 23-23ZM43 30h10a13 13 0 0 1 13 13v10a13 13 0 0 1-13 13h-10a13 13 0 0 1-13-13v-10a13 13 0 0 1 13-13Z"/><path d="M62 74C64 83 68 87 75 87C79 87 82 85 85 81" fill="none" stroke="#2B2118" stroke-width="9" stroke-linecap="round"/></svg>
+      <div class="sizes"><svg width="44" height="44" viewBox="0 0 100 100"><rect width="100" height="100" fill="#E6AE4E"/><path fill-rule="evenodd" fill="#2B2118" d="M40 17h16a23 23 0 0 1 23 23v16a23 23 0 0 1-23 23h-16a23 23 0 0 1-23-23v-16a23 23 0 0 1 23-23ZM43 30h10a13 13 0 0 1 13 13v10a13 13 0 0 1-13 13h-10a13 13 0 0 1-13-13v-10a13 13 0 0 1 13-13Z"/><path d="M62 74C64 83 68 87 75 87C79 87 82 85 85 81" fill="none" stroke="#2B2118" stroke-width="9" stroke-linecap="round"/></svg><svg width="29" height="29" viewBox="0 0 100 100"><rect width="100" height="100" fill="#E6AE4E"/><path fill-rule="evenodd" fill="#2B2118" d="M40 17h16a23 23 0 0 1 23 23v16a23 23 0 0 1-23 23h-16a23 23 0 0 1-23-23v-16a23 23 0 0 1 23-23ZM43 30h10a13 13 0 0 1 13 13v10a13 13 0 0 1-13 13h-10a13 13 0 0 1-13-13v-10a13 13 0 0 1 13-13Z"/><path d="M62 74C64 83 68 87 75 87C79 87 82 85 85 81" fill="none" stroke="#2B2118" stroke-width="9" stroke-linecap="round"/></svg><svg width="20" height="20" viewBox="0 0 100 100"><rect width="100" height="100" fill="#E6AE4E"/><path fill-rule="evenodd" fill="#2B2118" d="M40 17h16a23 23 0 0 1 23 23v16a23 23 0 0 1-23 23h-16a23 23 0 0 1-23-23v-16a23 23 0 0 1 23-23ZM43 30h10a13 13 0 0 1 13 13v10a13 13 0 0 1-13 13h-10a13 13 0 0 1-13-13v-10a13 13 0 0 1 13-13Z"/><path d="M62 74C64 83 68 87 75 87C79 87 82 85 85 81" fill="none" stroke="#2B2118" stroke-width="9" stroke-linecap="round"/></svg></div>
+      <div class="lockup" style="background:#F3ECDF;color:#2B2118"><svg width="30" height="30" viewBox="0 0 100 100"><rect width="100" height="100" fill="#E6AE4E"/><path fill-rule="evenodd" fill="#2B2118" d="M40 17h16a23 23 0 0 1 23 23v16a23 23 0 0 1-23 23h-16a23 23 0 0 1-23-23v-16a23 23 0 0 1 23-23ZM43 30h10a13 13 0 0 1 13 13v10a13 13 0 0 1-13 13h-10a13 13 0 0 1-13-13v-10a13 13 0 0 1 13-13Z"/><path d="M62 74C64 83 68 87 75 87C79 87 82 85 85 81" fill="none" stroke="#2B2118" stroke-width="9" stroke-linecap="round"/></svg><span>Quiesco</span></div>
+    </div>
+    <div class="info">
+      <p>The landing page&#x27;s Q rebuilt on the case&#x27;s rounded square, keeping its curled tail. Honey is the bedside lamp&#x27;s glow; olive and oat keep it earthy rather than bright.</p>
+      <p class="note">Keeps the letter, so it stays tied to the existing site and README, but its shape now matches the device.</p>
+      <div class="pals"><div><h3>Day</h3><div class="sw"><i style="background:#F3ECDF"></i><span><b>Oat</b><em>Background</em></span><code>#F3ECDF</code></div><div class="sw"><i style="background:#FBF7EF"></i><span><b>Cream wax</b><em>Cards</em></span><code>#FBF7EF</code></div><div class="sw"><i style="background:#2B2118"></i><span><b>Espresso</b><em>Text</em></span><code>#2B2118</code></div><div class="sw"><i style="background:#6D5F4E"></i><span><b>Walnut grey</b><em>Secondary</em></span><code>#6D5F4E</code></div><div class="sw"><i style="background:#9A6414"></i><span><b>Honey, deep</b><em>Primary</em></span><code>#9A6414</code></div><div class="sw"><i style="background:#5F6E3F"></i><span><b>Olive</b><em>Highlight</em></span><code>#5F6E3F</code></div></div><div><h3>Night</h3><div class="sw"><i style="background:#17120C"></i><span><b>Bark</b><em>Background</em></span><code>#17120C</code></div><div class="sw"><i style="background:#221B13"></i><span><b>Burnt wood</b><em>Cards</em></span><code>#221B13</code></div><div class="sw"><i style="background:#F1E8DA"></i><span><b>Parchment</b><em>Text</em></span><code>#F1E8DA</code></div><div class="sw"><i style="background:#AA9C88"></i><span><b>Dry grass</b><em>Secondary</em></span><code>#AA9C88</code></div><div class="sw"><i style="background:#E6AE4E"></i><span><b>Honey</b><em>Primary</em></span><code>#E6AE4E</code></div><div class="sw"><i style="background:#A3B07A"></i><span><b>Olive leaf</b><em>Highlight</em></span><code>#A3B07A</code></div></div></div>
+    </div>
+    <div class="samples"><div class="sample" style="background:#F3ECDF;color:#2B2118">
+  <div class="s-top"><span class="s-wm">Bedroom</span><span class="s-pill" style="background:#FBF7EF;color:#6D5F4E">Synced 2 min ago</span></div>
+  <div class="s-card" style="background:#FBF7EF"><span class="s-k" style="color:#6D5F4E">CO₂</span><span class="s-v">644<small style="color:#6D5F4E">ppm</small></span>
+   <svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 22 L30 19 L60 17 L90 18 L120 20 L150 23 L180 24 L200 25" fill="none" stroke="#9A6414" stroke-width="2" stroke-linejoin="round"/><circle cx="197" cy="25" r="3" fill="#9A6414"/></svg></div>
+  <div class="s-row"><div class="s-card sm" style="background:#FBF7EF"><span class="s-v2">21.4°</span><span class="s-k" style="color:#6D5F4E">Temperature</span></div><div class="s-card sm" style="background:#FBF7EF"><span class="s-v2">31 dB</span><span class="s-k" style="color:#6D5F4E">Noise</span></div></div>
+  <div class="s-btn" style="background:#9A6414;color:#FFFFFF">See last night</div>
+  <span class="s-hl" style="color:#5F6E3F">● Highlight</span>
+</div><div class="sample" style="background:#17120C;color:#F1E8DA">
+  <div class="s-top"><span class="s-wm">Bedroom</span><span class="s-pill" style="background:#221B13;color:#AA9C88">Synced 2 min ago</span></div>
+  <div class="s-card" style="background:#221B13"><span class="s-k" style="color:#AA9C88">CO₂</span><span class="s-v">942<small style="color:#AA9C88">ppm</small></span>
+   <svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 30 L30 28 L60 25 L90 22 L120 17 L150 13 L180 9 L200 7" fill="none" stroke="#E6AE4E" stroke-width="2" stroke-linejoin="round"/><circle cx="197" cy="7" r="3" fill="#E6AE4E"/></svg></div>
+  <div class="s-row"><div class="s-card sm" style="background:#221B13"><span class="s-v2">21.4°</span><span class="s-k" style="color:#AA9C88">Temperature</span></div><div class="s-card sm" style="background:#221B13"><span class="s-v2">31 dB</span><span class="s-k" style="color:#AA9C88">Noise</span></div></div>
+  <div class="s-btn" style="background:#E6AE4E;color:#17120C">Sync last night</div>
+  <span class="s-hl" style="color:#A3B07A">● Highlight</span>
+</div></div>
+  </div>
+</article>
+<div class="footer"><p>Tell me a letter, or a mix such as “B's logo with D's palette”. I'll then tune the verdict colours to it, export the app icon and splash, and start the app.</p></div>
+</div>

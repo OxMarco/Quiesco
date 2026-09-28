@@ -1,0 +1,1 @@
+../../../../../src/ui/fonts/FredokaSemiBold24pt.h
