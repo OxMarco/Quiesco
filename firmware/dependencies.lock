@@ -11,3 +11,4 @@ library Adafruit GFX Library 1.12.6 production
 library GxEPD2 1.6.9 gated-display-candidate
 library ArduinoBLE 2.1.0 gated-ble-candidate
 library FlashDB 2.2.0 vendored-production
+library doctest 2.5.3 vendored-test

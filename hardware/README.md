@@ -30,8 +30,8 @@ on a **switched 3.3 V rail** that the firmware turns off between measurements.
 | Ref | Part | Job |
 |---|---|---|
 | U3 | Seeed XIAO nRF52840 Plus | MCU, BLE, USB-C, LiPo charger |
-| U6 | Sensirion SCD41-D-R1 | CO₂, temperature, humidity (I²C `0x62`) |
-| U2 | Bosch BME280 | pressure, for CO₂ compensation (I²C `0x76`) |
+| U6 | Sensirion SCD41-D-R1 | CO₂ (I²C `0x62`) |
+| U2 | Bosch BME280 | temperature, humidity, pressure; pressure also compensates CO₂ (I²C `0x76`) |
 | U5 | Vishay VEML7700 | ambient light (I²C `0x10`) |
 | U4 | Knowles SPH0641LU4H-1 | PDM MEMS microphone |
 | U1 | Winbond W25Q64JVSSIQ | 8 MB SPI NOR flash: config and sample log |

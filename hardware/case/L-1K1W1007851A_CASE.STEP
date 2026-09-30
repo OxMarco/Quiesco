@@ -4,8 +4,8 @@ FILE_DESCRIPTION (( 'STEP AP203' ),
     '1' );
 FILE_NAME ('Казг^L-1K1W1007851A.STEP',
     '2026-07-02T14:45:46',
-    ( '' ),
-    ( '' ),
+    ( 'OxMarco' ),
+    ( 'OxMarco' ),
     'SwSTEP 2.0',
     'SolidWorks 2025',
     '' );

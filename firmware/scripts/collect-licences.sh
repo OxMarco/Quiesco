@@ -46,8 +46,8 @@ while read -r kind rest; do
       rest="${rest% *}"
       version="${rest##* }"
       name="${rest% *}"
-      if [ "$status" = "vendored-production" ]; then
-        continue
+      if [[ "$status" == vendored-* ]]; then
+        continue  # licence copied below (production) or never shipped (test)
       fi
       dir="$libraries/${name// /_}"
       installed="$(sed -n 's/^version=//p' "$dir/library.properties" 2>/dev/null || true)"

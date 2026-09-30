@@ -7,6 +7,8 @@ binary="${TMPDIR:-/tmp}/quiesco-host-tests"
 power_binary="${TMPDIR:-/tmp}/quiesco-power-domain-tests"
 storage_binary="${TMPDIR:-/tmp}/quiesco-storage-ble-tests"
 flashdb_build_dir="${TMPDIR:-/tmp}/quiesco-flashdb-host-objects"
+doctest_dir="$root/tests/host/third_party/doctest"
+doctest_main="${TMPDIR:-/tmp}/quiesco-doctest-main.o"
 
 # Mbed TLS for HMAC-SHA-256 (src/platform/HmacSha256.cpp). The unit links the
 # 2.x copy precompiled into the mbed core; the host uses 3.x, whose HMAC API is
@@ -28,11 +30,19 @@ for source in fdb.c fdb_kvdb.c fdb_tsdb.c fdb_utils.c fal.c fal_flash.c fal_part
   flashdb_objects+=("$object")
 done
 
+# doctest's runner (tests/host/doctest_main.cpp), built once for every binary.
+# -isystem keeps its header out of -Werror; the tests themselves stay strict.
+"${CXX:-c++}" -std=c++14 -Wall -Wextra -Werror -pedantic \
+  -isystem "$doctest_dir" \
+  -c "$root/tests/host/doctest_main.cpp" -o "$doctest_main"
+
 "${CXX:-c++}" \
   -std=c++14 \
   -Wall -Wextra -Werror -pedantic \
   -I"$root/src" \
+  -isystem "$doctest_dir" \
   "$root/tests/host/test_main.cpp" \
+  "$doctest_main" \
   "$root/src/services/Scheduler.cpp" \
   "$root/src/ui/ComfortEvaluation.cpp" \
   "$root/src/ui/UiModel.cpp" \
@@ -48,7 +58,9 @@ done
   -DARDUINO_SEEED_XIAO_NRF52840_PLUS \
   -I"$root/tests/host/fakes" \
   -I"$root/src" \
+  -isystem "$doctest_dir" \
   "$root/tests/host/test_power_domain.cpp" \
+  "$doctest_main" \
   "$root/src/board/PowerDomain.cpp" \
   -o "$power_binary"
 
@@ -64,7 +76,9 @@ done
   -I"$root/src/third_party/flashdb" \
   -isystem "$mbedtls_prefix/include" \
   -DQUIESCO_PROTOCOL_DOC="\"$root/src/protocol/PROTOCOL.md\"" \
+  -isystem "$doctest_dir" \
   "$root/tests/host/test_storage_ble.cpp" \
+  "$doctest_main" \
   "$root/tests/host/fakes/W25Q64FlashSim.cpp" \
   "$root/src/drivers/FlashDbPort.cpp" \
   "$root/src/protocol/BleCodec.cpp" \
@@ -88,7 +102,8 @@ runtime_binary="${TMPDIR:-/tmp}/quiesco-runtime-tests"
   -DARDUINO_SEEED_XIAO_NRF52840_PLUS \
   -I"$root/tests/host/fakes" -I"$root/src" -I"$root/src/third_party/flashdb" \
   -isystem "$mbedtls_prefix/include" \
-  "$root/tests/host/test_runtime.cpp" \
+  -isystem "$doctest_dir" \
+  "$root/tests/host/test_runtime.cpp" "$doctest_main" \
   "$root/tests/host/fakes/W25Q64FlashSim.cpp" \
   "$root/src/App.cpp" "$root/src/board/PowerDomain.cpp" \
   "$root/src/drivers/BleConfig.cpp" "$root/src/drivers/Scd41Sensor.cpp" \

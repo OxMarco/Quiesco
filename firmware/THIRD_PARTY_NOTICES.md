@@ -39,6 +39,9 @@ Not linked:
 
 - **Host test fakes** in `tests/host/fakes` are Quiesco code that only
   mimics the Arduino and ArduinoBLE interfaces.
+- **doctest** 2.5.3 ([doctest/doctest](https://github.com/doctest/doctest),
+  MIT), vendored unchanged in `tests/host/third_party/doctest`, is the host
+  test framework. It is never compiled into the firmware.
 - **Unity**, previously pinned as a development dependency, was never used by
   the host tests and has been removed from the lock and the install script.
 - **Build tools**: arduino-cli, the GCC ARM toolchain, Adafruit

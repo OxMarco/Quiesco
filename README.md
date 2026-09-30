@@ -77,11 +77,11 @@ your favourite editor.
 | Reading | Sensor | Comfortable | Warn | Bad |
 |---|---|---|---|---|
 | CO₂ | Sensirion **SCD41** (photoacoustic NDIR) | ≤ 800 ppm | 800–1200 ppm | > 1200 ppm |
-| Temperature | Sensirion **SCD41**, co-located with CO₂ | 20–26 °C | 18–20 · 26–28 °C | < 18 · > 28 °C |
-| Humidity | Sensirion **SCD41** | 30–60 % | 25–30 · 60–70 % | < 25 · > 70 % |
+| Temperature | Bosch **BME280** | 20–26 °C | 18–20 · 26–28 °C | < 18 · > 28 °C |
+| Humidity | Bosch **BME280** | 30–60 % | 25–30 · 60–70 % | < 25 · > 70 % |
 | Noise | Knowles **SPH0641LU4H-1** PDM mic, dB(A) Leq over ~7 s | ≤ 55 dB | 55–70 dB | > 70 dB |
 | Light | Vishay **VEML7700** | informational | | |
-| Pressure | Bosch **BME280** | used to compensate CO₂ | | |
+| Pressure | Bosch **BME280** | informational; also compensates CO₂ | | |
 
 The same bands drive the e-ink screen and the app, so the phone and the panel
 always agree. The full policy is in [`firmware/UI.md`](firmware/UI.md#3-comfort-bands).
@@ -114,6 +114,10 @@ shown on the panel. After that it sets the clock, downloads the log, charts
 each night and lets you pick the screen or calibrate the sensors.
 
 ## 📐 Specs
+
+<p align="center">
+  <img src=".github/assets/enclosure-front.png" alt="Front view of the enclosure: 53.4 mm square with 5 mm corner radii and a 28 mm e-ink window showing CO₂, temperature, humidity, light and noise" width="420">
+</p>
 
 | | |
 |---|---|

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
-#include <cstdlib>
-#include <iostream>
 #include <vector>
+
+#include "doctest.h"
 
 #include "board/BoardPins.h"
 #include "board/PowerDomain.h"
@@ -17,14 +17,6 @@ struct Event {
 };
 
 std::vector<Event> events;
-int failures = 0;
-
-void expect(bool condition, const char* message) {
-  if (!condition) {
-    std::cerr << message << '\n';
-    ++failures;
-  }
-}
 
 }  // namespace
 
@@ -46,45 +38,40 @@ void FakeSerial::print(const char*) {}
 void FakeSerial::print(unsigned long) {}
 void FakeSerial::println(const char*) {}
 
-int main() {
+TEST_CASE("power domain rail sequencing") {
   PowerDomain power;
   power.beginOff();
 
-  expect(events.size() >= 2, "beginOff should configure the rail");
-  expect(events[0].operation == Operation::kDigitalWrite &&
-             events[0].pin == BoardPins::kPeripheralRail &&
-             events[0].value == HIGH,
-         "beginOff must preload the rail-off level first");
-  expect(events[1].operation == Operation::kPinMode &&
-             events[1].pin == BoardPins::kPeripheralRail &&
-             events[1].value == OUTPUT,
-         "beginOff must make the preloaded rail pin an output second");
-  expect(!power.enabled(), "rail should report disabled after beginOff");
+  REQUIRE_MESSAGE(events.size() >= 2, "beginOff should configure the rail");
+  CHECK_MESSAGE((events[0].operation == Operation::kDigitalWrite &&
+                 events[0].pin == BoardPins::kPeripheralRail &&
+                 events[0].value == HIGH),
+                "beginOff must preload the rail-off level first");
+  CHECK_MESSAGE((events[1].operation == Operation::kPinMode &&
+                 events[1].pin == BoardPins::kPeripheralRail &&
+                 events[1].value == OUTPUT),
+                "beginOff must make the preloaded rail pin an output second");
+  CHECK_MESSAGE(!power.enabled(), "rail should report disabled after beginOff");
 
   events.clear();
   power.enable(500);
-  expect(power.enabled(), "rail should report enabled after enable");
-  expect(!power.ready(1499), "rail should not be ready before settle deadline");
-  expect(power.ready(1500), "rail should be ready at settle deadline");
-  expect(!events.empty() && events[0].operation == Operation::kDigitalWrite &&
-             events[0].pin == BoardPins::kPeripheralRail &&
-             events[0].value == LOW,
-         "enable must drive the active-low rail on");
+  CHECK_MESSAGE(power.enabled(), "rail should report enabled after enable");
+  CHECK_MESSAGE(!power.ready(1499),
+                "rail should not be ready before settle deadline");
+  CHECK_MESSAGE(power.ready(1500), "rail should be ready at settle deadline");
+  CHECK_MESSAGE((!events.empty() &&
+                 events[0].operation == Operation::kDigitalWrite &&
+                 events[0].pin == BoardPins::kPeripheralRail &&
+                 events[0].value == LOW),
+                "enable must drive the active-low rail on");
 
   power.disable();
-  expect(!power.enabled(), "rail should report disabled after disable");
+  CHECK_MESSAGE(!power.enabled(), "rail should report disabled after disable");
 
   power.enable(500, PowerDomain::kBusSettleMs);
-  expect(!power.ready(500 + PowerDomain::kBusSettleMs - 1),
-         "bus-only rail should not be ready before its settle deadline");
-  expect(power.ready(500 + PowerDomain::kBusSettleMs),
-         "bus-only rail should be ready at its settle deadline");
+  CHECK_MESSAGE(!power.ready(500 + PowerDomain::kBusSettleMs - 1),
+                "bus-only rail should not be ready before its settle deadline");
+  CHECK_MESSAGE(power.ready(500 + PowerDomain::kBusSettleMs),
+                "bus-only rail should be ready at its settle deadline");
   power.disable();
-
-  if (failures != 0) {
-    std::cerr << failures << " power-domain test(s) failed\n";
-    return EXIT_FAILURE;
-  }
-  std::cout << "All Quiesco power-domain tests passed\n";
-  return EXIT_SUCCESS;
 }

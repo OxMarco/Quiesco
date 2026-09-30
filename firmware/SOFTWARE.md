@@ -533,8 +533,11 @@ testable image.
 
 ### Tests
 
-`make test` builds three host binaries against small fakes of `Arduino.h`,
-`ArduinoBLE.h` and a simulated W25Q64:
+`make test` builds four host binaries against small fakes of `Arduino.h`,
+`ArduinoBLE.h` and a simulated W25Q64. They use doctest (vendored in
+`tests/host/third_party/doctest`), so each binary takes doctest's options:
+`-tc="sample log*"` runs matching test cases, `-ltc` lists them, `-s` shows
+passing checks too. The binaries land in `$TMPDIR` as `quiesco-*-tests`.
 
 - **core:** config validation, scheduler progression, missed deadlines and
   clock rollover, fault counters, comfort bands, worst-metric priority, screen
@@ -545,7 +548,9 @@ testable image.
   codec, config persistence and recovery on the flash simulator, sample log
   readout including a torn record, the stepwise log erase, unit identity, the
   BLE decoders, encoders and log packets, and the frozen protocol's golden
-  vectors, which must also appear verbatim in `PROTOCOL.md`.
+  vectors, which must also appear verbatim in `PROTOCOL.md`;
+- **runtime:** `App`, BLE and SCD41 state transitions: reconnect and
+  enrolment, the FRC run-up, and factory-reset erase recovery across reboots.
 
 Hardware behaviour is verified with the smoke sketches and the debug status
 line on a real board.
