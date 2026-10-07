@@ -6,6 +6,8 @@ export const LINKS = {
   buildYourOwn: 'https://github.com/OxMarco/Quiesco#-build-your-own',
   // TODO: replace with the campaign URL.
   kickstarter: 'https://www.kickstarter.com/',
+  privacy: '/privacy',
+  support: 'mailto:info@impossiblelabs.xyz',
 };
 
 export const SITE = {

@@ -1,0 +1,118 @@
+---
+import Nav from '../components/Nav.astro';
+import Base from '../layouts/Base.astro';
+import { LINKS } from '../site';
+---
+
+<Base
+  title="Privacy policy · Quiesco"
+  description="The Quiesco app collects no personal data. Readings stay on your phone and your unit."
+>
+  <Nav />
+  <article>
+    <h1>Privacy policy</h1>
+    <p class="updated">Last updated 7 October 2026</p>
+
+    <p class="lede">
+      The Quiesco app does not collect, send or share any personal data on its own. There is no account, no server and no
+      analytics. What the sensor measures stays on your phone and on your Quiesco unit.
+    </p>
+
+    <h2>What the app stores, and where</h2>
+    <ul>
+      <li>
+        <strong>Readings</strong>: carbon dioxide, temperature, humidity, light and noise levels downloaded from
+        your unit. They are kept in a database on your phone.
+      </li>
+      <li>
+        <strong>Your unit</strong>: its name, serial number and Bluetooth identifier, so the app can reconnect to
+        it.
+      </li>
+      <li>
+        <strong>A pairing key</strong>: a random key your unit issues when you enter its six-digit code. It is
+        kept in the phone's secure storage (the iOS Keychain or the Android Keystore) and never leaves the
+        device.
+      </li>
+      <li><strong>Settings</strong>: your temperature unit, theme and sleep window.</li>
+    </ul>
+    <p>
+      None of this is sent anywhere. The noise sensor reports sound levels only; it does not record audio, and
+      the app never uses your phone's microphone, camera, location or contacts.
+    </p>
+
+    <h2>Diagnostic reports</h2>
+    <p>
+      If something goes wrong, Settings → Send a diagnostic report shows a report you can email to us or share.
+      It contains the app and phone versions, your unit's serial number, firmware and status, and the app's recent
+      Bluetooth log. It never contains your readings or keys. The app shows you the whole report first, and it is
+      only sent if you send it from your own mail app. We use it only to answer you, and delete it on request.
+    </p>
+
+    <h2>Bluetooth</h2>
+    <p>
+      The app uses Bluetooth only to find, pair with and read your Quiesco unit. On Android it asks for
+      Bluetooth permission and declares that it does not use Bluetooth to work out your location.
+    </p>
+
+    <h2>Third parties</h2>
+    <p>
+      The app contains no advertising, tracking or analytics code and no crash reporting. Apple and Google may
+      collect data about app downloads and crashes under their own privacy policies, according to your device
+      settings.
+    </p>
+
+    <h2>Keeping or deleting your data</h2>
+    <p>
+      Your readings stay until you remove them. Forgetting a unit in the app's Settings tab deletes its readings
+      and pairing key from your phone, and uninstalling the app deletes everything. A factory reset in the app
+      also erases the log stored on the unit.
+    </p>
+
+    <h2>Children</h2>
+    <p>The app collects no personal information from anyone, including children.</p>
+
+    <h2>Changes</h2>
+    <p>
+      If this policy changes, the new version will be published on this page with a new date. The app's source
+      code is public on <a href={LINKS.github}>GitHub</a>, so you can check what it does.
+    </p>
+
+    <h2>Contact</h2>
+    <p>Questions about privacy or the app: <a href={LINKS.support}>info@impossiblelabs.xyz</a>.</p>
+  </article>
+</Base>
+
+<style>
+  article {
+    max-width: 42em;
+    padding-block: 40px 96px;
+  }
+  h1 {
+    font-size: clamp(34px, 5vw, 52px);
+    font-weight: 300;
+  }
+  .updated {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .lede {
+    margin-top: 24px;
+    font-size: 18px;
+  }
+  h2 {
+    margin-top: 40px;
+    font-size: 24px;
+    font-weight: 400;
+  }
+  p,
+  ul {
+    margin-top: 12px;
+  }
+  ul {
+    padding-left: 1.2em;
+  }
+  li + li {
+    margin-top: 8px;
+  }
+</style>

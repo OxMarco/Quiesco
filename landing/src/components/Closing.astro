@@ -9,6 +9,9 @@ import { LINKS } from '../site';
     <a class="btn primary" href={LINKS.kickstarter}>Get on Kickstarter</a>
     <a class="btn ghost" href={LINKS.x}>Follow us</a>
   </div>
+  <p class="legal">
+    <a href={LINKS.privacy}>Privacy policy</a> · <a href={LINKS.support}>Contact</a>
+  </p>
 </div>
 
 <style>
@@ -26,5 +29,10 @@ import { LINKS } from '../site';
   }
   .ctas {
     margin-top: 26px;
+  }
+  .legal {
+    margin-top: 48px;
+    font-size: 14px;
+    color: var(--muted);
   }
 </style>
