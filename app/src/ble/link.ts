@@ -665,8 +665,9 @@ async function runSync(): Promise<number> {
 
   let total = 0;
   let fruitless = 0;
-  // An upper bound: a log that wrapped holds fewer records than this.
-  const expected = Math.max(0, status.newestSequence - cursor + 1);
+  // An upper bound: a log that wrapped holds fewer records than this. Unknown
+  // while the unit reports 0, which it does until its log is mounted.
+  const expected = status.newestSequence > 0 ? Math.max(0, status.newestSequence - cursor + 1) : null;
   link.set({ sync: { state: 'waiting', received: 0, remaining: null, expected } });
   try {
     for (;;) {
@@ -688,7 +689,7 @@ async function runSync(): Promise<number> {
         continue;
       }
       const newest = link.get().status?.newestSequence ?? 0;
-      if (!session.ended || session.records.length < BATCH || next > newest) break;
+      if (!session.ended || session.records.length < BATCH || (newest > 0 && next > newest)) break;
       cursor = next;
     }
     link.set({ sync: { state: 'done', received: total, remaining: 0, expected } });
@@ -726,9 +727,13 @@ function downloadBatch(cursor: number, before: number): Promise<{ session: LogSe
       // Subscribe before START, or the first notification stalls the session (§7.1).
       cleanups.push(
         await ble.subscribe(id(), QUIESCO_SERVICE, Chr.logSyncData, (packet) => {
+          const had = before + session.records.length;
           session.push(packet);
+          // The unit's hint counts from this packet to its newest record, so
+          // it corrects the estimate made from status before the sync.
+          const hinted = session.remaining === null ? null : had + session.remaining;
           link.set((s) => ({
-            sync: { state: 'streaming', received: before + session.records.length, remaining: session.remaining, expected: s.sync?.expected ?? null },
+            sync: { state: 'streaming', received: before + session.records.length, remaining: session.remaining, expected: hinted ?? s.sync?.expected ?? null },
           }));
           if (session.ended) finish();
           else if (session.lost) {

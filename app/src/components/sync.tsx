@@ -75,14 +75,15 @@ export function UnitSyncCard({ unit }: { unit: db.Unit | null }) {
 }
 
 function Downloading({ sync }: { sync: SyncProgress }) {
-  // `expected` is an upper bound (the log may have wrapped), so the bar never
-  // passes 100 % and the count says "of about".
-  const fraction = sync.expected ? Math.min(1, sync.received / sync.expected) : null;
+  // `expected` is an estimate (the log may have wrapped), so the count says
+  // "of about"; once more than that arrived it is plainly wrong, so drop it.
+  const expected = sync.expected && sync.expected >= sync.received ? sync.expected : null;
+  const fraction = expected ? sync.received / expected : null;
   const detail =
     sync.state === 'waiting'
       ? 'Asking the unit for its log…'
-      : sync.expected
-        ? `${count(sync.received)} of about ${count(sync.expected)} readings`
+      : expected
+        ? `${count(sync.received)} of about ${count(expected)} readings`
         : `${count(sync.received)} readings`;
   return (
     <Card className="gap-3" accessibilityLiveRegion="polite">

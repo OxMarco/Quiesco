@@ -104,11 +104,18 @@ void App::step() {
       } else if (stressRequested_) {
         stressRequested_ = false;
         startCycle(nowMs, CycleKind::kStress);
-      } else if (sampleRequested_ || syncPending_ || frcPending_) {
-        // A log sync or FRC rides a measurement cycle; start one now rather
-        // than at the next deadline, whenever the request arrived.
+      } else if (sampleRequested_ || frcPending_ ||
+                 (syncPending_ &&
+                  (!configLoaded_ || scheduler_.claimDue(nowMs)))) {
+        // An FRC rides a measurement cycle, and so does a sync when one is
+        // due; start it now rather than at the next deadline.
         sampleRequested_ = false;
         startCycle(nowMs, CycleKind::kMeasure);
+      } else if (syncPending_) {
+        // Otherwise a sync needs only the flash: streaming starts ~12 s
+        // sooner, and a long download's batches and retries no longer cost
+        // a measurement and a redraw each.
+        startCycle(nowMs, CycleKind::kSync);
       } else if (scheduler_.claimDue(nowMs) ||
           pollCharging(nowMs) != renderedCharging_) {
         startCycle(nowMs, CycleKind::kMeasure);
@@ -135,6 +142,17 @@ void App::step() {
             break;
           case CycleKind::kTraceDump:
             state_ = State::kTraceDumping;
+            break;
+          case CycleKind::kSync:
+            if (!flash_.begin()) {
+              recordDeviceResult(faults_.flash, false, flash_.timedOut(),
+                                 false);
+              syncPending_ = false;
+              state_ = State::kShuttingDown;
+              publishStatus();
+              break;
+            }
+            startPendingSync(nowMs);
             break;
         }
       }
@@ -373,17 +391,11 @@ void App::step() {
       ble_.publishReading(reading_);
       publishDiagnostics(nowMs);
       if (cycleKind_ != CycleKind::kMeasure) {
-        state_ = State::kShuttingDown;  // a pending sync waits for a measurement
-      } else if (syncPending_ && ble_.connected() && configLoaded_ &&
-                 !logErasePending_ && !sampleLog_.erasing()) {
-        // The flash is still begun from kPersisting; stream before shutdown.
-        beginSyncSession(nowMs);
-        state_ = syncActive_ ? State::kSyncing : State::kShuttingDown;
+        state_ = State::kShuttingDown;  // a pending sync starts its own cycle
+        publishStatus();
       } else {
-        syncPending_ = false;  // requester is gone; drop the stale request
-        state_ = State::kShuttingDown;
+        startPendingSync(nowMs);  // the flash is still begun from kPersisting
       }
-      publishStatus();
       break;
     }
 
@@ -436,8 +448,9 @@ void App::startCycle(uint64_t nowMs, CycleKind kind) {
   cycleKind_ = kind;
   // A redraw or config commit reads no sensor, so it needs only the bus
   // devices' short settle: a screen change lands ~1 s sooner.
-  const bool busOnly =
-      kind == CycleKind::kRedraw || kind == CycleKind::kCommitConfig;
+  const bool busOnly = kind == CycleKind::kRedraw ||
+                       kind == CycleKind::kCommitConfig ||
+                       kind == CycleKind::kSync;
   power_.enable(nowMs, busOnly ? PowerDomain::kBusSettleMs
                                : PowerDomain::kSettleMs);
   state_ = State::kPowering;
@@ -473,6 +486,13 @@ bool App::loadSettings(uint64_t nowMs) {
     // Boot counter failure must not overwrite an unknown counter on retry.
     ok = configStore_.advanceBootCount(flash_, bootCount_);
   }
+  // Mount the log while the flash is up, before BLE starts: unmounted, status
+  // reports newest sequence 0, which the app reads as an empty or replaced
+  // log (PROTOCOL.md §7.4). A failure here retries at the first append. Not
+  // with an erase journalled: that partition may be half erased.
+  if (ok && !logErasePending_) {
+    sampleLog_.mount(flash_);
+  }
   recordDeviceResult(faults_.flash, flashPresent, flash_.timedOut(), ok);
   flash_.end();
   if (!ok) return false;
@@ -482,6 +502,7 @@ bool App::loadSettings(uint64_t nowMs) {
   publishDeviceInfo();
   const bool bleReady = ble_.begin(config_, serialNumber_, nowMs);
   recordDeviceResult(faults_.ble, bleReady, false, bleReady);
+  publishStatus();  // the newest sequence, before the first measurement
   return true;
 }
 
@@ -627,6 +648,20 @@ void App::takeBleCommands(uint64_t nowMs) {
       syncPending_ = true;
     }
   }
+}
+
+// Streams a pending sync before shutdown, or drops a request whose phone is
+// gone; the flash must be begun.
+void App::startPendingSync(uint64_t nowMs) {
+  if (syncPending_ && ble_.connected() && configLoaded_ && !logErasePending_ &&
+      !sampleLog_.erasing()) {
+    beginSyncSession(nowMs);
+    state_ = syncActive_ ? State::kSyncing : State::kShuttingDown;
+  } else {
+    syncPending_ = false;
+    state_ = State::kShuttingDown;
+  }
+  publishStatus();
 }
 
 void App::beginSyncSession(uint64_t nowMs) {

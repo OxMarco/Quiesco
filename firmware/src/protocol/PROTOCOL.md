@@ -770,10 +770,10 @@ resume on the device.
 
 1. **Subscribe to `000A` first.** A notification that cannot be delivered
    stalls the session, and it ends 10 s later.
-2. Write START to `0009`. The download rides a measurement: if the device is
-   idle, one starts at once, and streaming begins when it finishes, about 11 s
-   later (longer during an FRC soak). Status notifies with flag bit 1 set when
-   streaming starts.
+2. Write START to `0009`. If a measurement is due, the download rides it and
+   streaming begins when it finishes, about 12 s later (longer during an FRC
+   soak); otherwise streaming begins at once. Status notifies with flag bit 1
+   set when streaming starts.
 3. The device sends DATA packets, or FRAGMENT packets at small MTUs, in
    increasing sequence order, then one END packet. Status notifies with bit 1
    clear.
@@ -782,9 +782,8 @@ resume on the device.
    clears in every case.
 
 A START written while a download is pending or streaming is ignored. ABORT
-cancels a pending or running download. The newest record is the one taken by
-the cycle that carries the download, so a full download always includes the
-current measurement.
+cancels a pending or running download. The newest record is the latest
+measurement, at most one interval old.
 
 ### 7.2 Packets
 

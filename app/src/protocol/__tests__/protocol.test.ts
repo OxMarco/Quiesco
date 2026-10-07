@@ -362,6 +362,8 @@ describe('log download', () => {
     expect(logWasReplaced(1202, 1201)).toBe(false);
     expect(logWasReplaced(1202, 40)).toBe(true);
     expect(logWasReplaced(0, 0)).toBe(false);
+    // 0 until the unit mounts its log after boot: not a replaced log.
+    expect(logWasReplaced(1202, 0)).toBe(false);
   });
 
   test('undated records are dated from the same boot only', () => {

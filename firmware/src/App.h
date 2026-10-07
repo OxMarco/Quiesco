@@ -53,7 +53,7 @@ class App {
 
   // What a rail power-up is for. A redraw repaints the last reading after a
   // screen or calibration change without the ~7 s measurement; a config
-  // commit only writes flash.
+  // commit only writes flash; a sync only streams the log.
   enum class CycleKind : uint8_t {
     kMeasure,
     kCommitConfig,
@@ -61,6 +61,7 @@ class App {
     kDump,
     kStress,
     kTraceDump,
+    kSync,
   };
 
   // FRC run-up per Sensirion's low-power AN: single shots once a minute for
@@ -103,6 +104,7 @@ class App {
   void serviceDump();
   void serviceStress(uint64_t nowMs);
   static uint32_t stateLimitMs(State state);
+  void startPendingSync(uint64_t nowMs);
   void beginSyncSession(uint64_t nowMs);
   void serviceSync(uint64_t nowMs);
   void finishSync();

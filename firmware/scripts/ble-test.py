@@ -31,8 +31,8 @@ unit takes one connection at a time. Keys live in --key-file (default
 an FRC, never selects another screen and never shortens the interval. It
 renames the unit (and restores the name), writes a test sleep window (and
 restores the original), sends one log erase that must be refused (its up-to
-sequence is below the newest record) and starts a few log downloads; each
-download rides one measurement, so it redraws the panel once. WARN marks a
+sequence is below the newest record) and starts a few log downloads; one
+that finds a measurement due rides it, and so redraws the panel once. WARN marks a
 result the protocol allows but a person should look at; it does not fail.
 """
 
@@ -113,7 +113,7 @@ CONNECT_S = 20.0
 AUTH_WAIT_S = 12.0
 AUTH_POLL_S = 0.25
 ISSUED_KEY_WAIT_S = 25.0  # the unit shows the issued key for 30 s (§6.16)
-LOG_START_S = 90.0    # a download rides the next measurement (§7.1)
+LOG_START_S = 90.0    # a download may ride a measurement (§7.1)
 LOG_STALL_S = 15.0    # the unit gives up after 10 s without delivery
 SETTLE_S = 8.0        # a rejected write is reverted from the main loop
 ERASE_WATCH_S = 20.0  # an accepted erase sets status bit 2 within a measurement
@@ -439,6 +439,7 @@ class LogSession:
         self.discarded = 0     # every dropped packet, CRC failures included
         self.duplicates = 0    # records at or below the highest already taken
         self.counter_skips = 0
+        self.lost_from = None  # the first record we lack after a skipped packet
         self.remaining = None
         self._last_counter = None
         self._drop_fragments()
@@ -465,6 +466,8 @@ class LogSession:
             if self._last_counter is not None and \
                     header["counter"] != (self._last_counter + 1) & 0xFF:
                 self.counter_skips += 1
+                if self.lost_from is None:
+                    self.lost_from = self.highest + 1 if self.highest >= 0 else self.requested_from
             self._last_counter = header["counter"]
         if header["type"] == PKT_DATA:
             self._on_data(header, packet)
@@ -521,7 +524,8 @@ class LogSession:
 
 
 def log_was_replaced(cursor, newest_sequence):
-    return cursor > 0 and newest_sequence < cursor - 1
+    # 0 is no evidence: firmware before 2026-10 reported it until the log mounted.
+    return cursor > 0 and newest_sequence > 0 and newest_sequence < cursor - 1
 
 
 CSV_FIELDS = ["sequence", "boot", "epoch_s", "uptime_ms", "valid", "temperature_c",
@@ -770,7 +774,7 @@ def self_test():
 
     expect("log replaced when newest < cursor - 1",
            log_was_replaced(100, 50) and not log_was_replaced(100, 99)
-           and not log_was_replaced(0, 0))
+           and not log_was_replaced(0, 0) and not log_was_replaced(100, 0))
 
     # The vectors above must still be in the document they came from.
     doc_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src",
@@ -1255,8 +1259,20 @@ async def download_all(unit, start=0, batch=2000, quiet=False):
 
     while True:
         session = await download_session(unit, cursor, batch, progress=progress)
-        records += session.records
         totals["sessions"] += 1
+        if session.lost_from is not None:
+            # As the app does: keep what came before the lost packet, then
+            # ask again from the first record we lack (§7.4).
+            records += [r for r in session.records if r["sequence"] < session.lost_from]
+            for k in ("packets", "bytes", "crc_failures", "discarded", "duplicates", "counter_skips"):
+                totals[k] += getattr(session, k)
+            totals["seconds"] += session.seconds
+            totals["retries"] = totals.get("retries", 0) + 1
+            if totals["retries"] > 20:
+                raise HarnessError("more than 20 lost packets; giving up")
+            cursor = session.lost_from
+            continue
+        records += session.records
         for k in ("packets", "bytes", "crc_failures", "discarded", "duplicates", "counter_skips"):
             totals[k] += getattr(session, k)
         totals["seconds"] += session.seconds
@@ -1412,7 +1428,8 @@ async def cmd_download(args):
     rate = len(records) / totals["seconds"] if totals["seconds"] else 0
     print(f"{len(records)} records, {totals['bytes']} bytes in {totals['seconds']:.1f} s "
           f"({rate:.0f} records/s), {totals['discarded']} packets discarded "
-          f"({totals['crc_failures']} CRC), next cursor {totals['cursor']} -> {args.out}")
+          f"({totals['crc_failures']} CRC), {totals.get('retries', 0)} retries after lost packets, "
+          f"{totals['sessions']} sessions, next cursor {totals['cursor']} -> {args.out}")
     return 0 if totals["ended"] else 1
 
 

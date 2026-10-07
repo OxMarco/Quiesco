@@ -173,12 +173,15 @@ COLLECTING ──▶ PERSISTING ──▶ RENDERING ──▶ SHUTTING_DOWN ─�
 COLLECTING ──FRC requested──▶ FRC_SOAKING ──5 min──▶ FRC_EXECUTING ──▶ PERSISTING
 PERSISTING ──log erase pending──▶ ERASING_LOG ──one sector per step──▶ RENDERING
 RENDERING ──log sync requested──▶ SYNCING ──end, abort or 10 s stall──▶ SHUTTING_DOWN
+IDLE ──log sync requested, no measurement due──▶ POWERING ──▶ SYNCING
 IDLE ──config commit pending──▶ POWERING ──▶ COMMITTING_CONFIG ──▶ IDLE
 IDLE ──screen/offset change──▶ POWERING ──▶ REDRAWING ──▶ RENDERING ──▶ SHUTTING_DOWN
 ```
 
-A pending log sync or FRC request starts a cycle from IDLE at once, whenever
-it arrived. A screen or calibration-offset change starts a **redraw** cycle
+A pending FRC request starts a measurement from IDLE at once, whenever it
+arrived. So does a log sync when a measurement is due; otherwise the sync
+powers only the bus (50 ms settle) and streams at once, so the batches and
+retries of a long download cost no measurement or redraw. A screen or calibration-offset change starts a **redraw** cycle
 instead: it powers the rail, commits the config if needed, re-applies the
 offsets to the last raw reading and draws it, without the ~11 s measurement.
 A change that lands mid-cycle before the sensors are collected is simply used

@@ -222,9 +222,14 @@ export class LogSession {
   }
 }
 
-/** §7.4: the log was replaced when the device's newest sequence falls behind our cursor. */
+/**
+ * §7.4: the log was replaced when the device's newest sequence falls behind
+ * our cursor. A newest of 0 is no evidence: firmware reports 0 until it mounts
+ * its log, which it does lazily after boot. Waiting for a later status loses
+ * nothing, while resetting would download the whole log again.
+ */
 export function logWasReplaced(cursor: number, newestSequence: number): boolean {
-  return cursor > 0 && newestSequence < cursor - 1;
+  return cursor > 0 && newestSequence > 0 && newestSequence < cursor - 1;
 }
 
 /**

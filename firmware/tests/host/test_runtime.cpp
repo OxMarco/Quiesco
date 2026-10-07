@@ -35,6 +35,8 @@ constexpr char kReset[] = "7A1E000D-8E6F-4A7A-AE32-515549455343";
 constexpr char kReading[] = "7A1E0003-8E6F-4A7A-AE32-515549455343";
 constexpr char kStatus[] = "7A1E0004-8E6F-4A7A-AE32-515549455343";
 constexpr char kSleep[] = "7A1E0012-8E6F-4A7A-AE32-515549455343";
+constexpr char kSyncControl[] = "7A1E0009-8E6F-4A7A-AE32-515549455343";
+constexpr char kLogData[] = "7A1E000A-8E6F-4A7A-AE32-515549455343";
 const uint8_t key[16] = {1, 2, 3};
 BondTable knownBonds() {
   BondTable bonds;
@@ -335,6 +337,46 @@ TEST_CASE("app erase command before the log is mounted") {
   CHECK_MESSAGE(FlashSim::sampleSectorErases() == before, "unmounted log is checked before erasing");
   CHECK_MESSAGE(!eraseFlag(), "refused erase leaves bit 2 clear");
   CHECK_MESSAGE(newestSequence() >= 31, "history kept");
+  FakeBle::disconnect();
+}
+TEST_CASE("status reports the log's newest record before the first measurement") {
+  FlashSim::reset(); ticks = 0;
+  W25Q64Flash flash; flash.begin(); ConfigStore store;
+  CHECK_MESSAGE(store.save(flash, defaultConfig()), "seed config");
+  CHECK_MESSAGE(store.saveBonds(flash, knownBonds()), "seed phone key");
+  SampleLog original; Reading reading;
+  for (int i = 0; i < 30; ++i) CHECK_MESSAGE(original.append(flash, reading), "seed log");
+  // Reported 0 here, the app took the log for replaced and downloaded it all.
+  App app; app.begin(); step(app, 1001); step(app);  // settings loaded, BLE up
+  FakeBle::connect(22); step(app); prove(); step(app);
+  CHECK_MESSAGE(newestSequence() == 30, "newest sequence known before the first append");
+  FakeBle::disconnect();
+}
+TEST_CASE("a sync with no measurement due streams at once") {
+  FlashSim::reset(); ticks = 0;
+  W25Q64Flash flash; flash.begin(); ConfigStore store;
+  CHECK_MESSAGE(store.save(flash, defaultConfig()), "seed config");
+  CHECK_MESSAGE(store.saveBonds(flash, knownBonds()), "seed phone key");
+  SampleLog original; Reading reading;
+  for (int i = 0; i < 30; ++i) CHECK_MESSAGE(original.append(flash, reading), "seed log");
+  App app; app.begin(); step(app, 1001); run(app, 40);  // first cycle done
+  FakeBle::connect(23); step(app); prove(); step(app);
+  const uint32_t newest = newestSequence();
+  FakeBle::values().at(kLogData)->subscribed = true;
+  const uint8_t start[10] = {1, 0, 0, 0, 0, 0, 0, 0, 0xF4, 0};  // START 0, no limit, 244
+  for (int round = 0; round < 2; ++round) {  // a retry or next batch: the same
+    FakeBle::write(kSyncControl, start, sizeof start);
+    int steps = 0;
+    while (FakeBle::read(kLogData).empty() || FakeBle::read(kLogData)[0] != 2) {
+      if (++steps > 60) break;
+      step(app);
+    }
+    CHECK_MESSAGE(steps <= 60, "END within 600 ms: no measurement first");
+    CHECK_MESSAGE(LittleEndian::getU32(FakeBle::read(kLogData).data() + 2) == newest + 1, "whole log sent");
+    CHECK_MESSAGE(newestSequence() == newest, "no record appended");
+    FakeBle::values().at(kLogData)->bytes.clear();
+    run(app, 10);  // shut down to idle
+  }
   FakeBle::disconnect();
 }
 TEST_CASE("app enters the OTA bootloader") {
