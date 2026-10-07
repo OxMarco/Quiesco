@@ -6,7 +6,7 @@ import { useSession } from '@/ble/session';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { FirmnessDots } from '@/components/evidence';
-import { T } from '@/components/ui';
+import { NotFound, T } from '@/components/ui';
 import { EVIDENCE, evidenceScale, FIRMNESS_ORDER, type JudgedMetric, scaleParts, type Zone } from '@/ui/advice';
 import { REFERENCE_LABEL } from '@/ui/references';
 
@@ -20,7 +20,7 @@ export default function WhyScreen() {
   const { metric } = useLocalSearchParams<{ metric: string }>();
   const tempUnit = useSession((s) => s.tempUnit);
   const e = EVIDENCE[metric as JudgedMetric];
-  if (!e) return null;
+  if (!e) return <NotFound />;
   return (
     <ScrollView className="flex-1 bg-surface" contentContainerClassName="px-5 pt-6 pb-12 gap-4">
       <View className="flex-row justify-between items-center gap-4">
@@ -63,6 +63,9 @@ export default function WhyScreen() {
       </View>
 
       <T className="text-xs leading-[18px] text-muted">Sources: {e.sources}</T>
+      <T className="text-xs leading-[18px] text-muted">
+        Quiesco is not a medical device. Its readings and advice are for general comfort information only.
+      </T>
     </ScrollView>
   );
 }

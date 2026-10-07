@@ -1,15 +1,24 @@
-// Development only: a demo unit with generated nights, so the UI can be
-// exercised in a simulator without hardware. Never shipped in release builds
-// (the entry point is behind __DEV__).
+// Demo mode: a pretend unit with three generated nights, so the app can be
+// explored without hardware (App Review, the simulator, the curious). Shipped
+// in release builds; the Welcome screen offers it as a secondary action. The
+// unit is labelled as a demo everywhere and is removed like a real one
+// (Settings → Remove demo data). It has no radio behind it, so screens check
+// isDemo() rather than offering to connect.
 
 import type { LogRecord } from '@/protocol/log';
 
 import { saveRecords, setCursor, upsertUnit } from './db';
 
 export const SAMPLE_SERIAL = 'DEMO000000000000';
+export const SAMPLE_NAME = 'Demo unit';
+
+/** True for the pretend unit loadSampleData creates. */
+export function isDemo(unit: { serial: string } | null | undefined): boolean {
+  return unit?.serial === SAMPLE_SERIAL;
+}
 
 export async function loadSampleData() {
-  await upsertUnit({ serial: SAMPLE_SERIAL, peripheralId: 'demo', name: 'Sample bedroom', firmware: '0.0.0-demo' });
+  await upsertUnit({ serial: SAMPLE_SERIAL, peripheralId: 'demo', name: SAMPLE_NAME, firmware: '0.0.0-demo' });
   const records: LogRecord[] = [];
   const now = Math.floor(Date.now() / 1000);
   const step = 300;

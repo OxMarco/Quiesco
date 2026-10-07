@@ -1,6 +1,6 @@
 // The sleep window: when the user usually sleeps, so a night is judged only
 // over those hours. Asked once after adding a unit, changed any time from the
-// Room screen or the Unit tab. One window for every night of the week.
+// Room screen or the Settings tab. One window for every night of the week.
 
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -28,6 +28,7 @@ export default function SleepWindowScreen() {
   const unit = useSession((s) => s.units[0] ?? null);
   const [draft, setDraft] = useState<SleepWindow>(saved);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const lightsOut = useLightsOut(unit?.serial ?? null, saved);
 
   const valid = validTimes(draft.weekday);
@@ -36,8 +37,10 @@ export default function SleepWindowScreen() {
 
   const save = () => {
     setBusy(true);
+    setError(null);
     setSleepWindow({ ...draft, weekend: null, set: true })
       .then(() => router.back())
+      .catch((e) => setError(`Couldn’t save the sleep window: ${e instanceof Error ? e.message : String(e)}`))
       .finally(() => setBusy(false));
   };
 
@@ -84,6 +87,7 @@ export default function SleepWindowScreen() {
             A sleep window runs {MIN_SLEEP_MIN / 60} to {MAX_SLEEP_MIN / 60} hours.
           </T>
         )}
+        {error && <T className="text-bad text-sm text-center">{error}</T>}
         <Button title="Save" busy={busy} disabled={!valid} onPress={save} />
       </View>
     </View>
@@ -106,7 +110,9 @@ function TimeCard({ label, min, onChange }: { label: string; min: number; onChan
   return (
     <Card className="flex-1 p-3.5 gap-2">
       <T className="text-[13px] text-muted">{label}</T>
-      <T className="font-number text-[32px] leading-10">{formatClock(min)}</T>
+      <T className="font-number text-[32px] leading-10" numberOfLines={1} adjustsFontSizeToFit>
+        {formatClock(min)}
+      </T>
       <View className="flex-row gap-2">
         <StepButton label="−" a11y={`${label} earlier`} onPress={() => onChange(wrapMinutes(min - STEP_MIN))} />
         <StepButton label="+" a11y={`${label} later`} onPress={() => onChange(wrapMinutes(min + STEP_MIN))} />
@@ -138,6 +144,8 @@ function Timeline({ times }: { times: SleepTimes }) {
     { at: 12 / 18, label: formatClock(6 * 60) },
     { at: 1, label: formatClock(12 * 60) },
   ];
+  // Labels are measured, not guessed, so "12 AM" centres as well as "00:00".
+  const [widths, setWidths] = useState<Record<number, number>>({});
   return (
     <View className="gap-1.5 px-1">
       <View className="h-2.5 rounded-full bg-line overflow-hidden">
@@ -151,7 +159,16 @@ function Timeline({ times }: { times: SleepTimes }) {
           <T
             key={tick.at}
             className="text-[11px] text-muted absolute"
-            style={tick.at === 1 ? { right: 0 } : { left: `${tick.at * 100}%`, transform: [{ translateX: tick.at ? -14 : 0 }] }}>
+            numberOfLines={1}
+            onLayout={(e) => {
+              const w = e.nativeEvent.layout.width;
+              setWidths((prev) => (prev[tick.at] === w ? prev : { ...prev, [tick.at]: w }));
+            }}
+            style={
+              tick.at === 1
+                ? { right: 0 }
+                : { left: `${tick.at * 100}%`, transform: [{ translateX: tick.at ? -(widths[tick.at] ?? 0) / 2 : 0 }] }
+            }>
             {tick.label}
           </T>
         ))}

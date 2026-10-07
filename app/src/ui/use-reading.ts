@@ -8,6 +8,7 @@ import { link } from '@/ble/link';
 import { useSession } from '@/ble/session';
 import { useStore } from '@/ble/store';
 import * as db from '@/data/db';
+import { trace } from '@/debug/trace';
 import type { Measurement } from '@/protocol/codec';
 
 /** How much of the log the Room tab keeps at hand. */
@@ -32,7 +33,7 @@ export function useReading(unit: db.Unit) {
       if (cancelled) return;
       setStored(latest);
       setRecent(points);
-    })();
+    })().catch((e) => trace('reading load failed', e));
     return () => {
       cancelled = true;
     };

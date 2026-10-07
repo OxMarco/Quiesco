@@ -114,7 +114,7 @@ export function issueDetail({ metric, severity, above }: Issue, reading: Measure
   switch (metric) {
     case 'co2':
       if (mode === 'day') return bad ? 'The air is stale. Open a window now.' : 'Air the room for a few minutes.';
-      return bad ? 'The air is stale enough to disturb sleep. Open a window now.' : 'Leave a door or window ajar tonight.';
+      return bad ? 'Air this stale is linked to slightly worse sleep. Open a window now.' : 'Leave a door or window ajar tonight.';
     case 'temperature': {
       if (!above) return bad ? 'Warm the room a little before bed, or add a blanket.' : 'An extra blanket or warmer sleepwear usually helps.';
       const feels = reading.temperatureC !== null && reading.humidityPct !== null ? feelsLike(reading.temperatureC, reading.humidityPct) : null;
@@ -128,7 +128,7 @@ export function issueDetail({ metric, severity, above }: Issue, reading: Measure
     case 'noise':
       if (mode === 'day') {
         return bad
-          ? 'Loud enough to harm hearing over time. Turn it down or move away from it.'
+          ? 'Loud enough that, if it lasted for hours, it could matter for hearing. Turn it down or move away from it.'
           : 'Loud enough to tire your ears over hours. Turn it down or close a door.';
       }
       return bad ? 'Loud enough to wake you. Check windows and doors.' : 'Noticeable noise. Earplugs or a closed door can help.';
@@ -196,8 +196,8 @@ export function bandSentence(metric: MetricKey, mode: JudgeMode, unit: TempUnit)
       return `Best for sleep is ${r.okLo} – ${r.okHi} %.`;
     case 'noise':
       return mode === 'sleep'
-        ? `At night, single sounds under ${r.okHi} dB and an average under ${NOISE_NIGHT_AVG_DB} dB (WHO).`
-        : `By day, under ${DAY_NOISE.warnHi} dB is safe for hearing all day.`;
+        ? `At night, single sounds under ${r.okHi} dB(A) and an average under ${NOISE_NIGHT_AVG_DB} dB(A) (WHO).`
+        : `By day, hearing guidance suggests an average under ${DAY_NOISE.warnHi} dB(A) over 24 hours.`;
     case 'light':
       return `At most ${r.okHi} lux while you sleep; above ${r.warnHi} lux is too bright.`;
   }
@@ -291,11 +291,12 @@ export const EVIDENCE: Record<JudgedMetric, Evidence> = {
     title: 'Noise at night',
     kind: REFERENCES.noise.kind,
     firmness: 3,
-    badge: 'Health guideline · WHO',
+    badge: 'WHO guideline',
     body:
-      `For bedrooms at night, the World Health Organization recommends an average under ${NOISE_NIGHT_AVG_DB} dB and single ` +
-      `sounds under ${NOISE_NIGHT_PEAK_DB} dB. Louder sounds can wake you or pull you out of deep sleep, even if you don’t remember it.`,
-    unit: 'dB',
+      `For bedrooms at night, the World Health Organization recommends an average under ${NOISE_NIGHT_AVG_DB} dB(A) and single ` +
+      `sounds under ${NOISE_NIGHT_PEAK_DB} dB(A). Louder sounds can wake you or pull you out of deep sleep, even if you don’t remember it. ` +
+      'Quiesco’s microphone is not a calibrated sound meter, so compare its numbers with the guideline loosely.',
+    unit: 'dB(A)',
     scale: {
       min: 20,
       max: 70,
@@ -307,9 +308,9 @@ export const EVIDENCE: Record<JudgedMetric, Evidence> = {
       ],
       ticks: [20, NOISE_NIGHT_AVG_DB, NOISE_NIGHT_PEAK_DB, REFERENCES.noise.warnHi, 70],
     },
-    reference: 'For reference: a whisper is about 30 dB, a car passing outside a closed window 45 – 55 dB.',
+    reference: 'For reference: a whisper is about 30 dB(A), a car passing outside a closed window 45 – 55 dB(A).',
     counts:
-      `Each stretch of two or more readings in a row above ${NOISE_NIGHT_PEAK_DB} dB during your sleep window. The unit listens ` +
+      `Each stretch of two or more readings in a row above ${NOISE_NIGHT_PEAK_DB} dB(A) during your sleep window. The unit listens ` +
       'for about 7 seconds each time it measures, so a short sound between measurements can be missed.',
     sources: 'WHO Guidelines for Community Noise (1999); WHO Night Noise Guidelines for Europe (2009).',
   },
@@ -350,7 +351,7 @@ export const EVIDENCE: Record<JudgedMetric, Evidence> = {
     firmness: 1,
     badge: 'Comfort research',
     body:
-      'Heat makes you wake more and cuts deep and REM sleep, and humidity makes it worse. Most people sleep best in a cool ' +
+      'In studies, people in hot bedrooms tend to wake more and get less deep and REM sleep, more so when it is humid. Most people sleep best in a cool ' +
       'room, but bedding, sleepwear and what you’re used to matter as much as the number, so take the range as a guide rather than a hard limit.',
     unit: '°C',
     scale: {
@@ -388,4 +389,5 @@ export const FIRMNESS_ORDER: { metric: JudgedMetric; label: string; firmness: Fi
   { metric: 'noise', label: 'Noise', firmness: 3, kind: 'Health guideline' },
   { metric: 'co2', label: 'CO₂', firmness: 2, kind: 'Ventilation standard' },
   { metric: 'temperature', label: 'Temperature', firmness: 1, kind: 'Comfort, varies by person' },
+  { metric: 'humidity', label: 'Humidity', firmness: 1, kind: 'Comfort, varies by person' },
 ];

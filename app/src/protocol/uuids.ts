@@ -22,6 +22,7 @@ export const Chr = {
   diagnostics: quiesco('000F'),
   auth: quiesco('0010'),
   enrolKey: quiesco('0011'),
+  sleepWindow: quiesco('0012'),
 } as const;
 
 export const DIS_SERVICE = '180A';
@@ -34,5 +35,5 @@ export const Dis = {
   hardware: '2A27',
 } as const;
 
-/** Protocol versions whose layouts this app knows (§1). */
-export const KNOWN_PROTOCOL_VERSIONS: readonly number[] = [1, 2, 3, 4, 5, 6];
+/** The one protocol version this app speaks (§1); older units need new firmware. */
+export const PROTOCOL_VERSION = 6;

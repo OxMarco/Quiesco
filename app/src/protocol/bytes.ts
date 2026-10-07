@@ -55,6 +55,10 @@ export class ByteWriter {
     this.view.setUint16(offset, value, true);
     return this;
   }
+  i16(offset: number, value: number): this {
+    this.view.setInt16(offset, value, true);
+    return this;
+  }
   u32(offset: number, value: number): this {
     this.view.setUint32(offset, value, true);
     return this;

@@ -9,7 +9,7 @@ import { useSession } from '@/ble/session';
 import { EvidenceTag } from '@/components/evidence';
 import { Face } from '@/components/face';
 import { MetricChart } from '@/components/metric-chart';
-import { SEVERITY_CLASS, T } from '@/components/ui';
+import { NotFound, SEVERITY_CLASS, T } from '@/components/ui';
 import type * as db from '@/data/db';
 import type { MetricKey } from '@/protocol/codec';
 import { metricValue, Severity } from '@/protocol/comfort';
@@ -35,7 +35,9 @@ import { RECENT_S, useReading } from '@/ui/use-reading';
 export default function MetricScreen() {
   const { metric } = useLocalSearchParams<{ metric: string }>();
   const unit = useSession((s) => s.units[0] ?? null);
-  if (!unit || !(metric in METRICS)) return null;
+  if (!(metric in METRICS)) return <NotFound />;
+  // Forgotten while the sheet was open, or opened by a link with no unit.
+  if (!unit) return <NotFound message="There is no unit on this phone." />;
   return <MetricPage unit={unit} metric={metric as MetricKey} />;
 }
 
@@ -132,7 +134,7 @@ function MetricPage({ unit, metric }: { unit: db.Unit; metric: MetricKey }) {
                     {
                       value: DAY_NOISE.warnHi,
                       color: t.warn,
-                      label: `${DAY_NOISE.warnHi} dB`,
+                      label: `${DAY_NOISE.warnHi} dB(A)`,
                     },
                   ]
                 : metric === 'light'
@@ -179,7 +181,8 @@ function MetricPage({ unit, metric }: { unit: db.Unit; metric: MetricKey }) {
           <T className="text-[13px] leading-[18px] text-muted">{evidence.reference}</T>
           {metric === 'noise' && mode === 'day' && (
             <T className="text-[13px] leading-[18px] text-muted">
-              By day Quiesco judges noise for hearing instead: the EPA’s 70 dB daily average and NIOSH’s 85 dB working limit.
+              By day Quiesco compares noise with hearing guidance instead: the EPA’s 70 dB(A) 24-hour average and NIOSH’s 85 dB(A)
+              8-hour working limit. Its readings are short samples from an uncalibrated microphone, so take them as a rough guide.
             </T>
           )}
           <T className="text-[11px] leading-[15px] text-muted">Sources: {evidence.sources}</T>

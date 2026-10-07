@@ -1,6 +1,10 @@
 // Golden vectors copied from firmware/src/protocol/PROTOCOL.md (asserted there
 // by the firmware host tests), so app and firmware agree byte for byte.
 
+/// <reference types="node" />
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
 import { fromHex, toHex } from '../bytes';
 import {
   decodeCalibrationOffsets,
@@ -14,6 +18,7 @@ import {
   decodeDiagnostics,
   decodeInterval,
   decodeReading,
+  decodeSleepWindow,
   decodeStatus,
   describeResetReason,
   deviceNameProblem,
@@ -25,7 +30,9 @@ import {
   encodeFactoryReset,
   encodeFrc,
   encodeInterval,
+  encodeLogErase,
   encodeLogSyncStart,
+  encodeSleepWindow,
   FrcState,
   setupKey,
   TemperatureUnit,
@@ -44,7 +51,7 @@ import { hmacSha256, sha256 } from '../sha256';
 import { batteryPercent, nudge, roundHalfAway, Severity, verdict } from '../comfort';
 
 const G = {
-  deviceInfo: '04 00 ff 0f 00 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00',
+  deviceInfo: '06 00 ff 7f 00 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00',
   authState: '06 00 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f 00 00',
   enrolKey: '34 12 00 00 a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae af',
   prove: '02 00 34 12 f0 64 2a b3 02 06 0f 2f 61 13 6b 3f 1d ab 8a 1a',
@@ -60,6 +67,8 @@ const G = {
   syncStart: '01 00 b1 04 00 00 00 00 f4 00',
   frc: '01 00 a4 01',
   reset: '01 01 c7 fa',
+  logErase: '02 00 c7 fa a3 05 00 00',
+  sleepWindow: '01 00 78 00 82 05 a4 01 ff ff ff ff',
   wireRecord:
     'b1 04 00 00 7f 00 01 00 10 c7 55 69 80 ee 36 00 00 00 00 00 00 00 ac 41 00 00 35 42 80 e6 c5 47 ' +
     '00 00 19 44 66 66 34 43 66 66 1a 42 35 5e 7a 40 07 00 00 00',
@@ -68,11 +77,21 @@ const G = {
   end: '02 01 b2 04 00 00 00 00 00 00 00 ab',
 };
 
+// PROTOCOL.md wraps long examples at 16 bytes a line, so compare with all
+// whitespace collapsed.
+const PROTOCOL_MD = join(__dirname, '../../../../firmware/src/protocol/PROTOCOL.md');
+
+test('every golden vector appears verbatim in PROTOCOL.md', () => {
+  const spec = readFileSync(PROTOCOL_MD, 'utf8').replace(/\s+/g, ' ');
+  const missing = Object.entries(G).filter(([, hex]) => !spec.includes(hex.replace(/\s+/g, ' ')));
+  expect(missing.map(([name]) => name)).toEqual([]);
+});
+
 describe('characteristic codecs', () => {
   test('device info', () => {
     expect(decodeDeviceInfo(fromHex(G.deviceInfo))).toEqual({
-      protocolVersion: 4,
-      capabilities: 0xfff,
+      protocolVersion: 6,
+      capabilities: 0x7fff,
       firmware: '1.2.3',
       debugBuild: false,
       pairingOpen: true,
@@ -165,6 +184,31 @@ describe('characteristic codecs', () => {
     expect(toHex(encodeFrc(420))).toBe(G.frc);
     expect(() => encodeFrc(399)).toThrow();
     expect(toHex(encodeFactoryReset(true))).toBe(G.reset);
+    expect(toHex(encodeLogErase(1443))).toBe(G.logErase);
+    expect(() => encodeLogErase(-1)).toThrow();
+    expect(() => encodeLogErase(2 ** 32)).toThrow();
+  });
+
+  test('sleep window', () => {
+    const w = decodeSleepWindow(fromHex(G.sleepWindow));
+    expect(w).toEqual({
+      followSleep: true,
+      utcOffsetMin: 120,
+      weekdayBedMin: 23 * 60 + 30,
+      weekdayWakeMin: 7 * 60,
+      weekendBedMin: null,
+      weekendWakeMin: null,
+    });
+    expect(toHex(encodeSleepWindow(w))).toBe(G.sleepWindow);
+    // Negative offsets and a weekend pair round-trip too.
+    const west = { ...w, followSleep: false, utcOffsetMin: -300, weekendBedMin: 60, weekendWakeMin: 9 * 60 };
+    expect(decodeSleepWindow(encodeSleepWindow(west))).toEqual(west);
+    expect(toHex(encodeSleepWindow(west)).slice(0, 11)).toBe('00 00 d4 fe');
+    // A half-set weekend is sent as none.
+    expect(decodeSleepWindow(encodeSleepWindow({ ...w, weekendBedMin: 60 })).weekendBedMin).toBeNull();
+    expect(() => encodeSleepWindow({ ...w, utcOffsetMin: 841 })).toThrow();
+    expect(() => encodeSleepWindow({ ...w, utcOffsetMin: -721 })).toThrow();
+    expect(() => encodeSleepWindow({ ...w, weekdayBedMin: 1440 })).toThrow();
   });
 
   test('calibration state and diagnostics', () => {
@@ -250,7 +294,7 @@ describe('log download', () => {
     expect(session.records[0].co2Ppm).toBe(612);
   });
 
-  test('a missing fragment drops that record only', () => {
+  test('a missing fragment stops the session at that record', () => {
     const wire = fromHex(G.wireRecord);
     const session = new LogSession(1201);
     for (let i = 0; i < 7; i++) {
@@ -258,7 +302,47 @@ describe('log download', () => {
       session.push(seal([3, i, 0xb1, 0x04, 0, 0, 1, i, 1, 0, 0, 0], wire.slice(i * 8, i * 8 + 8)));
     }
     expect(session.records).toHaveLength(0);
-    expect(session.discarded).toBeGreaterThan(0);
+    expect(session.lost).toBe(true);
+    expect(session.nextCursor()).toBe(1201);
+  });
+
+  /** A DATA packet with one record: the golden record renumbered. */
+  function dataPacket(counter: number, sequence: number): Uint8Array {
+    const record = fromHex(G.wireRecord);
+    new DataView(record.buffer).setUint32(0, sequence, true);
+    const s = new DataView(new ArrayBuffer(4));
+    s.setUint32(0, sequence, true);
+    return seal([1, counter, ...new Uint8Array(s.buffer), 1, 0, 1, 0, 0], record);
+  }
+
+  test('a dropped packet stops the session at the first record lacking', () => {
+    const session = new LogSession(10);
+    session.push(dataPacket(0, 10));
+    session.push(dataPacket(1, 11));
+    session.push(dataPacket(3, 13)); // counter 2 (record 12) never arrived
+    session.push(dataPacket(4, 14));
+    expect(session.records.map((r) => r.sequence)).toEqual([10, 11]);
+    expect(session.lost).toBe(true);
+    expect(session.nextCursor()).toBe(12);
+  });
+
+  test('a packet dropped just before END is caught by END’s counter', () => {
+    const session = new LogSession(10);
+    session.push(dataPacket(0, 10));
+    session.push(seal([2, 2, 12, 0, 0, 0, 0, 0, 0, 0, 0])); // END says 2 packets; 1 arrived
+    expect(session.ended).toBe(false);
+    expect(session.lost).toBe(true);
+    expect(session.nextCursor()).toBe(11);
+  });
+
+  test('a power-loss gap with every packet present is accepted', () => {
+    const session = new LogSession(10);
+    session.push(dataPacket(0, 10));
+    session.push(dataPacket(1, 15));
+    session.push(seal([2, 2, 16, 0, 0, 0, 0, 0, 0, 0, 0]));
+    expect(session.lost).toBe(false);
+    expect(session.ended).toBe(true);
+    expect(session.nextCursor()).toBe(16);
   });
 
   test('without END the cursor is one past the highest intact record', () => {

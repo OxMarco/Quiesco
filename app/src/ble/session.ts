@@ -1,22 +1,27 @@
 // App-level glue: remember the unit, reconnect on launch, sync after connect,
 // and tell screens when stored data changed.
 
-import { Appearance } from 'react-native';
+import { AppState, Appearance } from 'react-native';
 
 import * as db from '@/data/db';
+import { isDemo } from '@/data/sample';
+import { trace } from '@/debug/trace';
 import {
   type CalibrationOffsets,
   type CalibrationState,
   Capability,
   type CoreConfig,
   hasCapability,
+  sameSleepWindow,
   TemperatureUnit,
+  type UnitSleepWindow,
 } from '@/protocol/codec';
 import { DEFAULT_SLEEP_WINDOW, type SleepWindow } from '@/ui/sleep';
 import { localeTempUnit, type TempUnit } from '@/ui/units';
 
 import * as keys from './keys';
 import * as linkApi from './link';
+import { logEraseUpTo } from './log-erase';
 import { Store, useStore } from './store';
 import * as ble from './transport';
 
@@ -46,6 +51,10 @@ interface SessionState {
   tempUnit: TempUnit;
   /** False until the user has picked °C or °F; tempUnit is then the locale's guess. */
   tempUnitSet: boolean;
+  /** The unit's panel judges by time of day like the app (capability sleepWindow). */
+  panelFollowsSleep: boolean;
+  /** Erase the unit's log once it is all on this phone (capability logEraseCommand). */
+  eraseAfterSync: boolean;
 }
 
 export const session = new Store<SessionState>({
@@ -58,6 +67,8 @@ export const session = new Store<SessionState>({
   sleepWindow: DEFAULT_SLEEP_WINDOW,
   tempUnit: localeTempUnit(),
   tempUnitSet: false,
+  panelFollowsSleep: true,
+  eraseAfterSync: false,
 });
 
 export function useSession<S>(select: (s: SessionState) => S): S {
@@ -93,14 +104,52 @@ export async function open(peripheralId: string) {
   if (linkApi.link.get().phase !== 'ready') return;
   await reloadUnits();
   await pushTempUnit().catch(() => {});
+  // Every connect, so the unit's UTC offset follows the phone across time zones.
+  await pushSleepWindow().catch((e) => trace('sleep window push failed', e));
   await syncNow().catch(() => {});
 }
 
 export async function syncNow() {
-  const added = await linkApi.syncLog();
-  await reloadUnits();
-  session.set((s) => ({ dataVersion: s.dataVersion + 1 }));
-  return added;
+  let count: number;
+  try {
+    count = await linkApi.syncLog();
+  } finally {
+    // A failed sync can still have saved part of the log.
+    await reloadUnits().catch(() => {});
+    session.set((s) => ({ dataVersion: s.dataVersion + 1 }));
+  }
+  await eraseLogIfDue().catch((e) => trace('log erase failed', e));
+  return count;
+}
+
+const LAST_LOG_ERASE_KEY = 'lastLogEraseMs';
+
+/** After a complete sync, have the unit erase what the phone now holds. */
+async function eraseLogIfDue() {
+  const l = linkApi.link.get();
+  if (!session.get().eraseAfterSync || l.phase !== 'ready' || !l.serial || !l.info || !l.status) return;
+  const unit = await db.getUnit(l.serial);
+  const upTo = logEraseUpTo({
+    enabled: true,
+    capable: hasCapability(l.info, Capability.logEraseCommand),
+    syncDone: l.sync?.state === 'done',
+    cursor: unit?.cursor ?? 0,
+    newestSequence: l.status.newestSequence,
+    lastEraseMs: await db.getSetting<number>(LAST_LOG_ERASE_KEY),
+    nowMs: Date.now(),
+  });
+  if (upTo === null) return;
+  trace('log erase', upTo);
+  await linkApi.eraseLogUpTo(upTo);
+  await db.setSetting(LAST_LOG_ERASE_KEY, Date.now());
+}
+
+const ERASE_AFTER_SYNC_KEY = 'eraseAfterSync';
+
+/** Phone-side only: takes effect after the next complete sync. */
+export async function setEraseAfterSync(on: boolean) {
+  await db.setSetting(ERASE_AFTER_SYNC_KEY, on);
+  session.set({ eraseAfterSync: on });
 }
 
 const SLEEP_WINDOW_KEY = 'sleepWindow';
@@ -108,6 +157,35 @@ const SLEEP_WINDOW_KEY = 'sleepWindow';
 export async function setSleepWindow(w: SleepWindow) {
   await db.setSetting(SLEEP_WINDOW_KEY, w);
   session.set({ sleepWindow: w });
+  // In the background: saving on the phone is what the user asked for, and
+  // the next connect pushes it again anyway.
+  pushSleepWindow().catch((e) => trace('sleep window push failed', e));
+}
+
+const PANEL_FOLLOWS_SLEEP_KEY = 'panelFollowsSleep';
+
+/** Saved on the phone, then written to the unit if it is connected; otherwise on the next connect. */
+export async function setPanelFollowsSleep(on: boolean) {
+  await db.setSetting(PANEL_FOLLOWS_SLEEP_KEY, on);
+  session.set({ panelFollowsSleep: on });
+  await pushSleepWindow();
+}
+
+/** The unit's panel uses the phone's sleep window, in the phone's time zone. */
+async function pushSleepWindow() {
+  const l = linkApi.link.get();
+  if (l.phase !== 'ready' || !l.info || !hasCapability(l.info, Capability.sleepWindow)) return;
+  const { sleepWindow, panelFollowsSleep } = session.get();
+  const want: UnitSleepWindow = {
+    followSleep: panelFollowsSleep,
+    utcOffsetMin: -new Date().getTimezoneOffset(),
+    weekdayBedMin: sleepWindow.weekday.bedMin,
+    weekdayWakeMin: sleepWindow.weekday.wakeMin,
+    weekendBedMin: sleepWindow.weekend?.bedMin ?? null,
+    weekendWakeMin: sleepWindow.weekend?.wakeMin ?? null,
+  };
+  if (l.sleepWindow && sameSleepWindow(l.sleepWindow, want)) return;
+  await linkApi.setUnitSleepWindow(want);
 }
 
 const TEMP_UNIT_KEY = 'tempUnit';
@@ -149,6 +227,10 @@ export async function boot() {
   if (saved) session.set({ sleepWindow: saved });
   const unit = await db.getSetting<TempUnit>(TEMP_UNIT_KEY);
   if (unit === 'C' || unit === 'F') session.set({ tempUnit: unit, tempUnitSet: true });
+  const follows = await db.getSetting<boolean>(PANEL_FOLLOWS_SLEEP_KEY);
+  if (typeof follows === 'boolean') session.set({ panelFollowsSleep: follows });
+  const erase = await db.getSetting<boolean>(ERASE_AFTER_SYNC_KEY);
+  if (typeof erase === 'boolean') session.set({ eraseAfterSync: erase });
   const theme = await db.getSetting<ThemePref>(THEME_KEY);
   if (theme === 'auto' || theme === 'light' || theme === 'dark') {
     applyTheme(theme);
@@ -158,20 +240,40 @@ export async function boot() {
   watchUnitSettings();
   ble.onRadioState((radio) => {
     session.set({ radio });
-    if (radio === 'on') reconnect();
+    if (radio === 'on') quietReconnect();
+  });
+  // Back from the background: the unit may be in range again.
+  AppState.addEventListener('change', (state) => {
+    if (state === 'active' && session.get().radio === 'on') quietReconnect();
   });
   const radio = await ble.radioState().catch(() => 'unknown' as const);
   session.set({ radio });
-  if (radio === 'on') reconnect();
+  if (radio === 'on') quietReconnect();
 }
 
+function quietReconnect() {
+  reconnect().catch((e) => trace('reconnect failed', e));
+}
+
+// Phases where nothing is under way, so a reconnect may start one. needsUsb
+// and the version mismatches end an attempt too: the user may have plugged
+// the unit in or updated it since.
+const SETTLED: linkApi.Phase[] = ['idle', 'error', 'needsUsb', 'firmwareTooOld', 'appTooOld'];
+let reconnecting: Promise<void> | null = null;
+
 /** Quietly reconnect to the saved unit when nothing else is going on. */
-export async function reconnect() {
-  const unit = session.get().units[0];
-  const phase = linkApi.link.get().phase;
-  if (!unit || (phase !== 'idle' && phase !== 'error')) return;
-  if (!(await ble.requestPermissions())) return;
-  await open(unit.peripheralId);
+export function reconnect(): Promise<void> {
+  // Claimed synchronously, so radio, foreground and boot can all ask at once.
+  reconnecting ??= (async () => {
+    const unit = session.get().units[0];
+    // The demo unit has no radio behind it.
+    if (!unit || isDemo(unit) || !SETTLED.includes(linkApi.link.get().phase)) return;
+    if (!(await ble.requestPermissions())) return;
+    await open(unit.peripheralId);
+  })().finally(() => {
+    reconnecting = null;
+  });
+  return reconnecting;
 }
 
 /** Forget the unit on this phone: its readings and the saved link. */

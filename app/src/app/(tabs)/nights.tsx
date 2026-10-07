@@ -1,10 +1,11 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 
 import { useSession } from '@/ble/session';
 import { MetricChart } from '@/components/metric-chart';
-import { Card, Screen, SectionLabel, T, Title } from '@/components/ui';
+import { UnitSyncCard } from '@/components/sync';
+import { Button, Card, Screen, SectionLabel, T, Title } from '@/components/ui';
 import * as db from '@/data/db';
 import { Severity } from '@/protocol/comfort';
 import { severityColor, useTheme } from '@/theme';
@@ -23,25 +24,52 @@ export default function NightsScreen() {
   const [nights, setNights] = useState<string[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [points, setPoints] = useState<db.StoredPoint[]>([]);
+  // A failed read shows a card with a retry instead of a blank tab; bumping
+  // `attempt` reruns both reads.
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!unit) return;
-    db.nightsWithData(unit.serial).then((list) => {
-      setNights(list);
-      setSelected((current) => (current && list.includes(current) ? current : (list[0] ?? null)));
-    });
-  }, [unit, dataVersion]);
+    db.nightsWithData(unit.serial)
+      .then((list) => {
+        setNights(list);
+        setSelected((current) => (current && list.includes(current) ? current : (list[0] ?? null)));
+      })
+      .catch((e) => setError(errorText(e)));
+  }, [unit, dataVersion, attempt]);
 
   useEffect(() => {
     if (!unit || !selected) return;
     const { fromS, toS } = viewForNight(selected, sleepWindow);
-    db.recordsBetween(unit.serial, fromS, toS).then(setPoints);
-  }, [unit, selected, dataVersion, sleepWindow]);
+    db.recordsBetween(unit.serial, fromS, toS).then(setPoints).catch((e) => setError(errorText(e)));
+  }, [unit, selected, dataVersion, sleepWindow, attempt]);
+
+  if (error) {
+    return (
+      <Screen>
+        <Title>Nights</Title>
+        <Card className="gap-3">
+          <T className="font-body-semi text-base">Couldn’t load your nights</T>
+          <T className="text-muted text-sm leading-5">{error}</T>
+          <Button
+            title="Try again"
+            kind="secondary"
+            onPress={() => {
+              setError(null);
+              setAttempt((n) => n + 1);
+            }}
+          />
+        </Card>
+      </Screen>
+    );
+  }
 
   if (!unit || (nights !== null && nights.length === 0)) {
     return (
       <Screen>
         <Title>Nights</Title>
+        <UnitSyncCard unit={unit} />
         <Card>
           <T className="text-muted leading-6">
             {unit
@@ -52,7 +80,7 @@ export default function NightsScreen() {
       </Screen>
     );
   }
-  if (!selected) return <Screen>{null}</Screen>;
+  if (!selected) return <NightsLoading />;
 
   const view = viewForNight(selected, sleepWindow);
   const window = windowForNight(selected, sleepWindow);
@@ -61,6 +89,7 @@ export default function NightsScreen() {
   return (
     <Screen>
       <Title>Nights</Title>
+      <UnitSyncCard unit={unit} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 py-1">
         {(nights ?? []).map((n) => (
           <Pressable
@@ -103,6 +132,22 @@ export default function NightsScreen() {
           )}
         </>
       )}
+    </Screen>
+  );
+}
+
+function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function NightsLoading() {
+  const t = useTheme();
+  return (
+    <Screen>
+      <Title>Nights</Title>
+      <View className="py-16 items-center">
+        <ActivityIndicator color={t.textMuted} accessibilityLabel="Loading nights" />
+      </View>
     </Screen>
   );
 }
@@ -154,7 +199,7 @@ function NoiseCard({ story, points, view, window }: CardProps) {
   const { average, peak, spells } = story.noise;
   if (!peak) return <Unavailable label="Noise" />;
   const report = spellReport('noise', spells, window);
-  const avg = average === null ? '' : `Average ${Math.round(average)} dB · `;
+  const avg = average === null ? '' : `Average ${Math.round(average)} dB(A) · `;
   return (
     <Card className="gap-2.5">
       <CardHead label="Noise" />

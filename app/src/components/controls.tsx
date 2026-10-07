@@ -7,14 +7,20 @@ export function Segmented<V extends string | number>({
   value,
   onChange,
   disabled,
+  label,
 }: {
   options: { value: V; label: string }[];
   value: V | null;
   onChange: (v: V) => void;
   disabled?: boolean;
+  /** Read out for the group, when the visible label is not next to it. */
+  label?: string;
 }) {
   return (
-    <View className={`flex-row bg-raised rounded-full p-1 ${disabled ? 'opacity-40' : ''}`} accessibilityRole="radiogroup">
+    <View
+      className={`flex-row bg-raised rounded-full p-1 ${disabled ? 'opacity-40' : ''}`}
+      accessibilityRole="radiogroup"
+      accessibilityLabel={label}>
       {options.map((o) => {
         const on = o.value === value;
         return (

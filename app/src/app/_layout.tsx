@@ -13,6 +13,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { boot } from '@/ble/session';
 import { SetupKeyPrompt } from '@/components/setup-key-prompt';
+import { trace } from '@/debug/trace';
 import { themeVars, useTheme } from '@/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -33,7 +34,7 @@ export default function RootLayout() {
   useEffect(() => {
     if (!ready) return;
     SplashScreen.hideAsync();
-    boot();
+    boot().catch((e) => trace('boot failed', e));
   }, [ready]);
 
   if (!ready) return null;

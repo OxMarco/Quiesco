@@ -57,7 +57,7 @@ export const METRICS: Record<MetricKey, MetricMeta> = {
   noise: {
     key: 'noise',
     label: 'Noise',
-    unit: 'dB',
+    unit: 'dB(A)',
     sf: 'waveform',
     md: 'graphic_eq',
     min: 30,

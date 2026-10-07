@@ -28,7 +28,11 @@ export default function CalibrateScreen() {
       .catch((e) => setError(linkApi.describeError(e)));
   };
 
-  const running = started && (frc === FrcState.Pending || frc === FrcState.Soaking || frc === FrcState.Idle);
+  // Idle only means "not picked up yet" while the link is up; once it drops
+  // the status is stale, so stop spinning and say so.
+  const running =
+    started && connected && (frc === FrcState.Pending || frc === FrcState.Soaking || frc === FrcState.Idle);
+  const lost = started && !connected && frc !== FrcState.Done && frc !== FrcState.Failed;
 
   return (
     <View className="flex-1 bg-bg px-5 pt-6 pb-10 gap-5">
@@ -62,7 +66,9 @@ export default function CalibrateScreen() {
               ? 'Recalibrated'
               : frc === FrcState.Failed
                 ? 'Recalibration failed'
-                : frc === FrcState.Soaking
+                : lost
+                  ? 'Disconnected'
+                  : frc === FrcState.Soaking
                   ? 'Measuring outdoor air'
                   : 'Waiting for the unit'}
           </T>
@@ -70,8 +76,10 @@ export default function CalibrateScreen() {
             {frc === FrcState.Done
               ? `The sensor corrected itself by ${correction > 0 ? '+' : ''}${correction} ppm. Bring the unit back inside.`
               : frc === FrcState.Failed
-                ? 'The CO₂ sensor refused or did not respond. Check the unit in the Unit tab and try again.'
-                : frc === FrcState.Soaking
+                ? 'The CO₂ sensor refused or did not respond. Check the unit in the Settings tab and try again.'
+                : lost
+                  ? 'The phone lost the unit. A started run carries on by itself; reconnect later and the result shows in Settings.'
+                  : frc === FrcState.Soaking
                   ? 'About 5 minutes. Leave the unit where it is.'
                   : 'The run starts with the next measurement.'}
           </T>

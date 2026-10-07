@@ -2,6 +2,7 @@
 // are spelled out in full maps rather than built by concatenation.
 
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, TextProps, View, ViewProps } from 'react-native';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Severity } from '@/protocol/comfort';
@@ -88,6 +89,7 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled: !!(disabled || busy), busy: !!busy }}
       onPress={onPress}
       disabled={disabled || busy}
       className={`${style.box} h-12 rounded-full flex-row items-center justify-center gap-2 px-5 active:opacity-80 ${disabled ? 'opacity-40' : ''}`}>
@@ -149,5 +151,20 @@ export function Row({
     </Pressable>
   ) : (
     content
+  );
+}
+
+/** For a sheet opened with a link it cannot show, such as an unknown metric. */
+export function NotFound({ message = 'This page doesn’t exist. The link may be from a newer version of the app.' }: { message?: string }) {
+  return (
+    <View className="flex-1 bg-bg px-5 pt-6 pb-10 gap-4">
+      <View className="flex-row justify-between items-center gap-4">
+        <T className="font-title text-2xl shrink">Not found</T>
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} accessibilityRole="button" hitSlop={12}>
+          <T className="text-primary font-body-semi">Close</T>
+        </Pressable>
+      </View>
+      <T className="text-muted leading-6">{message}</T>
+    </View>
   );
 }

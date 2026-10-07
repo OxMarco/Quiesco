@@ -1,10 +1,29 @@
-// Tagged console output for diagnosing the BLE link on a real phone. Lines
-// start with [Quiesco] so scripts/device-debug.sh can pick them out of the
-// device console; in development they also appear in the Metro terminal.
+// Tagged output for diagnosing the BLE link on a real phone. Every line goes
+// to an in-memory ring the user can send to support (Settings → Send a
+// diagnostic report); nothing is written to disk or sent on its own.
+// Only development builds also print to the console, with lines starting
+// [Quiesco] so scripts/device-debug.sh can pick them out: the device console
+// is readable by other tools. Key material never reaches a trace (see
+// transport.loggable).
+
+const MAX_LINES = 400;
+const lines: string[] = [];
 
 export function trace(tag: string, ...details: unknown[]) {
   const parts = details.map((d) => (typeof d === 'string' ? d : safeJson(d)));
-  console.log(`[Quiesco] ${tag}`, ...parts);
+  lines.push(`${new Date().toISOString().slice(11, 23)} ${[tag, ...parts].join(' ')}`);
+  if (lines.length > MAX_LINES) lines.splice(0, lines.length - MAX_LINES);
+  if (__DEV__) console.log(`[Quiesco] ${tag}`, ...parts);
+}
+
+/** The newest lines, oldest first, each stamped with UTC time of day. */
+export function traceLines(): readonly string[] {
+  return lines.slice();
+}
+
+/** Stands in for key material in a trace, even in development. */
+export function redacted(data: Uint8Array): string {
+  return `<redacted ${data.byteLength} bytes>`;
 }
 
 function safeJson(value: unknown): string {

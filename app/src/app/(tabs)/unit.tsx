@@ -1,18 +1,34 @@
 // Settings: the app's own first, then the unit's. The unit's settings live on
 // the unit, so out of range they show what it last reported, greyed out.
 
+import * as Application from 'expo-application';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, TextInput, View } from 'react-native';
+import { Alert, Linking, TextInput, View } from 'react-native';
 
 import * as linkApi from '@/ble/link';
 import { link } from '@/ble/link';
-import { forget, reconnect, reloadUnits, setTempUnit, setTheme, type ThemePref, useSession } from '@/ble/session';
+import {
+  forget,
+  reconnect,
+  reloadUnits,
+  setEraseAfterSync,
+  setPanelFollowsSleep,
+  setTempUnit,
+  setTheme,
+  type ThemePref,
+  useSession,
+} from '@/ble/session';
 import { useStore } from '@/ble/store';
 import { Segmented, Stepper } from '@/components/controls';
+import { DiagnosticReportRow } from '@/components/diagnostic-report';
 import { ScreenPicker } from '@/components/screen-picker';
 import { TempUnitPicker } from '@/components/temp-unit';
 import { Button, Card, Row, Screen, SectionLabel, T, Title } from '@/components/ui';
+import { isDemo } from '@/data/sample';
+import { SUPPORT_EMAIL } from '@/debug/report';
 import {
   CalibrationOffsets,
   Capability,
@@ -31,6 +47,8 @@ export default function UnitScreen() {
   const unit = useSession((s) => s.units[0] ?? null);
   const cache = useSession((s) => s.unitCache);
   const tempUnit = useSession((s) => s.tempUnit);
+  const panelFollowsSleep = useSession((s) => s.panelFollowsSleep);
+  const eraseAfterSync = useSession((s) => s.eraseAfterSync);
   const s = useStore(link, (x) => x);
   // Each failed write reports next to the control that caused it.
   const [error, setError] = useState<{ at: ErrorAt; message: string } | null>(null);
@@ -57,6 +75,24 @@ export default function UnitScreen() {
   const config = connected ? s.config : cache?.config ?? null;
   const offsets = connected ? s.offsets : cache?.offsets ?? null;
   const calibration = connected ? s.calibration : cache?.calibration ?? null;
+  const demo = isDemo(unit);
+  // Shown only while connected: there is no cached value to grey out.
+  const showPanelSleep = can(Capability.sleepWindow);
+  const showRefresh = connected && s.config !== null;
+  const showEraseLog = can(Capability.logEraseCommand);
+
+  const toggleEraseLog = (on: boolean) => {
+    if (on === eraseAfterSync) return;
+    if (!on) return void run('eraseLog', () => setEraseAfterSync(false)).catch(() => {});
+    Alert.alert(
+      'Erase the unit’s log after syncing?',
+      'Once every record is on this phone, the unit erases its own copy, at most once a day. Your history then lives only on this phone: if you lose or reset it, those nights are gone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Turn on', style: 'destructive', onPress: () => void run('eraseLog', () => setEraseAfterSync(true)).catch(() => {}) },
+      ],
+    );
+  };
 
   return (
     <Screen>
@@ -71,6 +107,18 @@ export default function UnitScreen() {
           <T className="text-muted leading-6">No unit on this phone yet.</T>
           <Button title="Add your Quiesco" onPress={() => router.push('/connect')} />
         </Card>
+      ) : demo ? (
+        <>
+          <Card className="py-1">
+            <Row label="Name" value={unit.name} />
+            <T className="text-[13px] text-muted leading-[18px] pb-3.5">
+              Demo data, made up on this phone. There is no unit to connect to, so its settings are hidden. Remove the demo
+              to add your Quiesco.
+            </T>
+          </Card>
+          <View className="h-6" />
+          <DangerZone serial={unit.serial} connected={false} canErase={false} demo />
+        </>
       ) : (
         <>
           {!connected && (
@@ -131,9 +179,9 @@ export default function UnitScreen() {
             </Field>
             <Field
               label="Bluetooth"
-              hint="“Plugged in” lets the phone connect only while the unit is charging, and saves battery."
+              hint="“Plugged in” lets the phone connect only while the unit is on USB power, and saves battery."
               error={errorAt('bluetooth')}
-              last>
+              last={!showPanelSleep && !showRefresh && !showEraseLog}>
               <Segmented<'always' | 'plugged'>
                 disabled={!connected}
                 value={config ? (config.bleAlwaysAvailable ? 'always' : 'plugged') : null}
@@ -144,6 +192,54 @@ export default function UnitScreen() {
                 ]}
               />
             </Field>
+            {showPanelSleep && (
+              <Field
+                label="Panel follows your sleep window"
+                hint="By day the unit only flags CO₂ and loud noise, like the app."
+                error={errorAt('panelSleep')}
+                last={!showRefresh && !showEraseLog}>
+                <Segmented<'on' | 'off'>
+                  label="Panel follows your sleep window"
+                  value={panelFollowsSleep ? 'on' : 'off'}
+                  onChange={(v) => void run('panelSleep', () => setPanelFollowsSleep(v === 'on')).catch(() => {})}
+                  options={[
+                    { value: 'on', label: 'On' },
+                    { value: 'off', label: 'Off' },
+                  ]}
+                />
+              </Field>
+            )}
+            {showRefresh && s.config && (
+              <Field
+                label="Deep refresh"
+                hint="Every so many screen updates. More often clears ghosting; less often flashes less and saves battery."
+                error={errorAt('refresh')}
+                last={!showEraseLog}>
+                <Segmented<number>
+                  label="Deep refresh, every so many screen updates"
+                  value={s.config.fullRefreshEvery}
+                  onChange={(v) => void run('refresh', () => linkApi.setFullRefreshEvery(v)).catch(() => {})}
+                  options={refreshOptions(s.config.fullRefreshEvery)}
+                />
+              </Field>
+            )}
+            {showEraseLog && (
+              <Field
+                label="Erase the unit’s log after syncing"
+                hint="Your history then lives only on this phone. At most once a day, and only once every record is here."
+                error={errorAt('eraseLog')}
+                last>
+                <Segmented<'on' | 'off'>
+                  label="Erase the unit’s log after syncing"
+                  value={eraseAfterSync ? 'on' : 'off'}
+                  onChange={(v) => toggleEraseLog(v === 'on')}
+                  options={[
+                    { value: 'off', label: 'Off' },
+                    { value: 'on', label: 'On' },
+                  ]}
+                />
+              </Field>
+            )}
           </Card>
 
           <SectionLabel>Calibration</SectionLabel>
@@ -174,7 +270,7 @@ export default function UnitScreen() {
             />
           </Card>
 
-          <SectionLabel>About</SectionLabel>
+          <SectionLabel>Unit details</SectionLabel>
           <Card className="py-1">
             <Row label="Firmware" value={s.firmware ?? unit.firmware ?? '--'} />
             <Row label="Serial" value={unit.serial} last={!(s.status && connected)} />
@@ -187,7 +283,36 @@ export default function UnitScreen() {
           <DangerZone serial={unit.serial} connected={can(Capability.factoryReset)} canErase={can(Capability.logErase)} />
         </>
       )}
+
+      <SectionLabel>About</SectionLabel>
+      <About />
     </Screen>
+  );
+}
+
+const PRIVACY_URL = 'https://quiesco.rest/privacy';
+
+/** The app itself: always shown, paired or not (App Review looks for it). */
+function About() {
+  const version = Constants.expoConfig?.version ?? '--';
+  // The binary's own build number; null in Expo Go.
+  const build = Application.nativeBuildVersion;
+  const [error, setError] = useState<string | null>(null);
+  const openOrSay = (p: Promise<unknown>, what: string) => {
+    setError(null);
+    p.catch(() => setError(`Couldn’t open ${what}. Write to ${SUPPORT_EMAIL} instead.`));
+  };
+  return (
+    <Card className="py-1">
+      <Row label="Version" value={build ? `${version} (${build})` : version} />
+      <Row label="Privacy policy" onPress={() => openOrSay(WebBrowser.openBrowserAsync(PRIVACY_URL), 'the privacy policy')} />
+      <Row label="Support" value={SUPPORT_EMAIL} onPress={() => openOrSay(Linking.openURL(`mailto:${SUPPORT_EMAIL}`), 'your mail app')} />
+      <DiagnosticReportRow />
+      {error && <T className="text-[13px] text-bad leading-[18px] pt-3">{error}</T>}
+      <T className="text-[13px] text-muted leading-[18px] py-3.5">
+        Quiesco is not a medical device. Its readings and advice are for general comfort information only.
+      </T>
+    </Card>
   );
 }
 
@@ -217,7 +342,15 @@ function AppSettings() {
   );
 }
 
-type ErrorAt = 'name' | 'screen' | 'tempUnit' | 'interval' | 'bluetooth' | 'offsets';
+type ErrorAt = 'name' | 'screen' | 'tempUnit' | 'interval' | 'bluetooth' | 'panelSleep' | 'refresh' | 'eraseLog' | 'offsets';
+
+const REFRESH_EVERY = [5, 10, 20, 50];
+
+/** The usual choices, plus the unit's own value if it was set to something else. */
+function refreshOptions(current: number) {
+  const values = REFRESH_EVERY.includes(current) ? REFRESH_EVERY : [...REFRESH_EVERY, current].sort((a, b) => a - b);
+  return values.map((v) => ({ value: v, label: String(v) }));
+}
 
 function Field({
   label,
@@ -373,8 +506,22 @@ function SensorsRow({ presentMask, failures, noBattery }: { presentMask: number;
   );
 }
 
-function DangerZone({ serial, connected, canErase }: { serial: string; connected: boolean; canErase: boolean }) {
+function DangerZone({
+  serial,
+  connected,
+  canErase,
+  demo = false,
+}: {
+  serial: string;
+  connected: boolean;
+  canErase: boolean;
+  /** The demo unit: removing it only deletes the made-up nights. */
+  demo?: boolean;
+}) {
+  // A message replaces the rows while something runs or after a reset; a
+  // failure keeps the rows so the user can try again.
   const [done, setDone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   if (done) {
     return (
@@ -384,32 +531,44 @@ function DangerZone({ serial, connected, canErase }: { serial: string; connected
     );
   }
 
-  const confirmForget = () =>
-    Alert.alert(
-      'Forget this phone?',
-      'Nights synced to this phone are deleted from it, and anything the unit has not synced yet will no longer reach this phone. The unit keeps its own log.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Forget',
-          style: 'destructive',
-          onPress: () => {
-            setDone('Forgetting the unit…');
-            forget(serial).catch((e) => setDone(`Could not forget the unit: ${linkApi.describeError(e)}`));
-          },
-        },
-      ],
-    );
+  const doForget = () => {
+    setError(null);
+    setDone(demo ? 'Removing the demo…' : 'Forgetting the unit…');
+    // On success the unit is gone and this screen shows "No unit" instead.
+    forget(serial)
+      .then(() => setDone(null))
+      .catch((e) => {
+        setDone(null);
+        setError(`Could not ${demo ? 'remove the demo' : 'forget the unit'}: ${linkApi.describeError(e)}`);
+      });
+  };
 
-  const reset = (erase: boolean) =>
-    linkApi
+  const confirmForget = () =>
+    demo
+      ? Alert.alert('Remove demo data?', 'The made-up nights are deleted from this phone.', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Remove', style: 'destructive', onPress: doForget },
+        ])
+      : Alert.alert(
+          'Forget this phone?',
+          'Nights synced to this phone are deleted from it, and anything the unit has not synced yet will no longer reach this phone. The unit keeps its own log.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Forget', style: 'destructive', onPress: doForget },
+          ],
+        );
+
+  const reset = (erase: boolean) => {
+    setError(null);
+    return linkApi
       .factoryReset(erase)
       .then(() =>
         setDone(
-          'The unit is back to its factory settings and has forgotten every phone. To use it again, remove it from your phone’s Bluetooth settings, plug it into USB power and add it again.',
+          'The unit is back to its factory settings and has forgotten every phone, and this phone has dropped its key. To use it again, plug the unit into USB power and add it again in the app.',
         ),
       )
-      .catch((e) => setDone(linkApi.describeError(e)));
+      .catch((e) => setError(linkApi.describeError(e)));
+  };
 
   const confirmReset = () =>
     Alert.alert(
@@ -424,6 +583,15 @@ function DangerZone({ serial, connected, canErase }: { serial: string; connected
       ],
     );
 
+  if (demo) {
+    return (
+      <Card className="py-1">
+        <Row label="Remove demo data" danger onPress={confirmForget} last={!error} />
+        {error && <T className="text-[13px] text-bad leading-[18px] pb-3">{error}</T>}
+      </Card>
+    );
+  }
+
   return (
     <Card className="py-1">
       <Row label="Forget this phone" danger onPress={confirmForget} />
@@ -432,8 +600,9 @@ function DangerZone({ serial, connected, canErase }: { serial: string; connected
         danger={connected}
         onPress={connected ? confirmReset : undefined}
         value={connected ? undefined : 'Connect first'}
-        last
+        last={!error}
       />
+      {error && <T className="text-[13px] text-bad leading-[18px] pb-3">{error}</T>}
     </Card>
   );
 }

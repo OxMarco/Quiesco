@@ -3,13 +3,21 @@
 
 import * as SecureStore from 'expo-secure-store';
 
+import { trace } from '@/debug/trace';
 import { fromHex, toHex } from '@/protocol/bytes';
 import type { EnrolledKey } from '@/protocol/codec';
 
 const storeKey = (serial: string) => `quiesco.unit.${serial}`;
 
 export async function loadKey(serial: string): Promise<EnrolledKey | null> {
-  const raw = await SecureStore.getItemAsync(storeKey(serial));
+  let raw: string | null;
+  try {
+    raw = await SecureStore.getItemAsync(storeKey(serial));
+  } catch (e) {
+    // Undecryptable (restored backup, reset Keystore): as good as no key.
+    trace('key unreadable', e);
+    return null;
+  }
   if (!raw) return null;
   try {
     const { keyId, key } = JSON.parse(raw) as { keyId: number; key: string };

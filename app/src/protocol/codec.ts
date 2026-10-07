@@ -310,6 +310,17 @@ export function encodeFactoryReset(eraseLog: boolean): Uint8Array {
   return new ByteWriter(4).u8(0, 1).u8(1, eraseLog ? 1 : 0).u16(2, FACTORY_RESET_CONFIRM).bytes;
 }
 
+/**
+ * Erase the whole log (capability logEraseCommand). The unit refuses, and
+ * erases nothing, if it holds a record newer than upToSequence.
+ */
+export function encodeLogErase(upToSequence: number): Uint8Array {
+  if (!Number.isInteger(upToSequence) || upToSequence < 0 || upToSequence >= 2 ** 32) {
+    throw new CodecError('sequence must be a u32');
+  }
+  return new ByteWriter(8).u8(0, 2).u16(2, FACTORY_RESET_CONFIRM).u32(4, upToSequence).bytes;
+}
+
 // -------------------------------------------------------------- 6.12 device info
 
 export const Capability = {
@@ -326,6 +337,8 @@ export const Capability = {
   appAuth: 1 << 10,
   chargingState: 1 << 11,
   temperatureUnit: 1 << 12,
+  logEraseCommand: 1 << 13,
+  sleepWindow: 1 << 14,
 } as const;
 
 export interface DeviceInfo {
@@ -467,4 +480,59 @@ export function encodeProve(keyId: number, key: Uint8Array, challenge: Uint8Arra
   const out = new ByteWriter(20).u8(0, 2).u16(2, keyId).bytes;
   out.set(authProof(key, challenge, keyId), 4);
   return out;
+}
+
+// --------------------------------------------------------------- 6.17 sleep window
+
+/** The phone's sleep window as the panel uses it (capability sleepWindow). */
+export interface UnitSleepWindow {
+  /** The panel judges by time of day like the app: by day only CO₂ and loud noise. */
+  followSleep: boolean;
+  /** Local offset from UTC, so the unit can tell local time from its UTC clock. */
+  utcOffsetMin: number;
+  weekdayBedMin: number;
+  weekdayWakeMin: number;
+  /** Friday and Saturday nights; null when they match the weekdays. */
+  weekendBedMin: number | null;
+  weekendWakeMin: number | null;
+}
+
+const NO_TIME = 0xffff;
+const DAY_MIN = 24 * 60;
+
+export function decodeSleepWindow(data: Uint8Array): UnitSleepWindow {
+  const r = expectLength('sleep window', data, 12);
+  const weekendBed = r.u16(8);
+  const weekendWake = r.u16(10);
+  const weekend = weekendBed !== NO_TIME && weekendWake !== NO_TIME;
+  return {
+    followSleep: (r.u8(0) & 1) !== 0,
+    utcOffsetMin: r.i16(2),
+    weekdayBedMin: r.u16(4),
+    weekdayWakeMin: r.u16(6),
+    weekendBedMin: weekend ? weekendBed : null,
+    weekendWakeMin: weekend ? weekendWake : null,
+  };
+}
+
+export function sameSleepWindow(a: UnitSleepWindow, b: UnitSleepWindow): boolean {
+  return (Object.keys(a) as (keyof UnitSleepWindow)[]).every((k) => a[k] === b[k]);
+}
+
+export function encodeSleepWindow(w: UnitSleepWindow): Uint8Array {
+  if (!Number.isInteger(w.utcOffsetMin) || w.utcOffsetMin < -720 || w.utcOffsetMin > 840) {
+    throw new CodecError('UTC offset must be −720…840 minutes');
+  }
+  const weekend = w.weekendBedMin !== null && w.weekendWakeMin !== null;
+  const times = [w.weekdayBedMin, w.weekdayWakeMin, ...(weekend ? [w.weekendBedMin!, w.weekendWakeMin!] : [])];
+  if (times.some((t) => !Number.isInteger(t) || t < 0 || t >= DAY_MIN)) {
+    throw new CodecError('times must be whole minutes after midnight');
+  }
+  return new ByteWriter(12)
+    .u8(0, w.followSleep ? 1 : 0)
+    .i16(2, w.utcOffsetMin)
+    .u16(4, w.weekdayBedMin)
+    .u16(6, w.weekdayWakeMin)
+    .u16(8, weekend ? w.weekendBedMin! : NO_TIME)
+    .u16(10, weekend ? w.weekendWakeMin! : NO_TIME).bytes;
 }

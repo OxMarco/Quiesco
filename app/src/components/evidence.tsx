@@ -30,7 +30,7 @@ export function EvidenceTag({ metric }: { metric: JudgedMetric }) {
 
 export function FirmnessDots({ firmness }: { firmness: Firmness }) {
   return (
-    <View className="flex-row gap-[3px]" accessibilityLabel={`${firmness} of 3`}>
+    <View className="flex-row gap-[3px]" accessible accessibilityLabel={`Firmness ${firmness} of 3`}>
       {[1, 2, 3].map((i) => (
         <View key={i} className={`w-2 h-2 rounded-full ${i <= firmness ? 'bg-primary' : 'bg-line'}`} />
       ))}

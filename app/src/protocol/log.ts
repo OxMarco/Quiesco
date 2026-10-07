@@ -104,9 +104,16 @@ export class LogSession {
   discarded = 0;
   /** Latest progress hint: records still to come after the last packet. */
   remaining: number | null = null;
+  /**
+   * A packet went missing in transit (its counter skipped, §7.2): everything
+   * after it is ignored, so nextCursor() points at the first record we lack
+   * and asking again from there loses nothing.
+   */
+  lost = false;
 
   private endNext: number | null = null;
   private highest = -1;
+  private nextCounter = 0;
   private fragSequence = -1;
   private fragNextIndex = 0;
   private fragChunks: Uint8Array[] = [];
@@ -114,13 +121,21 @@ export class LogSession {
   constructor(readonly requestedFrom: number) {}
 
   push(packet: Uint8Array): void {
-    if (this.ended) return;
+    if (this.ended || this.lost) return;
     const header = parsePacketHeader(packet);
     if (!header) {
       this.discarded++;
       this.dropFragments();
       return;
     }
+    // DATA and FRAGMENT count up from 0; END carries the next count. A skip
+    // means the stack dropped a packet (or one failed its CRC above).
+    if (header.counter !== this.nextCounter) {
+      this.lost = true;
+      this.dropFragments();
+      return;
+    }
+    if (header.type !== PacketType.End) this.nextCounter = (this.nextCounter + 1) & 0xff;
     switch (header.type) {
       case PacketType.Data:
         this.onData(header, packet);

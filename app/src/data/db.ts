@@ -15,6 +15,14 @@ async function migrate(db: SQLite.SQLiteDatabase) {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const version = row?.user_version ?? 0;
   if (version >= SCHEMA_VERSION) return;
+  // All steps and the version bump land together, or none do.
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    await migrateSteps(tx, version);
+    await tx.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION};`);
+  });
+}
+
+async function migrateSteps(db: SQLite.SQLiteDatabase, version: number) {
   if (version < 1) {
     await db.execAsync(`
       CREATE TABLE IF NOT EXISTS units (
@@ -50,14 +58,19 @@ async function migrate(db: SQLite.SQLiteDatabase) {
       ) WITHOUT ROWID;
     `);
   }
-  await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION};`);
 }
 
 export function getDb(): Promise<SQLite.SQLiteDatabase> {
-  dbPromise ??= SQLite.openDatabaseAsync('quiesco.db').then(async (db) => {
-    await migrate(db);
-    return db;
-  });
+  dbPromise ??= SQLite.openDatabaseAsync('quiesco.db')
+    .then(async (db) => {
+      await migrate(db);
+      return db;
+    })
+    .catch((e) => {
+      // Let the next caller try again rather than fail forever.
+      dbPromise = null;
+      throw e;
+    });
   return dbPromise;
 }
 
@@ -162,7 +175,11 @@ export async function forgetUnit(serial: string) {
 export async function saveRecords(serial: string, records: LogRecord[]): Promise<void> {
   if (records.length === 0) return;
   const db = await getDb();
+  let saved = false;
   await db.withExclusiveTransactionAsync(async (tx) => {
+    // A sync can finish after its unit was forgotten: keep no orphan readings.
+    if (!(await tx.getFirstAsync('SELECT 1 FROM units WHERE serial = ?', serial))) return;
+    saved = true;
     const stmt = await tx.prepareAsync(
       `INSERT OR IGNORE INTO records (serial, seq, epoch_s, time_source, ms_since_boot, boot, valid,
          temperature, humidity, pressure, co2, lux, noise, battery)
@@ -191,7 +208,7 @@ export async function saveRecords(serial: string, records: LogRecord[]): Promise
       await stmt.finalizeAsync();
     }
   });
-  await dateUndated(serial);
+  if (saved) await dateUndated(serial);
 }
 
 /** Give undated records a time from a device-dated record of the same boot (§7.4). */

@@ -11,7 +11,11 @@
       "bundleIdentifier": "rest.quiesco.app",
       "supportsTablet": false,
       "icon": "./assets/images/icon.png",
-      "appleTeamId": "HDP6U6R2Y6"
+      "appleTeamId": "HDP6U6R2Y6",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "buildNumber": "1"
     },
     "android": {
       "package": "rest.quiesco.app",
@@ -21,7 +25,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "versionCode": 1
     },
     "web": {
       "output": "static",
@@ -51,7 +56,8 @@
         }
       ],
       "expo-sqlite",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-mail-composer"
     ],
     "experiments": {
       "typedRoutes": true,

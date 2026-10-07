@@ -4,14 +4,14 @@
 import { PermissionsAndroid, Platform } from 'react-native';
 import BleManager, { BleState, type Peripheral, type StartOptions } from 'react-native-ble-manager';
 
-import { trace } from '@/debug/trace';
+import { redacted, trace } from '@/debug/trace';
 
 import { MIN_ATT_PAYLOAD } from '@/protocol/log';
-import { QUIESCO_SERVICE } from '@/protocol/uuids';
+import { Chr, QUIESCO_SERVICE } from '@/protocol/uuids';
 
-// Native BLE logging (discovered services, lookups) for the device console.
-// On while the app is being brought up against real hardware.
-const VERBOSE_BLE = true;
+// Native BLE logging (discovered services, lookups, values) for the device
+// console. Development builds only: it prints every value, keys included.
+const VERBOSE_BLE = __DEV__;
 
 let started: Promise<void> | null = null;
 
@@ -80,7 +80,12 @@ export async function scan(onFound: (advert: Advert) => void, seconds = 15): Pro
     trace('found', toAdvert(p));
     onFound(toAdvert(p));
   });
-  await BleManager.scan({ serviceUUIDs: [QUIESCO_SERVICE], seconds, allowDuplicates: false });
+  try {
+    await BleManager.scan({ serviceUUIDs: [QUIESCO_SERVICE], seconds, allowDuplicates: false });
+  } catch (e) {
+    sub.remove();
+    throw e;
+  }
   return () => {
     sub.remove();
     BleManager.stopScan().catch(() => {});
@@ -107,6 +112,16 @@ function shortId(uuid: string): string {
   if (quiesco) return quiesco[1];
   const sig = /^0000([0-9A-F]{4})-0000-1000-8000-00805F9B34FB$/.exec(u);
   return sig ? sig[1] : u;
+}
+
+// Values that carry key material never reach a trace: the issued key read
+// from 0011, and the proof written to 0010. Auth state reads (the challenge)
+// are public.
+const SECRET = { read: new Set([shortId(Chr.enrolKey)]), write: new Set([shortId(Chr.auth), shortId(Chr.enrolKey)]) };
+
+/** What a trace may show of a value read from or written to `chr`. */
+export function loggable(op: 'read' | 'write', chr: string, data: Uint8Array): Uint8Array | string {
+  return SECRET[op].has(shortId(chr)) ? redacted(data) : data;
 }
 
 export async function disconnect(id: string): Promise<void> {
@@ -138,7 +153,7 @@ export async function negotiatePayload(id: string): Promise<number> {
 export async function read(id: string, service: string, chr: string): Promise<Uint8Array> {
   try {
     const data = Uint8Array.from(await BleManager.read(id, service, chr));
-    trace('read', shortId(chr), data);
+    trace('read', shortId(chr), loggable('read', chr, data));
     return data;
   } catch (e) {
     trace('read failed', shortId(chr), e);
@@ -150,7 +165,7 @@ export async function read(id: string, service: string, chr: string): Promise<Ui
 export async function write(id: string, service: string, chr: string, data: Uint8Array): Promise<void> {
   try {
     await BleManager.write(id, service, chr, Array.from(data), Math.max(data.byteLength, 20));
-    trace('write', shortId(chr), data);
+    trace('write', shortId(chr), loggable('write', chr, data));
   } catch (e) {
     trace('write failed', shortId(chr), e);
     throw e;
@@ -172,20 +187,14 @@ export async function subscribe(
   const sub = BleManager.onDidUpdateValueForCharacteristic((e) => {
     if (e.peripheral === id && sameUuid(e.characteristic, chr)) cb(Uint8Array.from(e.value));
   });
-  await BleManager.startNotification(id, service, chr);
+  try {
+    await BleManager.startNotification(id, service, chr);
+  } catch (e) {
+    sub.remove();
+    throw e;
+  }
   return () => {
     sub.remove();
     BleManager.stopNotification(id, service, chr).catch(() => {});
   };
-}
-
-/** Android only: ids of peripherals bonded in the phone's settings. */
-export async function bondedIds(): Promise<string[]> {
-  const bonded = await BleManager.getBondedPeripherals().catch(() => []);
-  return bonded.map((p) => p.id);
-}
-
-/** Android only: start OS pairing and resolve once bonded. */
-export function createBond(id: string): Promise<void> {
-  return BleManager.createBond(id);
 }
