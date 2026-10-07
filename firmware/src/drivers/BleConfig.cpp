@@ -594,6 +594,12 @@ uint8_t BleConfig::bondCount() const {
   return bondTable.count();
 }
 
+void BleConfig::disconnect() {
+  if (active_ && connected_) {
+    BLE.disconnect();
+  }
+}
+
 void BleConfig::setPairingAllowed(bool allowed) {
   if (allowed == pairingOpen) {
     return;

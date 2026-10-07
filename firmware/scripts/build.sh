@@ -53,3 +53,8 @@ printf '%s' "$flags" > "$stamp"
   --build-path "$build_path" \
   --build-property "compiler.cpp.extra_flags=$flags" \
   "$root"
+
+# Drag-and-drop image for the XIAO-BOOT drive (AGENT.md at the repository root).
+python3 "$root/scripts/make-uf2.py" "$build_path/firmware.ino.bin" \
+  "$build_path/quiesco-$version.uf2"
+echo "UF2: $build_path/quiesco-$version.uf2"

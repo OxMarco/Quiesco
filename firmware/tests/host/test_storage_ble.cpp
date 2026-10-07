@@ -29,7 +29,7 @@
 
 // Golden wire vectors (lowercase hex bytes); see testProtocolGoldenVectors.
 #define GOLDEN_DEVICE_INFO \
-  "06 00 ff 7f 00 00 01 02 03 02 f6 e5 d4 c3 b2 a1 " \
+  "06 00 ff 7f 01 00 01 02 03 02 f6 e5 d4 c3 b2 a1 " \
   "07 00 00 00"
 #define GOLDEN_INTERVAL "2c 01 00 00"
 #define GOLDEN_CORE_CONFIG "05 00 00 00 2c 01 00 00 0a 00 00 00 01 02 00 00"
@@ -392,6 +392,60 @@ TEST_CASE("sample log linear read and errors") {
   CHECK(log.append(flash, readingForSample(110001)));
   CHECK(!log.readNext(flash, cursor, out));
   CHECK(!cursor.active); // no stale physical pointer after mutation
+}
+
+TEST_CASE("sample log resume after the ring wrapped") {
+  FlashSim::reset();
+  W25Q64Flash flash; flash.begin(); SampleLog log;
+  for (uint32_t i = 1; i <= 110000; ++i)
+    CHECK(log.append(flash, readingForSample(i)));
+  SampleLogCursor cursor; SampleRecord out;
+
+  // The oldest surviving record, as a full read from 0 sees it.
+  CHECK(log.startRead(flash, 0, cursor));
+  CHECK(log.readNext(flash, cursor, out));
+  const uint32_t oldest = out.sequence;
+  CHECK(oldest > 1);
+
+  // An app cursor from before the overwrite resumes at the oldest record and
+  // streams every later one without a hole (PROTOCOL.md §7.4, gaps).
+  for (uint32_t stale : {uint32_t{1}, oldest - 1, oldest}) {
+    CHECK(log.startRead(flash, stale, cursor));
+    uint32_t expected = oldest;
+    while (log.readNext(flash, cursor, out)) {
+      CHECK_EQ(expected, out.sequence);
+      ++expected;
+    }
+    CHECK(cursor.active);
+    CHECK_EQ(uint32_t{110001}, expected);
+  }
+
+  // A cursor inside retained history crosses the physical end of the ring.
+  const uint32_t middle = oldest + (110000 - oldest) / 2;
+  for (uint32_t start : {oldest + 1, middle, uint32_t{109999}}) {
+    CHECK(log.startRead(flash, start, cursor));
+    uint32_t expected = start;
+    while (log.readNext(flash, cursor, out)) {
+      CHECK_EQ(expected, out.sequence);
+      ++expected;
+    }
+    CHECK(cursor.active);
+    CHECK_EQ(uint32_t{110001}, expected);
+  }
+
+  // Overwriting more of the ring after a partial download moves the oldest
+  // record past the saved cursor; the resume starts at the new oldest.
+  for (uint32_t i = 110001; i <= 120000; ++i)
+    CHECK(log.append(flash, readingForSample(i)));
+  CHECK(log.startRead(flash, oldest, cursor));
+  CHECK(log.readNext(flash, cursor, out));
+  CHECK(out.sequence > oldest);
+  uint32_t expected = out.sequence + 1;
+  while (log.readNext(flash, cursor, out)) {
+    CHECK_EQ(expected, out.sequence);
+    ++expected;
+  }
+  CHECK_EQ(uint32_t{120001}, expected);
 }
 
 void expectSealedPacket(const uint8_t* packet, uint16_t length) {
@@ -828,7 +882,17 @@ TEST_CASE("BLE codec control") {
   LittleEndian::putU16(control + 2, 0xFAC6);  // wrong confirmation
   CHECK(!BleCodec::decodeDeviceControl(control, 4, request));
   LittleEndian::putU16(control + 2, BleCodec::kFactoryResetConfirm);
-  control[0] = 3;  // no such opcode
+  control[0] = BleCodec::kControlEnterUpdate;
+  CHECK(BleCodec::decodeDeviceControl(control, 4, request));
+  CHECK_EQ(BleCodec::kControlEnterUpdate, request.opcode);
+  CHECK(!BleCodec::decodeDeviceControl(control, 8, request));  // update is 4
+  control[1] = 1;  // update has no flags
+  CHECK(!BleCodec::decodeDeviceControl(control, 4, request));
+  control[1] = 0;
+  control[0] = BleCodec::kControlEnterUsbUpdate;
+  CHECK(BleCodec::decodeDeviceControl(control, 4, request));
+  CHECK_EQ(BleCodec::kControlEnterUsbUpdate, request.opcode);
+  control[0] = 5;  // no such opcode
   CHECK(!BleCodec::decodeDeviceControl(control, 4, request));
   CHECK(!BleCodec::decodeDeviceControl(control, 8, request));
   control[0] = BleCodec::kControlFactoryReset;

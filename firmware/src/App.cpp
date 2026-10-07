@@ -7,6 +7,7 @@
 #include "diagnostics/BuildConfig.h"
 #include "diagnostics/DebugLog.h"
 #include "diagnostics/FirmwareVersion.h"
+#include "platform/BootloaderEntry.h"
 #include "platform/DeviceId.h"
 #include "platform/ResetReason.h"
 #include "services/CalibrationPolicy.h"
@@ -66,6 +67,24 @@ void App::step() {
 
   switch (state_) {
     case State::kIdle:
+      if (updateResetAtMs_ != 0) {
+        if (nowMs >= updateResetAtMs_) {
+          if (usbUpdate_) {
+            BootloaderEntry::enterUsbUpdate();
+          } else {
+            BootloaderEntry::enterOtaUpdate();
+          }
+        }
+        break;
+      }
+      if (updateRequested_ && readyForUpdate()) {
+        updateRequested_ = false;
+        DebugLog::event(usbUpdate_ ? "entering USB bootloader"
+                                   : "entering OTA bootloader");
+        ble_.disconnect();
+        updateResetAtMs_ = nowMs + kUpdateDisconnectMs;
+        break;
+      }
       if (redrawRequested_ && !hasReading_ && !pairingShown_) {
         redrawRequested_ = false;  // the first measurement draws anyway
       }
@@ -568,6 +587,24 @@ void App::takeBleCommands(uint64_t nowMs) {
   if (ble_.takePendingDeviceControl(control)) {
     if (control.opcode == BleCodec::kControlFactoryReset) {
       factoryReset(nowMs, control.eraseLog);
+    } else if (control.opcode == BleCodec::kControlEnterUpdate) {
+      if (!kBleOtaEnabled) {
+        DebugLog::event("update ignored (BLE OTA disabled)");
+      } else if (updateAllowed()) {
+        updateRequested_ = true;
+        usbUpdate_ = false;
+      } else {
+        DebugLog::event("update refused (low battery)");
+      }
+    } else if (control.opcode == BleCodec::kControlEnterUsbUpdate) {
+      // The drive only appears on USB; off USB the bootloader would just
+      // start the firmware again, so refuse rather than reboot for nothing.
+      if (batteryMonitor_.usbPowered()) {
+        updateRequested_ = true;
+        usbUpdate_ = true;
+      } else {
+        DebugLog::event("USB update refused (not on USB)");
+      }
     } else {
       requestLogErase(nowMs, control.upToSequence);
     }
@@ -745,6 +782,23 @@ void App::factoryReset(uint64_t nowMs, bool eraseLog) {
   // gets its own cycle to redraw the defaults and run the erase.
   sampleRequested_ = true;
   publishStatus();
+}
+
+// An update erases the running image before it writes the new one, so it
+// must not start on a battery that could die halfway (PROTOCOL.md §9.2).
+bool App::updateAllowed() const {
+  if (batteryMonitor_.usbPowered()) {
+    return true;
+  }
+  return (reading_.valid & VALID_BATTERY) != 0 &&
+         reading_.batteryV >= kUpdateMinBatteryVolts;
+}
+
+// Nothing in RAM that the reset would lose: settings saved, no erase or FRC
+// still to run. Until then the idle branches below do that work first.
+bool App::readyForUpdate() const {
+  return !settingsSavePending() && !logErasePending_ && !logEraseRequested_ &&
+         !sampleLog_.erasing() && !frcPending_ && !syncPending_;
 }
 
 // The erase command (PROTOCOL.md §6.11): the factory reset's erase without

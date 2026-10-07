@@ -311,6 +311,14 @@ export function encodeFactoryReset(eraseLog: boolean): Uint8Array {
 }
 
 /**
+ * Restart the unit into its XIAO-BOOT USB drive (capability usbUpdate, §9.2).
+ * The unit ignores it unless it is on USB power.
+ */
+export function encodeEnterUsbUpdate(): Uint8Array {
+  return new ByteWriter(4).u8(0, 4).u16(2, FACTORY_RESET_CONFIRM).bytes;
+}
+
+/**
  * Erase the whole log (capability logEraseCommand). The unit refuses, and
  * erases nothing, if it holds a record newer than upToSequence.
  */
@@ -339,6 +347,8 @@ export const Capability = {
   temperatureUnit: 1 << 12,
   logEraseCommand: 1 << 13,
   sleepWindow: 1 << 14,
+  firmwareUpdate: 1 << 15,
+  usbUpdate: 1 << 16,
 } as const;
 
 export interface DeviceInfo {

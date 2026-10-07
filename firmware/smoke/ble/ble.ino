@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// ArduinoBLE spike on Seeeduino Mbed 2.9.3 (WORKPLAN.md M2). Answers,
+// ArduinoBLE spike on Seeeduino Mbed 2.9.3. Answers,
 // on real hardware with nRF Connect as the peer:
 //  1. Does ArduinoBLE 2.1.0 compile/link on this core, and at what size?
 //  2. Advertise a 128-bit service UUID + local name; do both fit (adv vs

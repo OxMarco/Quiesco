@@ -273,6 +273,7 @@ export default function UnitScreen() {
           <SectionLabel>Unit details</SectionLabel>
           <Card className="py-1">
             <Row label="Firmware" value={s.firmware ?? unit.firmware ?? '--'} />
+            {can(Capability.usbUpdate) && <UpdateFirmwareRow />}
             <Row label="Serial" value={unit.serial} last={!(s.status && connected)} />
             {s.status && connected && (
               <SensorsRow presentMask={s.status.presentMask} failures={s.status.failures} noBattery={s.info?.noBattery ?? false} />
@@ -288,6 +289,43 @@ export default function UnitScreen() {
       <About />
     </Screen>
   );
+}
+
+/** Restarts the unit into its USB drive; the user copies the new firmware onto it. */
+function UpdateFirmwareRow() {
+  const [busy, setBusy] = useState(false);
+
+  const start = () => {
+    setBusy(true);
+    linkApi
+      .enterUsbUpdate()
+      .then((restarted) =>
+        restarted
+          ? Alert.alert(
+              'Copy the firmware',
+              'A drive called XIAO-BOOT appears on your computer. Copy the new quiesco-x.y.z.uf2 file onto it. The unit restarts by itself with the new firmware, keeping its settings, phones and history.',
+              [
+                { text: 'Firmware guide', onPress: () => void Linking.openURL(linkApi.FIRMWARE_GUIDE_URL).catch(() => {}) },
+                { text: 'OK' },
+              ],
+            )
+          : Alert.alert('Plug the unit in', 'The unit only starts an update while it is connected to a computer with a USB-C cable.'),
+      )
+      .catch((e) => Alert.alert('Could not start the update', linkApi.describeError(e)))
+      .finally(() => setBusy(false));
+  };
+
+  const confirm = () =>
+    Alert.alert(
+      'Update the firmware?',
+      'Connect the unit to a computer with a USB-C cable first. The unit restarts as a USB drive and stops measuring until you copy the new firmware onto it.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Continue', onPress: start },
+      ],
+    );
+
+  return <Row label="Update firmware" value={busy ? 'Restarting…' : 'Over USB'} onPress={busy ? undefined : confirm} />;
 }
 
 const PRIVACY_URL = 'https://quiesco.rest/privacy';

@@ -45,13 +45,21 @@ enum Capability : uint32_t {
   kCapTemperatureUnit = 1u << 12,  // core config byte 14
   kCapEraseLogCommand = 1u << 13,  // device control opcode 2
   kCapSleepWindow = 1u << 14,  // 0012: panel judges by time of day
+  // Device control opcode 3: BLE OTA update. Only with QUIESCO_BLE_OTA
+  // (diagnostics/BuildConfig.h); off in every shipped build.
+  kCapFirmwareUpdate = 1u << 15,
+  kCapUsbUpdate = 1u << 16,  // device control opcode 4: XIAO-BOOT drive
 };
 constexpr uint32_t kCapabilities =
     kCapScreenSelect | kCapCalibrationOffsets | kCapForcedRecalibration |
     kCapDeviceRename | kCapLogSync | kCapFactoryReset | kCapLogErase |
     kCapBootCounter | kCapCalibrationState | kCapDiagnostics | kCapAppAuth |
     kCapChargingState | kCapTemperatureUnit | kCapEraseLogCommand |
-    kCapSleepWindow;
+    kCapSleepWindow | kCapUsbUpdate |
+#if QUIESCO_BLE_OTA
+    kCapFirmwareUpdate |
+#endif
+    0;
 
 constexpr uint16_t kDeviceInfoBytes = 20;
 constexpr uint16_t kCoreConfigBytes = 16;
@@ -61,7 +69,7 @@ constexpr uint16_t kCalibrationOffsetsBytes = 12;
 constexpr uint16_t kCalibrationStateBytes = 12;
 constexpr uint16_t kDiagnosticsBytes = 12;
 constexpr uint16_t kCalibrationControlBytes = 4;
-constexpr uint16_t kDeviceControlBytes = 4;  // factory reset
+constexpr uint16_t kDeviceControlBytes = 4;  // reset, enter (USB) update
 constexpr uint16_t kEraseLogControlBytes = 8;
 constexpr uint16_t kMaxDeviceControlBytes = kEraseLogControlBytes;
 constexpr uint16_t kSleepWindowBytes = 12;
@@ -93,10 +101,12 @@ enum CalibrationOpcode : uint8_t { kCalOpForcedRecalibration = 1 };
 enum DeviceControlOpcode : uint8_t {
   kControlFactoryReset = 1,
   kControlEraseLog = 2,
+  kControlEnterUpdate = 3,  // reboot into the bootloader's BLE OTA mode
+  kControlEnterUsbUpdate = 4,  // reboot into the XIAO-BOOT drive (USB only)
 };
 enum FactoryResetFlags : uint8_t { kResetEraseLog = 1u << 0 };
 enum AuthOpcode : uint8_t { kAuthOpEnrol = 1, kAuthOpProve = 2 };
-// A factory reset or log erase must also carry this value, so a stray or
+// A factory reset, log erase or update must also carry this value, so a stray or
 // fuzzed write to the control characteristic cannot wipe a unit.
 constexpr uint16_t kFactoryResetConfirm = 0xFAC7;
 

@@ -101,6 +101,7 @@ done
 runtime_binary="${TMPDIR:-/tmp}/quiesco-runtime-tests"
 "${CXX:-c++}" -std=c++14 -Wall -Wextra -Werror -pedantic \
   -DARDUINO_SEEED_XIAO_NRF52840_PLUS \
+  -DQUIESCO_BLE_OTA=1 \
   -I"$root/tests/host/fakes" -I"$root/src" -I"$root/src/third_party/flashdb" \
   -isystem "$mbedtls_prefix/include" \
   -isystem "$doctest_dir" \

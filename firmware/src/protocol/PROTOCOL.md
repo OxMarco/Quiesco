@@ -499,6 +499,24 @@ erase once everything up to record 1443 is safe on the phone:
 02 00 c7 fa a3 05 00 00
 ```
 
+Enter USB update mode, 4 bytes (capability bit 16):
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | u8 | opcode: 4 = enter USB update mode |
+| 1 | u8 | flags, reserved, 0 |
+| 2 | u16 | confirmation, must be `0xFAC7` |
+
+Restarts the unit as a USB drive for a firmware update (§9.2). Ignored unless
+the unit is on USB power. Example:
+
+```text
+04 00 c7 fa
+```
+
+Opcode 3 (enter BLE update mode, capability bit 15) is reserved: shipped
+firmware ignores it (§9.3).
+
 ### 6.12 Device info `000C`
 
 | Offset | Type | Field |
@@ -531,6 +549,8 @@ Capability flags:
 | 12 | temperature unit in core config (§6.2) |
 | 13 | log erase command (`000D` opcode 2, §9.1) |
 | 14 | sleep window (`0012`): the panel can judge by time of day like the app |
+| 15 | reserved: BLE firmware update (`000D` opcode 3), never set by shipped firmware (§9.3) |
+| 16 | firmware update over USB (`000D` opcode 4, §9.2) |
 
 The SCD41 serial becomes available after the first measurement cycle, about
 1 s after boot, as does the boot counter; re-read if either is zero.
@@ -540,7 +560,7 @@ Example: protocol 6, capabilities 0x7FFF, firmware 1.2.3 release build,
 enrolment open, no phone enrolled yet, SCD41 serial 0xA1B2C3D4E5F6, boot 7:
 
 ```text
-06 00 ff 7f 00 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00
+06 00 ff 7f 01 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00
 ```
 
 ### 6.13 Calibration state `000E`
@@ -908,7 +928,7 @@ reference: outdoor air is about 420 ppm.
 
 Per Sensirion's datasheet the SCD41 stores the correction in its EEPROM
 itself, so it survives the power cycles between measurements (to be confirmed
-on hardware, `WORKPLAN.md` M4). The last FRC is recorded in calibration state
+on hardware). The last FRC is recorded in calibration state
 (§6.13).
 
 A second FRC request while one is pending or soaking is ignored. Factory reset
@@ -967,6 +987,42 @@ last record you received intact; watch status bit 2 set, then clear; after it
 clears, newest sequence is the fresh record's and your cursor stays valid.
 If bit 2 never sets within one measurement (about 15 s), the request was
 refused: download again and retry.
+
+### 9.2 Firmware update over USB
+
+With capability bit 16 the app can start a firmware update. The unit's
+bootloader (Adafruit nRF52 bootloader, as shipped on the XIAO) does the
+update; the firmware only hands over to it. The user needs a computer and a
+USB-C cable, and no software: the update is a file copy (`AGENT.md` in the
+repository has the steps).
+
+1. With the unit on USB power, write `000D` opcode 4. Off USB it is ignored.
+2. When the unit is idle with nothing left to save (a pending config write,
+   log erase or FRC runs first), it disconnects and restarts. Expect the
+   disconnect within a second, or up to one measurement (about 15 s) when
+   work is pending. No disconnect within 25 s means it was not on USB power.
+3. The computer shows a drive called `XIAO-BOOT`. Copying a firmware `.uf2`
+   onto it flashes the firmware; the unit then restarts and advertises as
+   Quiesco again. Config, enrolled phones, calibration and the log are kept:
+   they live in the external flash, which the update never touches. Read the
+   firmware revision (DIS `2A26`) to confirm.
+4. The unit stops measuring while the drive is shown, and stays a drive until
+   a `.uf2` is copied, even if the cable is unplugged (on battery it then
+   waits until it is plugged in again). Copying the same firmware back is a
+   safe way out. If USB never comes up within 3 s, the bootloader starts the
+   firmware again at once.
+
+### 9.3 Firmware update over BLE (not enabled)
+
+Opcode 3 would restart the unit into the bootloader's BLE update mode
+(`AdaDFU`, Nordic legacy DFU). It is compiled out of shipped firmware
+(`QUIESCO_BLE_OTA` in `diagnostics/BuildConfig.h`), because the XIAO's
+bootloader (0.9.2-29, S140 7.3.0) accepts the update but never finishes
+erasing the old image: the unit then waits in update mode until it gets a
+USB flash. Tested from a Mac on 2026-10-07, connected and disconnected during
+the erase; `scripts/ble-test.py update` reproduces it on a build with the flag
+set. A bootloader that erases page by page while receiving (such as the
+OTAFIX fork) would be the way to enable it.
 
 ## 10. Changing this protocol
 

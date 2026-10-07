@@ -89,6 +89,8 @@ class App {
   void startLogErase();
   void applySleepWindow(uint64_t nowMs);
   JudgeMode judgeModeAt(uint64_t nowMs) const;
+  bool updateAllowed() const;
+  bool readyForUpdate() const;
   bool settingsSavePending() const {
     return configSavePending_ || bondsSavePending_ || sleepSavePending_;
   }
@@ -194,6 +196,14 @@ class App {
   bool persistConfigSaved_ = false;
   // SCD41 forced recalibration: one-shot, rides a measurement cycle.
   bool frcPending_ = false;
+  // Device control opcode 3: reboot into the bootloader's OTA mode once idle
+  // with nothing left to write; the link is dropped first so the phone sees
+  // a clean disconnect, then the reset follows kUpdateDisconnectMs later.
+  static constexpr uint32_t kUpdateDisconnectMs = 300;
+  static constexpr float kUpdateMinBatteryVolts = 3.6f;
+  bool updateRequested_ = false;
+  bool usbUpdate_ = false;  // opcode 4: the XIAO-BOOT drive, not BLE OTA
+  uint64_t updateResetAtMs_ = 0;
   uint16_t frcTargetPpm_ = 0;
   uint8_t frcState_ = BleCodec::kFrcIdle;  // reported via status
   int16_t frcCorrectionPpm_ = 0;

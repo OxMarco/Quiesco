@@ -171,7 +171,6 @@ scripts/              build, test, policy, dependency, console and font tools
 | [`HARDWARE.md`](HARDWARE.md) | the v1 board: power, buses, pin map, devices, core traps, factory test |
 | [`UI.md`](UI.md) | the e-ink screens, comfort bands and refresh policy |
 | [`src/protocol/PROTOCOL.md`](src/protocol/PROTOCOL.md) | the BLE contract with the app, with golden vectors |
-| [`WORKPLAN.md`](WORKPLAN.md) | milestones left before production and the session log |
 | [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) | dependencies and their licences |
 
 ## Licence

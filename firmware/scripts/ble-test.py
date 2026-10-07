@@ -16,6 +16,11 @@ Needs bleak (CoreBluetooth on macOS; also BlueZ and WinRT):
   scripts/ble-test.py run [--quick]        the M2/M4/M5 on-air checks; PASS, FAIL,
                                            WARN or SKIP per check, exit 1 on FAIL
   scripts/ble-test.py download log.csv     whole log as CSV for log-report.py
+  scripts/ble-test.py usb-update           unit on USB: reboot it into the XIAO-BOOT
+                                           drive; copy a .uf2 onto it to update
+  scripts/ble-test.py update firmware.zip  BLE OTA update (capability bit 15) with
+                                           the build's .zip; then reads the new
+                                           firmware version
 
 The unit is the first one advertising the Quiesco service, or pass --name or
 --address (a CoreBluetooth UUID on macOS). Close the companion app first: the
@@ -98,6 +103,7 @@ PROTECTED_READS = [INTERVAL, CORE_CONFIG, READING, STATUS, EPOCH, SCREEN,
 CAP_SCREEN, CAP_OFFSETS, CAP_FRC, CAP_RENAME, CAP_LOG = 0, 1, 2, 3, 4
 CAP_RESET, CAP_ERASE, CAP_BOOT, CAP_CAL_STATE, CAP_DIAG = 5, 6, 7, 8, 9
 CAP_AUTH, CAP_CHARGING, CAP_TEMP_UNIT, CAP_ERASE_COMMAND, CAP_SLEEP_WINDOW = 10, 11, 12, 13, 14
+CAP_UPDATE, CAP_USB_UPDATE = 15, 16
 # Characteristics a unit has only with a capability bit.
 CHARACTERISTIC_CAPS = {SLEEP_WINDOW: CAP_SLEEP_WINDOW}
 
@@ -222,6 +228,16 @@ def encode_erase_log(up_to_sequence):
     return struct.pack("<BBHI", 2, 0, RESET_CONFIRM, up_to_sequence)
 
 
+def encode_enter_update():
+    """§6.11 opcode 3: reboot into the bootloader's BLE OTA mode."""
+    return struct.pack("<BBH", 3, 0, RESET_CONFIRM)
+
+
+def encode_enter_usb_update():
+    """§6.11 opcode 4: reboot into the XIAO-BOOT drive (unit on USB)."""
+    return struct.pack("<BBH", 4, 0, RESET_CONFIRM)
+
+
 def decode_device_control(data):
     """The unit's view of a 000D write (§6.11): None when it would be refused."""
     if len(data) < 4 or struct.unpack_from("<H", data, 2)[0] != RESET_CONFIRM:
@@ -275,7 +291,8 @@ def sleep_window_valid(data):
 
 CAPABILITY_NAMES = ["screen", "offsets", "frc", "rename", "log", "reset", "erase",
                     "boot-counter", "cal-state", "diagnostics", "app-auth",
-                    "charging", "temp-unit", "erase-command", "sleep-window"]
+                    "charging", "temp-unit", "erase-command", "sleep-window",
+                    "update", "usb-update"]
 
 
 def decode_device_info(data):
@@ -604,8 +621,8 @@ def self_test():
     expect("log sync START", encode_log_start(1201, 0, 244) == vec("sync start", "01 00 b1 04 00 00 00 00 f4 00"))
     expect("log sync ABORT", encode_log_abort()[:2] == b"\x02\x00" and len(encode_log_abort()) == 10)
 
-    info = decode_device_info(vec("device info", "06 00 ff 7f 00 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00"))
-    expect("device info", info == {"protocol": 6, "capabilities": 0x7FFF, "firmware": "1.2.3",
+    info = decode_device_info(vec("device info", "06 00 ff 7f 01 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00"))
+    expect("device info", info == {"protocol": 6, "capabilities": 0x17FFF, "firmware": "1.2.3",
                                    "debug_build": False, "enrolment_open": True,
                                    "enrolled": False, "no_battery": False,
                                    "scd41_serial": 0xA1B2C3D4E5F6, "boot_counter": 7}, info)
@@ -987,6 +1004,180 @@ async def open_ready(args, device=None):
     await authenticate(unit, args, serial)
     await unit.write(EPOCH, encode_epoch(time.time() * 1000))
     return unit, info, serial
+
+
+# ============================================================ OTA update
+
+# Nordic legacy DFU (SDK 11) as the XIAO's Adafruit nRF52 bootloader serves it
+# in OTA mode (PROTOCOL.md §9.2).
+DFU_NAME = "AdaDFU"
+DFU_SERVICE = "00001530-1212-efde-1523-785feabcd123"
+DFU_CONTROL = "00001531-1212-efde-1523-785feabcd123"
+DFU_PACKET = "00001532-1212-efde-1523-785feabcd123"
+DFU_START, DFU_INIT, DFU_RECEIVE, DFU_VALIDATE, DFU_ACTIVATE = 1, 2, 3, 4, 5
+DFU_PRN_REQUEST, DFU_RESPONSE, DFU_PRN = 8, 0x10, 0x11
+DFU_IMAGE_APPLICATION = 4
+# 20-byte packets whatever the MTU: bootloader 0.6.1 can stall at 100 % with
+# larger ones (Adafruit_nRF52_Bootloader #287).
+DFU_CHUNK = 20
+DFU_PRN_EVERY = 8
+DFU_ERASE_S = 300.0    # START answers after the old image is erased
+DFU_STEP_S = 15.0
+DFU_REBOOT_S = 60.0    # bootloader to app, then the app's first advertising
+
+
+def read_dfu_package(path):
+    """(init packet, image) from an adafruit-nrfutil application package."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(path) as package:
+            manifest = json.loads(package.read("manifest.json"))["manifest"]
+            app = manifest.get("application")
+            if not app or set(manifest) - {"application", "dfu_version"}:
+                raise HarnessError(f"{path}: only an application-only package is supported")
+            return package.read(app["dat_file"]), package.read(app["bin_file"])
+    except (OSError, KeyError, ValueError, zipfile.BadZipFile) as e:
+        raise HarnessError(f"{path}: not a DFU package ({e})")
+
+
+class DfuLink:
+    """Control point responses and receipt notifications from the bootloader."""
+
+    def __init__(self, client):
+        self.client = client
+        self.queue = asyncio.Queue()
+
+    async def open(self):
+        await self.client.start_notify(DFU_CONTROL, lambda _c, d: self.queue.put_nowait(bytes(d)))
+
+    async def control(self, data):
+        await self.client.write_gatt_char(DFU_CONTROL, bytes(data), response=True)
+
+    async def packet(self, data):
+        await self.client.write_gatt_char(DFU_PACKET, bytes(data), response=False)
+
+    async def expect(self, opcode, timeout):
+        """Waits for the response to opcode and fails on any status but success."""
+        while True:
+            try:
+                note = await asyncio.wait_for(self.queue.get(), timeout)
+            except asyncio.TimeoutError:
+                raise HarnessError(f"bootloader did not answer DFU opcode {opcode} in {timeout:.0f} s")
+            if note[0] == DFU_RESPONSE and len(note) >= 3 and note[1] == opcode:
+                if note[2] != 1:
+                    raise HarnessError(f"bootloader refused DFU opcode {opcode} (status {note[2]})")
+                return
+            if note[0] != DFU_PRN:
+                raise HarnessError(f"unexpected DFU notification {hexs(note)}")
+
+    async def receipt(self, timeout):
+        while True:
+            try:
+                note = await asyncio.wait_for(self.queue.get(), timeout)
+            except asyncio.TimeoutError:
+                raise HarnessError("bootloader stopped confirming packets")
+            if note[0] == DFU_PRN and len(note) >= 5:
+                return struct.unpack_from("<I", note, 1)[0]
+            if note[0] == DFU_RESPONSE and len(note) >= 3 and note[2] != 1:
+                raise HarnessError(f"bootloader refused the image (opcode {note[1]}, status {note[2]})")
+
+
+async def find_by_name(name, timeout):
+    _, BleakScanner = _import_bleak()
+    return await BleakScanner.find_device_by_filter(
+        lambda device, adv: (adv.local_name or device.name) == name, timeout=timeout)
+
+
+async def legacy_dfu(device, init_packet, image):
+    BleakClient, _ = _import_bleak()
+    async with BleakClient(device, timeout=CONNECT_S) as client:
+        link = DfuLink(client)
+        await link.open()
+        print(f"  bootloader connected, MTU {client.mtu_size}; erasing the old image")
+        await link.control([DFU_START, DFU_IMAGE_APPLICATION])
+        await link.packet(struct.pack("<III", 0, 0, len(image)))
+        await link.expect(DFU_START, DFU_ERASE_S)
+        await link.control([DFU_INIT, 0])
+        await link.packet(init_packet)
+        await link.control([DFU_INIT, 1])
+        await link.expect(DFU_INIT, DFU_STEP_S)
+        await link.control(struct.pack("<BH", DFU_PRN_REQUEST, DFU_PRN_EVERY))
+        await link.control([DFU_RECEIVE])
+        started = time.monotonic()
+        sent = packets = 0
+        shown = -1
+        while sent < len(image):
+            chunk = image[sent:sent + DFU_CHUNK]
+            await link.packet(chunk)
+            sent += len(chunk)
+            packets += 1
+            if packets % DFU_PRN_EVERY == 0 and sent < len(image):
+                confirmed = await link.receipt(DFU_STEP_S)
+                if confirmed != sent:
+                    raise HarnessError(f"bootloader has {confirmed} bytes, {sent} sent")
+            percent = sent * 100 // len(image)
+            if percent != shown and percent % 5 == 0:
+                shown = percent
+                rate = sent / max(time.monotonic() - started, 0.001) / 1024
+                print(f"  {percent:3d} %  {sent:7d} / {len(image)} bytes  {rate:5.1f} KiB/s",
+                      flush=True)
+        await link.expect(DFU_RECEIVE, DFU_STEP_S * 2)
+        elapsed = time.monotonic() - started
+        await link.control([DFU_VALIDATE])
+        await link.expect(DFU_VALIDATE, DFU_STEP_S)
+        print(f"  image sent and validated in {elapsed:.0f} s; activating")
+        with contextlib.suppress(Exception):  # the bootloader resets mid-write
+            await link.control([DFU_ACTIVATE])
+
+
+async def cmd_update(args):
+    init_packet, image = read_dfu_package(args.package)
+    print(f"package: {len(image)} bytes, init packet {hexs(init_packet)}")
+    device = await find_by_name(DFU_NAME, 2.0) if args.resume else None
+    if device is None:
+        unit, info, serial = await open_ready(args)
+        _, _, firmware = await read_identity(unit)
+        if not has_cap(info, CAP_UPDATE):
+            await unit.disconnect()
+            raise HarnessError("unit lacks capability bit 15 (BLE OTA update)")
+        print(f"unit {serial} on firmware {firmware}: asking it to enter the bootloader")
+        await unit.write(DEVICE_CONTROL, encode_enter_update())
+        try:
+            await asyncio.wait_for(unit.dropped.wait(), 30)
+        except asyncio.TimeoutError:
+            await unit.disconnect()
+            raise HarnessError("the unit did not drop the link within 30 s (low battery? busy?)")
+        await unit.disconnect()
+        device = await find_by_name(DFU_NAME, 30.0)
+        if device is None:
+            raise HarnessError(f"no {DFU_NAME!r} advertising within 30 s")
+    print(f"found {DFU_NAME} ({device.address})")
+    await legacy_dfu(device, init_packet, image)
+    print("waiting for the unit to come back")
+    unit_device = await find_unit(args, timeout=DFU_REBOOT_S)
+    unit = Unit(unit_device)
+    await unit.connect()
+    info, serial, firmware = await read_identity(unit)
+    await unit.disconnect()
+    print(f"unit {serial} back on firmware {firmware}, protocol {info['protocol']}")
+    return 0
+
+
+async def cmd_usb_update(args):
+    unit, info, serial = await open_ready(args)
+    if not has_cap(info, CAP_USB_UPDATE):
+        await unit.disconnect()
+        raise HarnessError("unit lacks capability bit 16 (USB update drive)")
+    await unit.write(DEVICE_CONTROL, encode_enter_usb_update())
+    try:
+        await asyncio.wait_for(unit.dropped.wait(), 30)
+    except asyncio.TimeoutError:
+        await unit.disconnect()
+        raise HarnessError("the unit did not restart within 30 s (not on USB power?)")
+    await unit.disconnect()
+    print(f"unit {serial} restarted into its bootloader: copy the .uf2 onto the "
+          "XIAO-BOOT drive")
+    return 0
 
 
 # ============================================================ log download
@@ -1963,6 +2154,11 @@ def main():
     download.add_argument("--out", dest="out_flag")
     download.add_argument("--start", type=int, default=0, help="first sequence wanted")
     download.add_argument("--batch", type=int, default=2000)
+    sub.add_parser("usb-update", help="reboot the unit into the XIAO-BOOT drive")
+    update = sub.add_parser("update", help="BLE OTA firmware update")
+    update.add_argument("package", help="the build's .zip (firmware.ino.zip)")
+    update.add_argument("--resume", action="store_true",
+                        help="finish an update on a unit already advertising as AdaDFU")
     args = parser.parse_args()
 
     if args.self_test:
@@ -1977,7 +2173,8 @@ def main():
         if not args.out:
             parser.error("download needs an output file")
     handler = {"scan": cmd_scan, "info": cmd_info, "enrol": cmd_enrol, "run": cmd_run,
-               "download": cmd_download}[args.command]
+               "download": cmd_download, "update": cmd_update,
+               "usb-update": cmd_usb_update}[args.command]
 
     async def guarded():
         try:

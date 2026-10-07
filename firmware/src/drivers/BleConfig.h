@@ -61,6 +61,8 @@ class BleConfig {
 
   bool active() const { return active_; }
   bool connected() const { return connected_; }
+  // Drops the current link, if any (before a reboot into the bootloader).
+  void disconnect();
   // This connection proved an enrolled key (PROTOCOL.md §3).
   bool authenticated() const { return authenticated_; }
   uint32_t session() const { return session_; }

@@ -44,6 +44,7 @@ Quiesco is a product of [Impossible Labs](https://impossiblelabs.xyz).
 - [How it works](#-how-it-works)
 - [Specs](#-specs)
 - [Build your own](#-build-your-own)
+- [Upgrade firmware](#-upgrade-firmware)
 - [Repository map](#-repository-map)
 - [Roadmap](#-roadmap)
 - [The story behind it](#-the-story-behind-it)
@@ -169,6 +170,17 @@ cd Quiesco
 > Only want to try the software? The app has a **Load sample data** option in
 > development builds, so you can explore every screen without hardware.
 
+## ⬆️ Upgrade firmware
+
+No software needed, on macOS, Windows or Linux. Plug the unit into a
+computer, tap **Unit → Update firmware** in the app, and a drive called
+`XIAO-BOOT` appears. Copy `quiesco-X.Y.Z.uf2` onto it, and the unit restarts
+with the new firmware. Settings, enrolled phones, calibration and history
+are kept.
+
+Troubleshooting, units without the app option, and making a release:
+[`AGENT.md`](AGENT.md).
+
 ## 🗺 Repository map
 
 | Folder | What's inside | Read this |
@@ -184,7 +196,7 @@ Going deeper:
 - [`firmware/SOFTWARE.md`](firmware/SOFTWARE.md): firmware architecture and features
 - [`firmware/UI.md`](firmware/UI.md): the e-ink screens, pixel by pixel
 - [`firmware/src/protocol/PROTOCOL.md`](firmware/src/protocol/PROTOCOL.md): the BLE contract between unit and app
-- [`firmware/WORKPLAN.md`](firmware/WORKPLAN.md): what's left before production
+- [`AGENT.md`](AGENT.md): updating a unit's firmware (copy a file onto its USB drive)
 
 ## 🧭 Roadmap
 
@@ -195,12 +207,10 @@ Going deeper:
 - [x] BLE protocol with phone enrolment and authentication
 - [x] Companion app: live reading, night charts, calibration
 - [ ] BLE tested on air with iOS and Android
-- [ ] Firmware updates in the field
+- [x] Firmware updates over USB, started from the app: copy one file, no software ([`AGENT.md`](AGENT.md))
 - [ ] Measured power budget and battery life
 - [ ] App on the App Store and Google Play
 - [ ] Units for sale — *coming soon*
-
-Progress is tracked milestone by milestone in [`firmware/WORKPLAN.md`](firmware/WORKPLAN.md).
 
 ## 📖 The story behind it
 

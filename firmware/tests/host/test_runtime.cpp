@@ -9,6 +9,7 @@
 #include <utility/HCI.h>
 #include "App.h"
 #include "diagnostics/DebugLog.h"
+#include "platform/BootloaderEntry.h"
 #include "platform/DeviceId.h"
 #include "platform/ResetReason.h"
 #include "protocol/LittleEndian.h"
@@ -21,6 +22,10 @@ BLEClass BLE;
 HCIClass HCI;
 TwoWire Wire;
 bool sensorReady = true;
+int otaEntries = 0;
+int usbUpdateEntries = 0;
+bool onUsb = false;
+float batteryVolts = 3.8f;
 namespace {
 uint32_t ticks = 0;
 std::function<void()> rngEvent;
@@ -332,6 +337,61 @@ TEST_CASE("app erase command before the log is mounted") {
   CHECK_MESSAGE(newestSequence() >= 31, "history kept");
   FakeBle::disconnect();
 }
+TEST_CASE("app enters the OTA bootloader") {
+  FlashSim::reset(); ticks = 0; otaEntries = 0;
+  W25Q64Flash flash; flash.begin(); ConfigStore store;
+  CHECK_MESSAGE(store.save(flash, defaultConfig()), "seed config");
+  CHECK_MESSAGE(store.saveBonds(flash, knownBonds()), "seed phone key");
+  App app; app.begin(); step(app, 1001); run(app, 40);  // first cycle done
+  const uint8_t update[4] = {3, 0, 0xC7, 0xFA};
+
+  // Unauthenticated, malformed or on a low battery: nothing happens.
+  FakeBle::connect(22); step(app);
+  FakeBle::write(kReset, update, sizeof update); run(app, 60);
+  CHECK_MESSAGE(otaEntries == 0, "unauthenticated update ignored");
+  prove(); step(app);
+  const uint8_t flagged[4] = {3, 1, 0xC7, 0xFA};
+  const uint8_t unconfirmed[4] = {3, 0, 0xC7, 0xFB};
+  const uint8_t longer[8] = {3, 0, 0xC7, 0xFA};
+  FakeBle::write(kReset, flagged, sizeof flagged); run(app, 20);
+  FakeBle::write(kReset, unconfirmed, sizeof unconfirmed); run(app, 20);
+  FakeBle::write(kReset, longer, sizeof longer); run(app, 60);
+  CHECK_MESSAGE(otaEntries == 0, "malformed update ignored");
+  batteryVolts = 3.5f;
+  step(app, 300000);
+  for (int i = 0; i < 300; ++i) step(app, 100);  // a measurement reads it
+  FakeBle::write(kReset, update, sizeof update); run(app, 100);
+  CHECK_MESSAGE(otaEntries == 0, "update refused on a low battery");
+  batteryVolts = 3.8f;
+  step(app, 300000);
+  for (int i = 0; i < 300; ++i) step(app, 100);
+
+  // Accepted: the link drops, then the reset follows once idle.
+  FakeBle::write(kReset, update, sizeof update);
+  step(app);
+  CHECK_MESSAGE(!bool(FakeBle::peer()), "phone disconnected before the reset");
+  CHECK_MESSAGE(otaEntries == 0, "reset waits for the disconnect to go out");
+  step(app, 400);
+  CHECK_MESSAGE(otaEntries == 1, "bootloader entered");
+}
+TEST_CASE("app enters the USB update drive") {
+  FlashSim::reset(); ticks = 0; otaEntries = 0; usbUpdateEntries = 0; onUsb = false;
+  W25Q64Flash flash; flash.begin(); ConfigStore store;
+  CHECK_MESSAGE(store.save(flash, defaultConfig()), "seed config");
+  CHECK_MESSAGE(store.saveBonds(flash, knownBonds()), "seed phone key");
+  App app; app.begin(); step(app, 1001); run(app, 40);
+  FakeBle::connect(23); step(app); prove(); step(app);
+  const uint8_t usbUpdate[4] = {4, 0, 0xC7, 0xFA};
+  FakeBle::write(kReset, usbUpdate, sizeof usbUpdate); run(app, 100);
+  CHECK_MESSAGE(usbUpdateEntries == 0, "refused on battery: no drive to show");
+  onUsb = true;
+  FakeBle::write(kReset, usbUpdate, sizeof usbUpdate);
+  step(app);
+  CHECK_MESSAGE(!bool(FakeBle::peer()), "phone disconnected before the reset");
+  step(app, 400);
+  CHECK_MESSAGE((usbUpdateEntries == 1 && otaEntries == 0), "UF2 bootloader entered");
+  onUsb = false;
+}
 TEST_CASE("app sleep window") {
   FlashSim::reset(); ticks = 0;
   W25Q64Flash flash; flash.begin(); ConfigStore store;
@@ -404,9 +464,9 @@ int HCIClass::leRand(uint8_t* bytes) {
   return 0;
 }
 void BatteryMonitor::begin() { chargingStable_ = lastRaw_ = primed_ = false; rawSinceMs_ = 0; }
-bool BatteryMonitor::sample(float& v) { v = 3.8f; return true; }
+bool BatteryMonitor::sample(float& v) { v = batteryVolts; return true; }
 bool BatteryMonitor::pollCharging(uint64_t) { return false; }
-bool BatteryMonitor::usbPowered() const { return false; }
+bool BatteryMonitor::usbPowered() const { return onUsb; }
 bool EnvironmentalSampler::begin() { busStarted_ = true; pressureHandedOff_ = false; return true; }
 void EnvironmentalSampler::start(uint64_t) {}
 void EnvironmentalSampler::poll(uint64_t) {}
@@ -434,6 +494,8 @@ bool EpaperDisplay::timedOut() const { return false; }
 namespace Renderer { bool render(EpaperDisplay&, const UiModel&) { return true; } }
 void HardwareWatchdog::begin() { active_ = true; }
 void HardwareWatchdog::kick() {}
+void BootloaderEntry::enterOtaUpdate() { ++otaEntries; }
+void BootloaderEntry::enterUsbUpdate() { ++usbUpdateEntries; }
 namespace DeviceId { uint64_t read() { return 123; } }
 namespace ResetReason { uint32_t take() { return 0; } const char* describe(uint32_t) { return "test"; } }
 namespace TraceStore { bool flush(W25Q64Flash&) { return true; } void dump(W25Q64Flash&) {} }

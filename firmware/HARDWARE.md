@@ -401,7 +401,7 @@ plausible indoor range (0–50 °C, 5–95 % RH, 800–1100 hPa, 300–5000 ppm 
   verdict is the BUSY handshake; **the operator must look at the panel** for
   missing rows, grey patches or a bad FPC seat. The refresh time is printed
   (not yet measured on this board: note the first units' times as the
-  reference; WORKPLAN M1 tracks a BUSY timeout).
+  reference).
 - **BLE**: the stack starts and advertises as `Quiesco TEST XXXX` for 60 s.
   The radio sits inside the certified module, so that is the automatic
   verdict; finding the name on a phone proves the air path, and a connection

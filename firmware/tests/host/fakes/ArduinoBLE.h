@@ -120,6 +120,7 @@ class BLEClass {
     }
   }
   bool connected() { poll(); return bool(FakeBle::peer()); }
+  bool disconnect() { if (FakeBle::peer()) FakeBle::disconnect(); return true; }
   int advertise() { return 1; }
   void stopAdvertise() {}
   void setLocalName(const char*) {}

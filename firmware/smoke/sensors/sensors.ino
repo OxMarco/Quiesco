@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Quiesco unit test, and the factory test (WORKPLAN.md M10).
+// Quiesco unit test, and the factory test (HARDWARE.md §9).
 //
 // Checks the whole board: BME280, VEML7700, SCD41, PDM mic, battery, the
 // W25Q64 flash, the e-ink panel and the BLE radio. Press 't' for a PASS/FAIL

@@ -30,6 +30,7 @@ import {
   encodeSleepWindow,
   EnrolledKey,
   encodeEpoch,
+  encodeEnterUsbUpdate,
   encodeFactoryReset,
   encodeFrc,
   encodeLogErase,
@@ -55,8 +56,8 @@ import { cancelEnrollment, requestSetupKey } from './enrollment';
 import { Store } from './store';
 import * as ble from './transport';
 
-/** How to flash new firmware over USB; shown to units on an older protocol. */
-export const FIRMWARE_GUIDE_URL = 'https://github.com/OxMarco/Quiesco#-build-your-own';
+/** How to update a unit's firmware (copy a .uf2 onto its USB drive). */
+export const FIRMWARE_GUIDE_URL = 'https://github.com/OxMarco/Quiesco/blob/master/AGENT.md';
 
 export type Phase =
   | 'idle'
@@ -575,6 +576,25 @@ export async function factoryReset(eraseLog: boolean) {
   const serial = link.get().serial;
   await writeQ(Chr.deviceControl, encodeFactoryReset(eraseLog && can(Capability.logErase)));
   if (serial) await keys.deleteKey(serial);
+}
+
+// A busy unit finishes its measurement (up to ~15 s) before it restarts.
+const USB_UPDATE_WAIT_MS = 25_000;
+
+/**
+ * Restart the unit into its XIAO-BOOT drive for a firmware update (§9.2).
+ * True once it dropped the link to restart; false if it stayed, which means
+ * it is not on USB power.
+ */
+export async function enterUsbUpdate(): Promise<boolean> {
+  if (!can(Capability.usbUpdate)) throw new Error('This unit’s firmware cannot start an update from the app.');
+  await writeQ(Chr.deviceControl, encodeEnterUsbUpdate());
+  const deadline = Date.now() + USB_UPDATE_WAIT_MS;
+  while (Date.now() < deadline) {
+    await sleep(500);
+    if (link.get().phase !== 'ready') return true;
+  }
+  return false;
 }
 
 // The unit takes the command from its main loop, which can stall for a few

@@ -210,7 +210,7 @@ src/
   diagnostics/        BuildConfig, FirmwareVersion, DebugLog
   third_party/flashdb vendored FlashDB 2.2.0
 smoke/sensors/        unit and factory test sketch (HARDWARE.md §8-9)
-smoke/ble/            BLE on-air test sketch (WORKPLAN.md M2)
+smoke/ble/            BLE on-air test sketch
 tests/host/           host unit tests and fakes
 scripts/              build, test, policy, dependency and font tooling
 ```
@@ -604,7 +604,7 @@ and FRC.
 
 ### Open work
 
-Everything left before release is tracked in [`WORKPLAN.md`](WORKPLAN.md).
+What is left before release is in the roadmap in the [top-level README](../README.md#-roadmap).
 
 ---
 

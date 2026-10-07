@@ -26,3 +26,13 @@ constexpr bool kDebugEnabled = false;
 #endif
 
 constexpr bool kBatteryFitted = !QUIESCO_NO_BATTERY;
+
+// BLE OTA update (device control opcode 3, capability bit 15). Off: the XIAO
+// bootloader accepts the update but never finishes erasing the old image
+// (PROTOCOL.md §9.3), which leaves a unit that needs USB. Updates go
+// through the XIAO-BOOT drive instead (AGENT.md).
+#ifndef QUIESCO_BLE_OTA
+#define QUIESCO_BLE_OTA 0
+#endif
+
+constexpr bool kBleOtaEnabled = QUIESCO_BLE_OTA;

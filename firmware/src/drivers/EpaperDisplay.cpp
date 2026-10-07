@@ -85,7 +85,7 @@ void busyObserved(const void*) {
 // GxEPD2's init() pulses RST, waits 10 ms and returns without looking at
 // BUSY, but the controller holds BUSY low while it comes out of reset (longer
 // when it was hibernating). Sampling BUSY at once read that as a timeout and
-// skipped the frame: the likely cause of WORKPLAN M1's display=timeout on the
+// skipped the frame: the likely cause of the display=timeout seen on the
 // first cycle after a reflash. A generous bound still catches a stuck line.
 constexpr uint32_t kResetBusyTimeoutMs = 200;
 
@@ -139,7 +139,7 @@ bool EpaperDisplay::begin(bool useFullRefresh) {
 bool EpaperDisplay::end() {
   // Check BUSY before deep sleep, not after: in deep sleep the UC8151 holds
   // BUSY low until the next reset, so sampling it after hibernate() reported
-  // a timeout on every draw (WORKPLAN M1). That failed the frame, so the next
+  // a timeout on every draw. That failed the frame, so the next
   // cycle forced another full refresh (~2.2 s) and the same false timeout.
   // powerOff() waits for BUSY; hibernate()'s own repeat of it is harmless.
   panel.powerOff();

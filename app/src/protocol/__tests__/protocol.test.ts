@@ -27,6 +27,7 @@ import {
   encodeCoreConfig,
   encodeDeviceName,
   encodeEpoch,
+  encodeEnterUsbUpdate,
   encodeFactoryReset,
   encodeFrc,
   encodeInterval,
@@ -51,7 +52,7 @@ import { hmacSha256, sha256 } from '../sha256';
 import { batteryPercent, nudge, roundHalfAway, Severity, verdict } from '../comfort';
 
 const G = {
-  deviceInfo: '06 00 ff 7f 00 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00',
+  deviceInfo: '06 00 ff 7f 01 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00',
   authState: '06 00 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f 00 00',
   enrolKey: '34 12 00 00 a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae af',
   prove: '02 00 34 12 f0 64 2a b3 02 06 0f 2f 61 13 6b 3f 1d ab 8a 1a',
@@ -68,6 +69,7 @@ const G = {
   frc: '01 00 a4 01',
   reset: '01 01 c7 fa',
   logErase: '02 00 c7 fa a3 05 00 00',
+  usbUpdate: '04 00 c7 fa',
   sleepWindow: '01 00 78 00 82 05 a4 01 ff ff ff ff',
   wireRecord:
     'b1 04 00 00 7f 00 01 00 10 c7 55 69 80 ee 36 00 00 00 00 00 00 00 ac 41 00 00 35 42 80 e6 c5 47 ' +
@@ -91,7 +93,7 @@ describe('characteristic codecs', () => {
   test('device info', () => {
     expect(decodeDeviceInfo(fromHex(G.deviceInfo))).toEqual({
       protocolVersion: 6,
-      capabilities: 0x7fff,
+      capabilities: 0x17fff,
       firmware: '1.2.3',
       debugBuild: false,
       pairingOpen: true,
@@ -185,6 +187,7 @@ describe('characteristic codecs', () => {
     expect(() => encodeFrc(399)).toThrow();
     expect(toHex(encodeFactoryReset(true))).toBe(G.reset);
     expect(toHex(encodeLogErase(1443))).toBe(G.logErase);
+    expect(toHex(encodeEnterUsbUpdate())).toBe(G.usbUpdate);
     expect(() => encodeLogErase(-1)).toThrow();
     expect(() => encodeLogErase(2 ** 32)).toThrow();
   });
