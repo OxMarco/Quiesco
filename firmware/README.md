@@ -10,7 +10,7 @@ wait bounded by a deadline, and one adapter file per chip, so a sensor, the
 display or the BLE stack can be swapped by touching one file.
 
 > [!NOTE]
-> Version **0.1.0** · BLE protocol **v6** · board core **Seeeduino mbed 2.9.3**
+> Version **1.0.0** · BLE protocol **v6** · board core **Seeeduino mbed 2.9.3**
 > (`Seeeduino:mbed:xiaonRF52840Plus`)
 
 ## Contents
@@ -53,7 +53,7 @@ Within about 15 seconds the panel draws its first reading.
 
 > [!TIP]
 > Uploading rewrites only the MCU's internal flash. The external flash (config,
-> paired phones and the sample log) survives, so you can swap between release
+> enrolled phones and the sample log) survives, so you can swap between release
 > and debug builds without losing data.
 
 ### Using the Arduino IDE instead
@@ -152,7 +152,7 @@ src/
                       battery, e-ink, flash, BLE
   dsp/                A-weighted acoustic metrics
   services/           sampler, scheduler, calibration, config store,
-                      sample log, bonds
+                      sample log, enrolled phone keys
   protocol/           BLE wire formats and PROTOCOL.md
   storage/            flash partition map, trace ring
   ui/                 comfort evaluation, screen model, renderer, fonts

@@ -90,7 +90,7 @@ line. Any other build reports `0.0.0`; a debug build appends `-debug`.
 A debug build starts with a boot line, then prints one status line per cycle:
 
 ```text
-Quiesco firmware=0.1.0-debug serial=1A2B3C4D5E6F7081 reset=power-on
+Quiesco firmware=1.0.0-debug serial=1A2B3C4D5E6F7081 reset=power-on
 ```
 
 The status line looks like this:
@@ -121,7 +121,7 @@ and the watchdog keep running. A release build never opens the port.
 | `scripts/log-report.py log.csv [--reference ref.csv]` | lost records, resets, measurement timing, battery drain and life estimate, sensor ranges and dropouts; with hand-taken reference readings, the mean difference and a suggested offset |
 
 Uploading firmware rewrites only the MCU's internal flash; the external
-flash (config, bonds, log) survives. So a unit can run the release build on
+flash (config, enrolled phone keys, log) survives. So a unit can run the release build on
 battery for days, then take the debug build over USB just to dump its log.
 
 ### Dependencies
@@ -195,7 +195,7 @@ src/
   platform/           MonotonicClock (64-bit ms), HardwareWatchdog,
                       DeviceId (FICR serial source), ResetReason,
                       I2cBusRecovery
-  model/              Reading, Config, FaultStatus
+  model/              Reading, Config, SleepWindow, FaultStatus
   drivers/            one adapter per chip: Bme280Sensor, Veml7700Sensor,
                       Scd41Sensor, PdmMicrophone, BatteryMonitor,
                       EpaperDisplay, W25Q64Flash, FlashDbPort, BleConfig
@@ -206,7 +206,7 @@ src/
   protocol/           BleCodec (all BLE wire formats), LittleEndian,
                       PROTOCOL.md (the app team's BLE reference)
   storage/            FlashStorageLayout (partition map)
-  ui/                 ComfortEvaluation, UiModel, Renderer, fonts/
+  ui/                 ComfortEvaluation, SleepSchedule, UiModel, Renderer, fonts/
   diagnostics/        BuildConfig, FirmwareVersion, DebugLog
   third_party/flashdb vendored FlashDB 2.2.0
 smoke/sensors/        unit and factory test sketch (HARDWARE.md §8-9)
@@ -369,7 +369,9 @@ The 8 MB flash is partitioned in `FlashStorageLayout.h`:
 | `0x7FF000–0x7FFFFF` | test sector: the factory test erases and programs it (`kTestSectorOffset`) |
 
 - **Configuration** (`ConfigStore`) is versioned and validated; the same KV
-  store holds the boot counter and the BLE bond table; FlashDB's
+  store holds the boot counter, the enrolled-phone key table (`BondTable`) and
+  the sleep window (its own key, so adding it did not bump the config version
+  and wipe every setting; a unit without one uses the default); FlashDB's
   key-value store makes writes power-loss-safe. A missing or invalid config record
   falls back to defaults and is rewritten. An I/O or database-mount failure
   is retried without saving defaults, exposing history, or losing phone keys. Writes happen only when the config
@@ -382,13 +384,17 @@ The 8 MB flash is partitioned in `FlashStorageLayout.h`:
   ring wraps; the ring holds about 101 000 records (~350 days at 300 s).
   FlashDB carries a local patch so an empty log formats one sector at a time
   instead of erasing 7.9 MB at first boot.
-- **Log erase** (factory reset) unmounts the log and erases the partition
+- **Log erase** (factory reset, or the erase command on its own) unmounts the
+  log and erases the partition
   one sector per `App::step()`, about 90 s in all, with BLE and the watchdog
   serviced throughout; FlashDB's own clean would block for the whole erase.
   Before any reset settings are written, the KV store journals the erase
   intent and next sequence. Boot resumes a pending erase before exposing
   history. The marker clears only after a fresh sample is durable; sequence
-  numbers continue across an interrupted erase.
+  numbers continue across an interrupted erase. The erase command
+  (`PROTOCOL.md` §9.1) is checked against the mounted log's newest sequence
+  before anything is journalled, and refused, changing nothing, when the log
+  holds a record later than the app's up-to sequence.
 
 The flash is initialised only when needed and put into deep power-down before
 the rail drops.
@@ -428,14 +434,16 @@ Quiesco service with 128-bit base UUID `7A1Exxxx-8E6F-4A7A-AE32-515549455343`:
 | `000A` | Log sync data | Notify |
 | `000B` | Calibration control (FRC) | W |
 | `000C` | Device info: protocol version, capability flags, firmware version, SCD41 serial | R |
-| `000D` | Device control: factory reset, optionally erasing the log | W |
+| `000D` | Device control: factory reset, optionally erasing the log; or erase the log only | W |
 | `000E` | Calibration state: last FRC time, target and correction; ASC off | R |
 | `000F` | Diagnostics: last reset cause, uptime, I2C bus stuck | R |
 | `0010` | Authentication challenge and proof | R/W |
 | `0011` | Pending setup key id; the issued phone key for 30 s after setup | R |
+| `0012` | Sleep window: whether the panel judges by time of day, UTC offset, bed and wake times | R/W |
 
 Every characteristic except DIS, `000C`, `0010`, and `0011` is gated by
-application authentication. Protocol v5 does not use link-layer pairing.
+application authentication. Protocol v6 does not use link-layer pairing; the
+unit refuses it.
 
 **Identity.** The unit serial is the nRF52840's 64-bit FICR device ID as 16 hex
 digits. A new or factory-reset unit is named `Quiesco XXXX` after its last four
@@ -445,23 +453,28 @@ published in device info and stamped on every log record, so the app can date
 records taken before the clock was synced from a synced record of the same
 boot.
 
-**Security (protocol v5).** A phone proves a random 128-bit shared key using
+**Security (protocol v6).** A phone proves a random 128-bit per-phone key using
 HMAC-SHA-256 and a fresh per-connection challenge. Until then, protected values
 are blank and protected writes are ignored. Connection/disconnection callbacks
 scrub values and pending writes immediately; a monotonically advancing session
 id also protects against connection changes while HCI commands are running.
 
 New enrollment needs USB power and proof of a key displayed only on the
-physical panel. The app reads the public key id, asks the user for the 32 hex
-digits, and proves that key. Only then is it added to the four-phone table.
-A pending key expires after three minutes, disconnect, or USB removal.
-Repeated ENROL requests cannot evict phones or extend a pending key's lifetime.
-The old key-table encoding is invalidated on this upgrade because protocol-v4
+physical panel. The panel shows a six-digit setup code; the app reads the
+public key id, asks the user for the code, derives the setup key from it
+(HMAC-SHA-256) and proves it. Only then is the phone added to the four-phone
+table, and the unit hands it a random 128-bit phone key in `0011` for 30
+seconds; the app keeps it in secure storage and uses it for every later
+connection. A pending setup expires after three minutes, disconnect, or USB
+removal. Repeated ENROL requests cannot evict phones or extend a pending
+setup's lifetime. Keys enrolled under v5 (32 hex digits) keep working.
+The v5 upgrade invalidated the old key-table encoding because protocol-v4
 keys crossed the radio unencrypted. Existing phones must enroll again.
 
-This is authentication, not encrypted transport: measurements remain visible
-to radio observers. Keys are stored unencrypted in external flash. See the
-protocol's security limits and the companion app's setup-key prompt.
+This is authentication, not encrypted transport (a product decision: no
+encryption is needed): only an enrolled phone can read data or change
+anything, but measurements remain visible to radio observers. Keys are
+stored unencrypted in external flash. See the protocol's security limits and the companion app's setup-key prompt.
 
 **Write handling.** Callbacks only copy the write into a per-characteristic
 slot; `App::step()` validates and applies it through `BleCodec`. A rejected
@@ -540,17 +553,23 @@ testable image.
 passing checks too. The binaries land in `$TMPDIR` as `quiesco-*-tests`.
 
 - **core:** config validation, scheduler progression, missed deadlines and
-  clock rollover, fault counters, comfort bands, worst-metric priority, screen
+  clock rollover, fault counters, comfort bands by day and night, judge-mode
+  parity with the app (`tests/host/parity`: the app's own `sleep.ts` swept over
+  nine days for six windows and six UTC offsets, regenerated by
+  `gen-sleep-parity.mjs`), worst-metric priority, screen
   selection and battery override, the display-skip comparison, acoustic
   metrics, the sample record codec, and the battery curve;
 - **power domain:** pin ordering and levels through the rail lifecycle;
 - **storage and BLE:** wall clock, calibration offsets, the config record
   codec, config persistence and recovery on the flash simulator, sample log
   readout including a torn record, the stepwise log erase, unit identity, the
-  BLE decoders, encoders and log packets, and the frozen protocol's golden
+  BLE decoders, encoders and log packets, sleep window validation and
+  persistence, and the frozen protocol's golden
   vectors, which must also appear verbatim in `PROTOCOL.md`;
 - **runtime:** `App`, BLE and SCD41 state transitions: reconnect and
-  enrolment, the FRC run-up, and factory-reset erase recovery across reboots.
+  enrolment, the FRC run-up, factory-reset erase recovery across reboots, the
+  erase command accepted and refused (also before the log is mounted), and the
+  sleep window's write, rejection, persistence and factory-reset default.
 
 Hardware behaviour is verified with the smoke sketches and the debug status
 line on a real board.

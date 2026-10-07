@@ -15,16 +15,16 @@ Background: [`SOFTWARE.md`](SOFTWARE.md) (firmware, including the BLE service),
 | Area | State |
 |---|---|
 | Measurement cycle, all seven readings, rail lifecycle | working on hardware |
-| Screens (face, ledger, bento, battery, unavailable), partial refresh | working on hardware; BUSY timeout (M1) has a likely cause and a fix, **not yet verified**. Pairing screen added, not yet seen on hardware |
+| Screens (face, ledger, bento, battery, unavailable), partial refresh | working on hardware; BUSY timeout (M1) has a likely cause and a fix, **not yet verified**. Setup-code screen added, not yet seen on hardware |
 | Config persistence, sample log | working on hardware |
 | BLE service: screen, config, readings, status, clock, log download, calibration, device info, factory reset | implemented and host-tested, **never tested on air** |
-| App contract | **protocol v3** (v1 layouts + security + dB(A) noise), documented in [`src/protocol/PROTOCOL.md`](src/protocol/PROTOCOL.md) and pinned by golden vectors |
-| Security | pairing on USB power, numeric comparison on the panel, encrypted access; **never tested on air** |
+| App contract | **protocol v6** (v1 layouts + app-layer authentication + dB(A) noise + six-digit setup code); the app accepts v6 only; documented in [`src/protocol/PROTOCOL.md`](src/protocol/PROTOCOL.md) and pinned by golden vectors |
+| Security | application-layer authentication: enrolment on USB power with a six-digit code on the panel, challenge-response on every connection; no transport encryption (product decision); **never tested on air** |
 | CO2 measurement | power-cycled single shot per Sensirion AN (first shot discarded, pressure-compensated); **new, not yet run on hardware** |
 | Temperature/humidity | RH re-expressed for the temperature offset; self-heating ≈ +1 °C on USB (one comparison) |
 | Diagnostics and test tools | reset cause, uptime, boot counter; debug console (`i m d w`), `quiesco-console.py`, `log-report.py`; **console not yet run on hardware** |
 | Factory test | `smoke/sensors` `t` covers sensors, flash, display, BLE; procedure in `HARDWARE.md` §9; **new checks not yet run on hardware** |
-| Firmware version | set from `VERSION` (0.1.0) by the build; exposed in DIS and device info |
+| Firmware version | set from `VERSION` (1.0.0, matching the app and hardware revision) by the build; exposed in DIS and device info |
 | Licence | GPL-3.0-only; notices written |
 | Firmware update | **missing** (M6 decision pending) |
 | Power budget | **not measured**; no battery fitted yet |
@@ -35,7 +35,7 @@ The firmware is production ready when, on production-representative units:
 
 - the phone app can select the screen, download the full history and
   calibrate the unit, reliably, from both iOS and Android;
-- only a paired phone can change anything;
+- only an enrolled phone can read data or change anything;
 - the app can tell which firmware it is talking to, and the firmware can be
   updated in the field;
 - the unit runs for a measured, documented battery life at 60 s and 300 s;
@@ -57,7 +57,7 @@ debug console).
 
 | Check | How, with these tools |
 |---|---|
-| BLE, pairing, security (M2, M5) | iPhone with nRF Connect: pairing on USB power (code on the panel), refusal on battery, every characteristic, notifications. **Android is untested** until someone with an Android phone runs the same list. |
+| BLE, enrolment, security (M2, M5) | iPhone with the companion app and nRF Connect: enrolment on USB power (code on the panel), refusal on battery, every characteristic, notifications. **Android is untested** until someone with an Android phone runs the same list. |
 | Log download (M4) | USB dump for the data; iPhone for the protocol itself (start, END packet, resume) |
 | Temperature, humidity, CO2 (M4) | Unit next to the reference monitor for a day; note the monitor's readings in a reference CSV, then `log-report.py --reference` gives the offsets. FRC outdoors, then compare CO2 again. |
 | Noise (M4) | Phone sound-meter app as a rough reference (±3 dB at best); treat the result as provisional |
@@ -77,7 +77,8 @@ below, marked **needs a bench**.
 
 ## M1 — Close the known defects
 
-- [ ] **Display BUSY timeout.** Second cause found 2026-09-27: `end()`
+- [x] **Display BUSY timeout.** Verified 2026-10-07: four reflashes of the
+  1.0.0 debug build, every first cycle `display=ok`. Second cause found 2026-09-27: `end()`
   checked BUSY after deep sleep (see the session log); fixed and verified on
   the bench unit.
   The first cycle after a reflash reported
@@ -88,29 +89,41 @@ below, marked **needs a bench**.
   `begin()` now waits up to 200 ms for BUSY to release. **Verify:** reflash the
   debug build several times and check the first `cycle=` line shows no
   `display=timeout`; `e` in `smoke/sensors` prints the refresh time.
-- [ ] **Unit check on the bench unit.** Run `t` in `smoke/sensors` after every
-  hardware-affecting change; it must PASS.
+- [x] **Unit check on the bench unit.** Run `t` in `smoke/sensors` after every
+  hardware-affecting change; it must PASS. PASS on all 8 parts 2026-10-07.
+  Note: on USB the battery check passes with no cell fitted (it reads the
+  charger), so it cannot catch a missing battery.
 
 ## M2 — BLE on air
 
 The protocol exists; none of it has met a real phone. This milestone de-risks
 everything the app depends on.
 
-- [ ] Run `smoke/ble` on hardware: advertise, connect, read/write/notify,
-  throughput, rename, idle current. Record results in `SOFTWARE.md` and mark
+- [x] Run `smoke/ble` on hardware: advertise, connect, read/write/notify,
+  throughput, rename, idle current. Covered on 2026-10-07 by the full
+  firmware and `scripts/ble-test.py` from a Mac (CoreBluetooth): 37 checks
+  pass; idle current still needs a meter (M7). Record results in `SOFTWARE.md` and mark
   ArduinoBLE `production` in `dependencies.lock`. If ArduinoBLE fails, move
   `BleConfig` to the Mbed/Cordio BLE stack bundled with the core.
 - [ ] Test every characteristic from nRF Connect on **both iOS and Android**,
-  including notifications and the MTU the phone negotiates.
-- [ ] Malformed writes, disconnect mid-write, reconnect, and rapid repeated
-  changes must never corrupt state or hang the cycle. The adapter already
+  including notifications and the MTU the phone negotiates. Done from a Mac
+  (MTU 247, every characteristic, notifications); a pass with the app on an
+  iPhone and an Android phone remains.
+- [x] Malformed writes, disconnect mid-write, reconnect, and rapid repeated
+  changes must never corrupt state or hang the cycle. On air 2026-10-07: 60
+  malformed writes, 10 rapid renames, 5 reconnects (ready in ~2.3 s), state
+  intact. ArduinoBLE reads back the bytes just written until the main loop
+  answers; the app ignores that echo. The adapter already
   works around ArduinoBLE's padding of short writes and silent truncation of
   long ones, and gives each characteristic its own pending slot (see
   `SOFTWARE.md`, BLE); verify short, long and back-to-back writes on air.
 - [ ] Choose advertising and connection intervals for low power, then measure
   them (M7).
-- [ ] Confirm the always-available BLE default against the 60 s
-  configuration-window policy once power is measured.
+- [x] Confirm the always-available BLE default against the 60 s
+  configuration-window policy. Decided 2026-10-07: the user's choice in the
+  app (Settings → Bluetooth: always / plugged in, core config byte 12); the
+  default stays always available. The power measurement under M7 still
+  informs the default later.
 
 ## M3 — App contract
 
@@ -131,9 +144,9 @@ The app team needs a stable, versioned interface before they build on it.
   the boot counter (M4), so filling it in needs no protocol change.
 - [x] **Factory reset** (`000D`, with a confirmation value): restores the
   default config and optionally erases the log in ~90 s of bounded steps.
-- [ ] Product to confirm the DIS strings in `services/UnitIdentity.h`
-  (manufacturer `Quiesco`, model `Quiesco v1`, hardware revision `1`) and the
-  starting version in `VERSION` (0.1.0).
+- [x] DIS strings confirmed (2026-10-07): manufacturer `Quiesco`, model
+  `Quiesco v1`, hardware revision `1.0.0`; firmware `VERSION` 1.0.0, matching
+  the app's 1.0.0.
 
 ## M4 — App features in the firmware
 
@@ -149,8 +162,9 @@ choice, and starts a measurement cycle at once so the panel redraws.
 - [x] A change that arrives after the current cycle has collected queues a
   redraw for idle, so it no longer waits for the next interval. Log sync and
   FRC requests likewise start a cycle whenever they arrive.
-- [ ] Expose the full-refresh cadence only if the app will use it; otherwise
-  keep it internal.
+- [x] Expose the full-refresh cadence only if the app will use it. It is:
+  the app now exposes it (core config bytes 8–11, 1–1000 redraws, default
+  10), 2026-10-07.
 
 ### Historical data download
 
@@ -160,13 +174,27 @@ Log sync (`0009` / `000A`) streams CRC-checked records from any sequence.
   boot) is stamped on every record and sent at wire offset 48, and in device
   info; capability bit 7. `PROTOCOL.md` §6.4 gives the app the dating rule and
   tells it to sync the clock on every connect.
-- [ ] Measure download throughput for a full log at the negotiated MTU; set a
+- [x] Measure download throughput for a full log at the negotiated MTU; set a
   target (for example, one week of 5-minute data in under 30 s). A full ring
-  is about 101 000 records (5.3 MB on the wire).
-- [ ] Verify resume after a dropped connection: the app re-requests from its
-  last sequence and gets no gaps or duplicates.
+  is about 101 000 records (5.3 MB on the wire). Measured 2026-10-07 from a
+  Mac at MTU 247: unpaced streaming **lost ~45 % of records** (ArduinoBLE
+  reports every notify as sent); packets are now paced 30 ms apart
+  (`kSyncPacketGapMs`): 0 lost, 98 records/s streaming, so a week takes ~21 s
+  plus the ~11 s measurement before the stream. A full ring is ~17 min.
+- [x] Verify resume after a dropped connection: the app re-requests from its
+  last sequence and gets no gaps or duplicates. On air 2026-10-07, 150 of 150
+  matched. The app now also checks the packet counter and re-requests from
+  the first missing record.
 - [ ] Verify behaviour when the ring wraps during a download.
-- [ ] Decide whether the app can clear the log after a successful download.
+- [x] Decide whether the app can clear the log after a successful download.
+  Decided 2026-10-07: user's choice in the app. Device control `000D`
+  opcode 2 erases the log only (capability bit 13, `PROTOCOL.md` §9.1), with
+  the factory reset's journalled ~90 s erase; it carries the last sequence
+  the app holds and is refused, changing nothing, if the log has a later
+  record. Config, phone keys, offsets and the sleep window are kept.
+  **Verify on air**: an accepted erase end to end (status bit 2 set then
+  clear, sequences continue), and a power pull mid-erase.
+  `ble-test.py run` only checks the refusal, never a real erase.
 
 ### Calibration
 
@@ -213,37 +241,50 @@ latter on hearing bands (70 dB warn, 85 dB bad, from the EPA 24 h and NIOSH
 panel still judges everything on the sleep bands at every hour, so it can
 frown at 27 °C in the afternoon while the app shows nothing wrong.
 
-- [ ] **Decide** whether the panel follows the app. If yes: the app pushes
-  the sleep window (bed and wake minutes, weekday and weekend) as a new
-  config field with a capability bit; `ComfortEvaluation` gates temperature
-  and humidity on it, and the clock must be synced for the gate to hold
-  across resets (`PROTOCOL.md` §6.4 already asks the app to sync it on every
-  connect). If no: document that the panel is the stricter of the two.
-- [ ] **Daytime noise bands.** If the panel follows the app, add the hearing
-  bands (70 / 85 dB(A)) to `ComfortEvaluation` for daytime and the matching
-  nudges to `UiModel`: the app says "Loud" and "Very loud" by day, "A bit
-  loud" and "Too loud to sleep" at night. This copy is new on the app side
-  and product has not yet confirmed it; settle the words once, then use the
-  same ones on both.
+- [x] **Decide** whether the panel follows the app. Decided 2026-10-07:
+  user's choice in the app. The app pushes the sleep window (bed and wake
+  minutes, weekday and weekend, its UTC offset, and a follow flag) to a new
+  characteristic `0012` (capability bit 14, `PROTOCOL.md` §6.17), saved under
+  its own flash key so the config version did not move. With the flag set and
+  the clock synced, `SleepSchedule` (a port of the app's `judgeMode`, tested
+  for parity against `sleep.ts`) picks day or sleep mode and
+  `ComfortEvaluation` gates temperature and humidity on it; otherwise the
+  panel judges on the sleep bands all day, as before.
+- [x] **Daytime noise bands.** Done 2026-10-07 as the user's choice in the
+  app: hearing bands (warn above 70, bad above 85 dB(A)) by day, nudges
+  "loud" / "very loud" (the app's words, lowercased like every panel nudge);
+  the night bands and words are unchanged. **Verify on hardware**: the day
+  face with a loud room, and the switch at bedtime − 60 min.
 
 ## M5 — Security
 
-- [x] **Pairing and bonding** with LE Secure Connections. ArduinoBLE 2.1.0 has
-  no passkey entry, so it is **numeric comparison**: the panel shows the code,
-  the user confirms on the phone. The board has no button, so product chose
-  **USB power as the physical-presence gate**: pairing is refused otherwise.
-- [x] Encrypted link required for everything except DIS and device info
-  (product: identity only), including notifications, which ArduinoBLE does not
-  gate itself. Protocol version 2.
-- [x] Bond management: 4 bonds in flash, oldest evicted; factory reset clears
-  them. Recovery after losing every phone: plug into USB and pair.
-- [x] Every write path (FRC included) needs a bonded, encrypted link.
-- [ ] **On air, iOS and Android:** pairing on USB power, refusal on battery,
-  the code on the panel matching the phone, bond survival across a reset,
-  reconnect with a resolvable private address, a fifth phone evicting the
-  oldest, and no notification reaching an unencrypted subscriber. If
-  ArduinoBLE's SMP fails on this core, this is the strongest reason yet for
-  the Cordio fallback in M2.
+- [x] ~~Pairing and bonding with LE Secure Connections~~, dropped: on
+  ArduinoBLE 2.1.0 on the mbed core it failed on air with a MIC failure when
+  encryption started, or hung the unit. The unit now refuses link-layer
+  pairing and no characteristic needs an encrypted link.
+- [x] **Application-layer authentication** (protocol v6, `PROTOCOL.md` §3).
+  The board has no button, so product chose **USB power as the
+  physical-presence gate**: enrolment is refused otherwise. On USB the panel
+  shows a six-digit setup code; the app proves it (HMAC), and the unit hands
+  over a random per-phone key in `0011` for 30 s. Every later connection
+  proves that key with a challenge-response on `0010`.
+- [x] Before authentication only DIS, device info, `0010` and `0011` are
+  readable; everything else reads as zeros, ignores writes and notifies
+  nothing (product: identity only).
+- [x] Key management: 4 phones in flash, oldest evicted; factory reset forgets
+  them. Recovery after losing every phone: plug into USB and enrol again.
+- [x] Every write path (FRC included) needs an authenticated connection.
+- [x] **No transport encryption** (product decision). Sensor data and log
+  packets cross the radio in the clear; authentication decides who can read
+  or change anything.
+- [ ] **On air, iOS and Android:** enrolment on USB power, refusal on battery,
+  the code on the panel accepted by the app and a wrong code rejected, the
+  key surviving a reset, reconnect with a resolvable private address, a
+  fifth phone evicting the oldest, and nothing but zeros reaching an
+  unauthenticated subscriber. From a Mac 2026-10-07: enrolment with the panel
+  code on USB, wrong key refused, zeros and no notifications before auth,
+  unauthenticated writes ignored, key surviving reflashes and resets. Left:
+  refusal on battery (no cell yet), a fifth phone, and the phones themselves.
 
 ## M6 — Firmware updates in the field
 
@@ -288,7 +329,9 @@ There is no update path today apart from USB and the Arduino tools.
 - [ ] Pull power at every stage of a config write and a log append on real
   hardware; the unit must boot with the old or new data, never neither.
   Doable now by unplugging USB (no battery fitted) during the `w` stress
-  command; see "Testing with what we have".
+  command; see "Testing with what we have". 3 pulls on 2026-10-07 (owner
+  stopped there): config intact each time, log 1..8112 with nothing missing
+  or torn. Each `w` run writes ~2,500 empty filler records to the real log.
 - [ ] Brownout and battery removal must never leave flash or the panel
   unusable on the next boot.
 - [ ] Measure SCD41 rail ripple during a measurement; if it is large, add a
@@ -323,20 +366,29 @@ There is no update path today apart from USB and the Arduino tools.
 - [x] Write `THIRD_PARTY_NOTICES.md`: every dependency with version, source,
   licence, local patches and whether it is linked (taken from a real build).
   `make licences` gathers the texts and checks versions against the lock.
-- [ ] Add the core's LGPL-2.1 and Mbed OS licence texts to the release
-  package: the installed core ships none.
+- [x] Add the core's LGPL-2.1 and Mbed OS licence texts to the release
+  package: the installed core ships none, so `licences/` holds them and
+  `make licences` copies them (2026-10-07).
+- [ ] **Legal review: Nordic 5-Clause vs GPL-3.0.** The nrfx and Nordic SDK
+  files inside the core's precompiled Mbed OS carry Nordic's 5-Clause
+  licence (all 203 of them), not BSD-3 as first noted: clause 4 (only with
+  Nordic ICs) and clause 5 (no reverse engineering of binaries) are further
+  restrictions GPL-3.0 does not allow on a combined work. Decide with a
+  lawyer: a licence exception for the core, relicensing, or accepting it as
+  the common Arduino-nRF practice it is.
 - [ ] Multi-day soak at 60 s and 300 s with BLE connections and changes
   throughout: no drift, hangs, data loss or heap growth; check stack
   high-water marks.
 - [ ] Clean rebuild from `dependencies.lock` on a fresh machine; compare binary
-  size and versions.
+  size and versions. On the dev Mac 2026-10-07: installed versions match the
+  lock (`make licences`), and two clean release builds are byte-identical
+  (425,184 bytes). A second machine remains.
 - [x] Resolve every actionable compiler warning in project code. As of
   2026-09-26 the release, debug and smoke builds (`--warnings all`) show none
   from project code; the remaining ones are inside ArduinoBLE (VLAs,
   deprecated Mbed calls) and are not ours to fix.
 - [ ] Tag the release and archive the exact build command and output. The
-  firmware directory is **not under version control yet**; put it in git
-  first.
+  firmware is in the monorepo's git.
 
 ---
 
@@ -344,7 +396,7 @@ There is no update path today apart from USB and the Arduino tools.
 
 M1 and M2 first: they prove the device and the radio before anyone builds on
 them. M3 next, so the app team gets a frozen contract early and can work in
-parallel. M4 and M5 together, since pairing changes how every app feature
+parallel. M4 and M5 together, since authentication changes how every app feature
 connects. M6 and M7 need decisions and measurements that take time, so start
 them early and in parallel. M8–M11 close out the release.
 
@@ -354,6 +406,68 @@ them early and in parallel. M8–M11 close out the release.
 
 Newest first. Each entry says what changed, what is verified, and where the
 next person should start.
+
+### 2026-10-07 — Log erase command and the sleep window (capability bits 13, 14)
+
+Protocol stays 6; two new capability bits, device info now reports 0x7FFF.
+
+- **Erase command** (`000D` opcode 2, 8 bytes, `PROTOCOL.md` §9.1): the
+  factory reset's journalled erase without the reset. Accepted only if the
+  log's newest sequence is ≤ the up-to sequence in the request; checked on
+  the mounted log, or, in the ~11 s after boot before the first record, when
+  that measurement first touches the log (status bit 2 sets only once it
+  passes). The 4-byte factory reset is unchanged; the characteristic is now
+  8 + 1 spare bytes and the codec checks each opcode's length.
+- **Sleep window** (`0012`, 12 bytes, §6.17): `model/SleepWindow` (layout,
+  validation, default), `ConfigStore` key `sleep`, `ui/SleepSchedule`
+  (judge mode), day bands in `ComfortEvaluation`, `UiModel::mode`, day
+  nudges and ledger bands in `Renderer`. Factory reset restores the default.
+- **Tests:** judge-mode parity against the app's own `sleep.ts` (6 windows ×
+  6 UTC offsets × 9 days in 15 s steps; regenerate with
+  `tests/host/parity/gen-sleep-parity.mjs`), boundaries, offset changes,
+  unsynced fallback, day bands and redraw comparison; codec golden vectors;
+  erase accepted and refused at runtime (also before the log is mounted);
+  window persistence and factory-reset default.
+- `scripts/ble-test.py`: encodes and decodes both; `--self-test` checks the
+  new vectors; `info` and `run` read `0012`; `run` adds a sleep-window
+  write/read-back/restore with an invalid write, sleep-window malformed writes,
+  and an `erase-refusal` check (up-to = newest − 1, must be refused). It never
+  sends an erase that could pass.
+
+**Verified:** `make verify`, release and debug `--no-battery` builds.
+**Not on hardware or on air yet:** start with `ble-test.py run`, then an
+accepted erase from the app on a unit whose log you can lose.
+
+### 2026-10-07 — On-air tests from a Mac; 1.0.0
+
+- Firmware `VERSION` and DIS hardware revision set to 1.0.0, matching the app.
+- `scripts/ble-test.py` (bleak/CoreBluetooth) runs the M2/M4/M5 checks from a
+  Mac: 37 pass, 1 warning (writes echo before auth; harmless, app ignores it).
+- **Log download lost ~45 % of records**: ArduinoBLE's notify always reports
+  success and the stack drops packets. Paced at 30 ms (0/15/20 ms all lost
+  records, 15 ms once stalled); 0 lost since. The app now checks the packet
+  counter and re-requests from the first missing record, and no longer reads
+  its own PROVE echo as a refusal (which could delete a valid key).
+- M1 BUSY fix verified (4 reflashes), factory test PASS, 3 power pulls clean.
+- The BME280 reads ~3.3 °C above the SCD41 in the case (33 °C indoors):
+  self-heating is far above the +1 °C assumed; needs a reference to set the
+  default offset.
+- Licence texts for the core and Mbed OS added; Nordic files are 5-Clause,
+  not BSD-3: legal review opened under M11.
+
+### 2026-10-07 — Docs aligned to protocol v6; app 1.0.0 store readiness
+
+- **Decision (product): no transport encryption is needed.** Security is
+  application-layer authentication: only an enrolled phone can read data or
+  change anything. The READMEs, this plan (M5, "Where things stand") and
+  `SOFTWARE.md` now describe protocol v6 (six-digit setup code, per-phone key,
+  challenge-response) instead of LE Secure Connections, bonds and encryption.
+- The companion app accepts protocol 6 only.
+- App 1.0.0 store-readiness work: the demo mode ("Explore with demo data") is
+  safe in release builds; log sync shows its progress; the debug log can be
+  sent as a report by email to info@impossiblelabs.xyz.
+
+Not verified on air: M2 and M5's on-air lists still stand. Start there.
 
 ### 2026-09-28 — App decision: verdicts gated by the sleep window
 

@@ -55,7 +55,9 @@ or a `Config::kCurrentVersion` bump (which resets every setting).
 ## 3. Comfort bands
 
 One stateless policy (`ui/ComfortEvaluation`) judges every metric for every
-screen. A metric is **comfortable**, **warn** or **bad**:
+screen. A metric is **comfortable**, **warn** or **bad**. The table is the
+**sleep** mode, which applies at every hour unless the panel follows the
+sleep window (§3.1):
 
 | Metric | Comfortable | Warn | Bad | Nudge (warn / bad) |
 |---|---|---|---|---|
@@ -73,6 +75,33 @@ in.
 
 Invalid metrics never drive a verdict or invert a tile. They render as `n/a`
 (ledger, with no marker) or `--` (bento).
+
+### 3.1 By time of day, like the app
+
+When the app turns it on (sleep window `0012`, `PROTOCOL.md` §6.17) and the
+clock has been synced since boot, the panel judges the room the way the app
+does (`ui/SleepSchedule`, a port of the app's `judgeMode` tested for parity
+against it): **sleep** mode from 60 minutes before bedtime until wake, **day**
+mode otherwise. Without the window, or before the clock is synced, it is sleep
+mode at every hour, as above.
+
+| Metric | Day mode | Nudge by day (warn / bad) |
+|---|---|---|
+| CO2 | same band as at night | "getting stuffy" / "open a window" |
+| Noise | hearing band: ≤ 70 comfortable, 70–85 warn, > 85 bad dB(A) | "loud" / "very loud" |
+| Temperature, humidity | shown, **not judged**: never a frown, a nudge or an inverted tile, and no band on the ledger gauge | — |
+| Light | never judged, as at night | — |
+
+The day noise band is the app's (`DAY_NOISE`, from the EPA's 70 dB 24-hour
+average and NIOSH's 85 dB(A) 8-hour limit), and the day nudges are its
+"Loud" / "Very loud", lowercased like every panel nudge. Every nudge, day and
+night, fits the panel at 9 pt Regular: the widest is "open a window" at
+122 px; "very loud" is 75 px (measured from the font bitmaps against the
+152 px panel).
+
+The panel changes mode at its next draw after the boundary, so it can lag the
+app by up to one measurement interval. A sleep-window write that changes the
+mode at once redraws immediately.
 
 ---
 
@@ -117,6 +146,8 @@ judgement.
   noise 30–100 dB, light log₁₀ over 1–10 000 lux.
 - **Light has no band.** It is never judged, so a band would put the marker
   outside it in a bright room and read as a fault no other screen agrees with.
+  For the same reason temperature and humidity lose their bands in day mode,
+  and noise shows the day band (§3.1).
 
 ### Bento — biggest numerals (default)
 
@@ -162,7 +193,7 @@ save the phone and hand it a random 128-bit key (PROTOCOL.md §3).
 
 The normal screen returns after proof, disconnect, USB removal, or the
 three-minute expiration. An image retained after a power cut contains an
-expired secret. See protocol v5 in `src/protocol/PROTOCOL.md`.
+expired code. See protocol v6 in `src/protocol/PROTOCOL.md`.
 
 ### Unavailable
 
@@ -179,7 +210,8 @@ when the picture would change.
 - **Skip when unchanged.** `UiModel` holds exactly what a screen draws, already
   rounded. If the new model equals the last drawn one, the panel is neither
   initialised nor refreshed; it keeps its image unpowered. Comparison covers only what the current screen shows: a change in
-  light does not redraw the face.
+  light does not redraw the face. The judge mode counts where it changes the
+  picture: the face's nudge words and the ledger's bands.
 - **Partial refresh by default**, with a **full refresh every
   `fullRefreshEveryCycles` draws** (default 10, BLE-configurable up to 1000) to
   clear ghosting. The first draw after boot is always full.
@@ -192,7 +224,8 @@ when the picture would change.
 
 | Module | Role |
 |---|---|
-| `src/ui/ComfortEvaluation` | comfort bands and severity — pure C++, host-tested |
+| `src/ui/ComfortEvaluation` | comfort bands and severity, by judge mode — pure C++, host-tested |
+| `src/ui/SleepSchedule` | day or sleep mode from the sleep window and the clock, ported from the app — pure C++, host-tested for parity |
 | `src/ui/UiModel` | rounds readings, judges severities, picks the screen, compares models — pure C++, host-tested |
 | `src/ui/Renderer` | draws the six layouts from a `UiModel`; never reads sensors or BLE |
 | `src/drivers/EpaperDisplay` | panel lifecycle, frame buffer, fonts, full/partial refresh; the only code that sees GxEPD2 |

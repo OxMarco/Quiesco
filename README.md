@@ -99,7 +99,7 @@ flowchart LR
         cycle --> ble["BLE service"]
         flash --> ble
     end
-    ble <-- "encrypted, paired over USB" --> app["Companion app<br/>iOS · Android"]
+    ble <-- "authenticated, enrolled over USB" --> app["Companion app<br/>iOS · Android"]
     app --> db[("SQLite<br/>on your phone")]
 ```
 
@@ -109,7 +109,7 @@ appends the reading to its on-board log, redraws the e-ink panel only if the
 picture changed, then powers the rail down and sleeps. A sensor that fails is
 reported as unavailable, and the cycle carries on without it.
 
-The app pairs with a unit while it is on USB power, using a six-digit code
+The app enrols with a unit while it is on USB power, using a six-digit code
 shown on the panel. After that it sets the clock, downloads the log, charts
 each night and lets you pick the screen or calibrate the sensors.
 
@@ -122,7 +122,7 @@ each night and lets you pick the screen or calibrate the sensors.
 | | |
 |---|---|
 | **MCU** | Nordic nRF52840 on a Seeed XIAO nRF52840 Plus module, Arduino bootloader |
-| **Connectivity** | Bluetooth Low Energy, encrypted after pairing |
+| **Connectivity** | Bluetooth Low Energy; only an enrolled phone can read data or change settings |
 | **Sensors** | CO₂, temperature, humidity, pressure, light, noise |
 | **Display** | GoodDisplay GDEW0154T8D, 1.54″ 152 × 152 e-ink, holds its image unpowered |
 | **Storage** | Winbond W25Q64 8 MB SPI NOR flash (config + sample log) |
@@ -192,7 +192,7 @@ Going deeper:
 - [x] Measurement cycle with all sensors, calibration and CO₂ forced recalibration
 - [x] E-ink screens: Face, Ledger and Bento
 - [x] Persistent sample log on the on-board flash
-- [x] BLE protocol with pairing and encryption
+- [x] BLE protocol with phone enrolment and authentication
 - [x] Companion app: live reading, night charts, calibration
 - [ ] BLE tested on air with iOS and Android
 - [ ] Firmware updates in the field

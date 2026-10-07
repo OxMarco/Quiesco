@@ -1,6 +1,6 @@
 # Quiesco app
 
-The iOS and Android companion for the Quiesco sensor. It pairs with a unit over
+The iOS and Android companion for the Quiesco sensor. It connects to a unit over
 Bluetooth, shows the live reading, downloads the unit's log and charts each
 night. Readings stay on the phone: there is no account and no server.
 
@@ -43,14 +43,17 @@ building for your own phone:
 A free Apple ID is enough to run the app on your own iPhone; the build
 expires after seven days and just needs reinstalling.
 
-### Pair a unit
+### Add a unit
 
 1. Plug the unit into **USB power**: it only accepts new phones while powered.
 2. In the app, tap **Add your Quiesco** and pick your unit.
 3. Enter the **six-digit code** shown on the unit's e-ink panel.
 
-The code never travels over Bluetooth. Once it is proved, the unit saves the
-phone and every later connection is encrypted. You can then unplug the unit.
+The code never travels over Bluetooth. Once it is proved, the unit gives the
+phone its own key, which the app keeps in secure storage; every later
+connection proves it with a challenge-response. You can then unplug the unit. Authentication is not encryption: readings cross
+the radio in the clear, but only an enrolled phone can read them or change
+anything.
 
 ### Check your changes
 
@@ -61,17 +64,18 @@ npx tsc --noEmit && npx expo lint
 
 ### No hardware yet?
 
-A simulator has no Bluetooth. In development builds the welcome screen offers
-**Load sample data**, which adds a demo unit with three generated nights so the
-screens can be checked without hardware.
+A simulator has no Bluetooth. The welcome screen offers **Explore with demo
+data**, which adds a demo unit with three made-up nights so the screens can be
+checked without hardware. It works in release builds too, and the demo can be
+removed in Settings.
 
 ## Layout
 
 | Path | Contents |
 |---|---|
 | `src/protocol/` | The BLE protocol in plain TypeScript: codecs, log packets and CRC, the comfort policy. Mirrors `firmware/src/protocol` and `firmware/src/ui/ComfortEvaluation`. |
-| `src/protocol/__tests__/` | Golden vectors copied from `firmware/src/protocol/PROTOCOL.md`, asserted byte for byte |
-| `src/ble/` | `transport.ts` wraps the Bluetooth library; `link.ts` runs the connect sequence, pairing, confirmed writes and log download; `session.ts` reconnects and syncs |
+| `src/protocol/__tests__/` | Golden vectors, checked against the examples in `firmware/src/protocol/PROTOCOL.md` |
+| `src/ble/` | `transport.ts` wraps the Bluetooth library; `link.ts` runs the connect sequence, enrolment and authentication, confirmed writes and log download; `session.ts` reconnects and syncs |
 | `src/data/` | SQLite store keyed by the unit's serial; the dev-only sample data |
 | `src/app/` | Screens (Expo Router): Room, Nights, Unit tabs; Connect and Calibrate modals |
 | `src/components/`, `src/ui/` | Shared components, metric formatting, night summaries |
@@ -84,9 +88,10 @@ screens can be checked without hardware.
 
 - It scans for the Quiesco service UUID, never for a name, and keys everything
   by the DIS serial number.
-- It refuses to write to a unit whose protocol version it doesn't know.
-- If the phone isn't bonded and the unit reports pairing closed, it asks the
-  user to plug the unit into USB instead of letting the OS prompt fail.
+- It accepts protocol version 6 only, and refuses to talk to any other unit.
+- It authenticates on every connection with the key it was given at
+  enrolment. With no key, or a key the unit rejects, it asks the user to plug
+  the unit into USB and enter the code on the panel again.
 - It writes the time on every connection.
 - It never splits a write, and it reads every config write back to confirm it.
 - The log download keeps the cursor on the phone, reassembles fragments,
