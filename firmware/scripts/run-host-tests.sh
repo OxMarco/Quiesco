@@ -45,6 +45,7 @@ done
   "$doctest_main" \
   "$root/src/services/Scheduler.cpp" \
   "$root/src/ui/ComfortEvaluation.cpp" \
+  "$root/src/ui/SleepSchedule.cpp" \
   "$root/src/ui/UiModel.cpp" \
   "$root/src/dsp/AcousticMetrics.cpp" \
   "$root/src/services/SampleRecord.cpp" \
@@ -115,7 +116,8 @@ runtime_binary="${TMPDIR:-/tmp}/quiesco-runtime-tests"
   "$root/src/services/SampleLogFlashDb.cpp" "$root/src/services/SampleRecord.cpp" \
   "$root/src/services/UnitIdentity.cpp" "$root/src/services/BondTable.cpp" \
   "$root/src/services/Scheduler.cpp" "$root/src/ui/UiModel.cpp" \
-  "$root/src/ui/ComfortEvaluation.cpp" "${flashdb_objects[@]}" \
+  "$root/src/ui/ComfortEvaluation.cpp" "$root/src/ui/SleepSchedule.cpp" \
+  "${flashdb_objects[@]}" \
   -L"$mbedtls_prefix/lib" -lmbedcrypto -o "$runtime_binary"
 "$runtime_binary"
 

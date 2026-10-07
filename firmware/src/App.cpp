@@ -2,6 +2,7 @@
 #include "App.h"
 
 #include <Arduino.h>
+#include <string.h>
 
 #include "diagnostics/BuildConfig.h"
 #include "diagnostics/DebugLog.h"
@@ -11,6 +12,7 @@
 #include "services/CalibrationPolicy.h"
 #include "storage/TraceStore.h"
 #include "ui/Renderer.h"
+#include "ui/SleepSchedule.h"
 
 void App::begin() {
   power_.beginOff();
@@ -71,7 +73,7 @@ void App::step() {
         // Also commits a pending config, so a screen change costs one rail
         // cycle, not two.
         startCycle(nowMs, CycleKind::kRedraw);
-      } else if (configLoaded_ && (configSavePending_ || bondsSavePending_) &&
+      } else if (configLoaded_ && settingsSavePending() &&
                  nowMs >= nextConfigRetryMs_) {
         startCycle(nowMs, CycleKind::kCommitConfig);
       } else if (dumpRequested_) {
@@ -136,8 +138,7 @@ void App::step() {
       break;
 
     case State::kRedrawing:
-      if ((configSavePending_ || bondsSavePending_) &&
-          nowMs >= nextConfigRetryMs_) {
+      if (settingsSavePending() && nowMs >= nextConfigRetryMs_) {
         commitConfig(nowMs);
       }
       redrawRequested_ = false;
@@ -279,9 +280,8 @@ void App::step() {
         state_ = State::kRendering;
         break;
       }
-      persistConfigSaved_ = flashPresent ? saveSettings(nowMs)
-                                         : !configSavePending_ &&
-                                               !bondsSavePending_;
+      persistConfigSaved_ =
+          flashPresent ? saveSettings(nowMs) : !settingsSavePending();
       if (logErasePending_ && logEraseSequence_ == 0) {
         recordDeviceResult(faults_.flash, flashPresent, flash_.timedOut(), false);
         state_ = State::kRendering;
@@ -320,7 +320,8 @@ void App::step() {
       const UiModel model =
           pairingShown_ ? buildPairingModel(pairingCode_)
                         : buildUiModel(reading_, config_.displayScreen,
-                                       config_.temperatureUnit, charging);
+                                       config_.temperatureUnit, charging,
+                                       judgeModeAt(nowMs));
       // The panel keeps its image unpowered, so an unchanged model means no
       // init and no refresh at all this cycle.
       const bool contentChanged =
@@ -427,11 +428,17 @@ bool App::loadSettings(uint64_t nowMs) {
   const bool flashPresent = flash_.begin();
   Config stored;
   BondTable bonds;
+  SleepWindow window;
   uint32_t eraseSequence = 0;
   const bool loaded = flashPresent && configStore_.load(flash_, stored);
   bool ok = flashPresent && configStore_.healthy();
   if (ok) {
     configStore_.loadBonds(flash_, bonds);
+    ok = configStore_.healthy();
+  }
+  if (ok) {
+    // None stored (a unit older than the window) is the default, not a fault.
+    configStore_.loadSleepWindow(flash_, window);
     ok = configStore_.healthy() && configStore_.loadLogErase(flash_, eraseSequence);
   }
   if (ok) {
@@ -440,6 +447,8 @@ bool App::loadSettings(uint64_t nowMs) {
     nextConfigRetryMs_ = nowMs;
     bonds_ = bonds;
     ble_.setBonds(bonds_);
+    sleepWindow_ = window;
+    ble_.publishSleepWindow(sleepWindow_);
     logEraseSequence_ = eraseSequence;
     logErasePending_ = eraseSequence != 0;
     // Boot counter failure must not overwrite an unknown counter on retry.
@@ -470,6 +479,22 @@ void App::commitConfig(uint64_t nowMs) {
 // Writes whatever config and bonds are pending; the flash must be begun.
 // A failure retries in 60 s.
 bool App::saveSettings(uint64_t nowMs) {
+  // An erase command that arrived before the log was mounted is checked now,
+  // before anything is journalled: the newest record must not be later than
+  // the app's up-to sequence, or nothing is erased (PROTOCOL.md §6.11).
+  if (logEraseRequested_) {
+    if (!sampleLog_.mount(flash_)) {
+      nextConfigRetryMs_ = nowMs + 60000;
+      return false;
+    }
+    logEraseRequested_ = false;
+    if (sampleLog_.lastSequence() <= logEraseUpTo_) {
+      startLogErase();
+    } else {
+      DebugLog::event("log erase refused, newest",
+                      static_cast<long>(sampleLog_.lastSequence()));
+    }
+  }
   // Journal deletion before any reset settings/bonds are committed, including
   // an idle config-only cycle. Never erase or append without durable intent.
   if (logErasePending_ && logEraseSequence_ == 0) {
@@ -486,7 +511,11 @@ bool App::saveSettings(uint64_t nowMs) {
   if (bondsSavePending_ && configStore_.saveBonds(flash_, bonds_)) {
     bondsSavePending_ = false;
   }
-  const bool saved = !configSavePending_ && !bondsSavePending_;
+  if (sleepSavePending_ &&
+      configStore_.saveSleepWindow(flash_, sleepWindow_)) {
+    sleepSavePending_ = false;
+  }
+  const bool saved = !settingsSavePending();
   if (!saved) {
     nextConfigRetryMs_ = nowMs + 60000;
   }
@@ -535,10 +564,15 @@ void App::finishPersisting(bool flashPresent) {
 }
 
 void App::takeBleCommands(uint64_t nowMs) {
-  bool eraseLog = false;
-  if (ble_.takePendingFactoryReset(eraseLog)) {
-    factoryReset(nowMs, eraseLog);
+  BleCodec::DeviceControlRequest control;
+  if (ble_.takePendingDeviceControl(control)) {
+    if (control.opcode == BleCodec::kControlFactoryReset) {
+      factoryReset(nowMs, control.eraseLog);
+    } else {
+      requestLogErase(nowMs, control.upToSequence);
+    }
   }
+  applySleepWindow(nowMs);
   uint16_t frcTarget = 0;
   if (ble_.takePendingFrcRequest(frcTarget) && !frcPending_) {
     frcPending_ = true;
@@ -580,10 +614,14 @@ void App::serviceSync(uint64_t nowMs) {
     finishSync();
     return;
   }
-  // Bounded work per step: at most two notifications, and the cursor only
-  // advances after the stack queued one, so backpressure retries the same
-  // packet on the next pass.
-  for (uint8_t attempt = 0; attempt < 2; attempt++) {
+  // One notification per pass, at most one per kSyncPacketGapMs; the cursor
+  // only advances after the stack took the packet, so a refusal retries the
+  // same packet on the next pass.
+  if (nowMs - syncLastSendMs_ < kSyncPacketGapMs) {
+    return;
+  }
+  syncLastSendMs_ = nowMs;
+  {
     if (!syncEndPending_ && syncBatchCount_ == 0) {
       uint8_t wanted = BleCodec::recordsPerPacket(syncAttPayload_);
       if (wanted == 0) {
@@ -696,15 +734,78 @@ void App::factoryReset(uint64_t nowMs, bool eraseLog) {
   frcPending_ = false;  // also ends a running soak (see kFrcSoaking)
   frcState_ = BleCodec::kFrcIdle;
   frcCorrectionPpm_ = 0;
+  sleepWindow_ = defaultSleepWindow();
+  ble_.publishSleepWindow(sleepWindow_);
+  sleepSavePending_ = true;
   if (eraseLog) {
-    logErasePending_ = true;
-    syncAbort_ = true;
-    syncPending_ = false;
+    logEraseRequested_ = false;  // the reset erases whatever the app asked
+    startLogErase();
   }
   // Unconditional, unlike a config write: a reset that lands mid-cycle still
   // gets its own cycle to redraw the defaults and run the erase.
   sampleRequested_ = true;
   publishStatus();
+}
+
+// The erase command (PROTOCOL.md §6.11): the factory reset's erase without
+// the reset. Refused, with nothing changed, when the log holds a record later
+// than upToSequence, so the app cannot erase what it has not downloaded.
+void App::requestLogErase(uint64_t nowMs, uint32_t upToSequence) {
+  if (logErasePending_ || logEraseRequested_ || sampleLog_.erasing() ||
+      state_ == State::kErasingLog) {
+    DebugLog::event("log erase ignored (already erasing)");
+    return;
+  }
+  if (sampleLog_.mounted()) {
+    if (sampleLog_.lastSequence() > upToSequence) {
+      DebugLog::event("log erase refused, newest",
+                      static_cast<long>(sampleLog_.lastSequence()));
+      return;
+    }
+    startLogErase();
+  } else {
+    // Only before the first record of this boot: saveSettings() decides.
+    logEraseRequested_ = true;
+    logEraseUpTo_ = upToSequence;
+  }
+  nextConfigRetryMs_ = nowMs;
+  sampleRequested_ = true;  // the erase rides a measurement, as on reset
+  publishStatus();
+}
+
+// Same journalled, power-loss-safe path for both: saveSettings() records the
+// intent and the sequence floor, kPersisting erases.
+void App::startLogErase() {
+  logErasePending_ = true;
+  syncAbort_ = true;  // any running download ends
+  syncPending_ = false;
+}
+
+void App::applySleepWindow(uint64_t nowMs) {
+  SleepWindow window;
+  if (!ble_.takePendingSleepWindow(window)) {
+    return;
+  }
+  uint8_t before[SleepWindow::kBytes];
+  uint8_t after[SleepWindow::kBytes];
+  encodeSleepWindow(sleepWindow_, before);
+  encodeSleepWindow(window, after);
+  ble_.publishSleepWindow(window);
+  if (memcmp(before, after, sizeof before) == 0) {
+    return;  // the app rewrites the offset on every connect
+  }
+  const JudgeMode modeBefore = judgeModeAt(nowMs);
+  sleepWindow_ = window;
+  sleepSavePending_ = true;
+  nextConfigRetryMs_ = nowMs;
+  // Redraw only when the verdicts change now; otherwise the next
+  // measurement picks the window up.
+  redrawRequested_ = redrawRequested_ || judgeModeAt(nowMs) != modeBefore;
+}
+
+JudgeMode App::judgeModeAt(uint64_t nowMs) const {
+  return SleepSchedule::panelJudgeMode(sleepWindow_, wallClock_.synced(),
+                                       wallClock_.epochMsAt(nowMs));
 }
 
 // Generous backstops, not timing: each state's own deadline normally ends it

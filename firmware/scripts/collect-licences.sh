@@ -64,6 +64,11 @@ done < <(grep -Ev '^\s*(#|$)' "$root/dependencies.lock")
 copy_licences "$root/src/third_party/flashdb" FlashDB
 cp "$root/src/third_party/flashdb/README.quiesco.md" "$out/FlashDB/CHANGES.md"
 copy_licences "$root/src/ui/fonts" Fredoka
+# The installed core ships no licence texts; licences/ holds them.
+mkdir -p "$out/ArduinoCore-mbed" "$out/Mbed-OS"
+cp "$root/licences/LGPL-2.1.txt" "$out/ArduinoCore-mbed/LICENSE"
+cp "$root/licences/Apache-2.0.txt" "$out/Mbed-OS/LICENSE"
+cp "$root/licences/Nordic-5-Clause.txt" "$out/Mbed-OS/LICENSE-Nordic"
 cp "$root/THIRD_PARTY_NOTICES.md" "$out/"
 
 if [ "$failed" -ne 0 ]; then

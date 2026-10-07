@@ -6,6 +6,7 @@
 #include "../model/Config.h"
 #include "../model/FaultStatus.h"
 #include "../model/Reading.h"
+#include "../model/SleepWindow.h"
 #include "../services/SampleRecord.h"
 #include "../platform/HmacSha256.h"
 #include "LittleEndian.h"
@@ -15,6 +16,9 @@ namespace BleCodec {
 namespace {
 
 namespace le = LittleEndian;
+
+static_assert(kSleepWindowBytes == SleepWindow::kBytes,
+              "the sleep window layout lives in model/SleepWindow.h");
 
 // Log packet header byte offsets (kLogHeaderBytes total).
 constexpr uint32_t kOffType = 0;
@@ -254,14 +258,36 @@ bool decodeDeviceName(const uint8_t* data, uint16_t length, char* out) {
 }
 
 bool decodeDeviceControl(const uint8_t* data, uint16_t length,
-                         bool& eraseLog) {
-  if (length != kDeviceControlBytes || data[0] != kControlFactoryReset ||
-      (data[1] & ~kResetEraseLog) != 0 ||
+                         DeviceControlRequest& request) {
+  if (length < kDeviceControlBytes ||
       le::getU16(data + 2) != kFactoryResetConfirm) {
     return false;
   }
-  eraseLog = (data[1] & kResetEraseLog) != 0;
-  return true;
+  if (data[0] == kControlFactoryReset && length == kDeviceControlBytes &&
+      (data[1] & ~kResetEraseLog) == 0) {
+    request.opcode = kControlFactoryReset;
+    request.eraseLog = (data[1] & kResetEraseLog) != 0;
+    request.upToSequence = 0;
+    return true;
+  }
+  if (data[0] == kControlEraseLog && length == kEraseLogControlBytes &&
+      data[1] == 0) {
+    request.opcode = kControlEraseLog;
+    request.eraseLog = true;
+    request.upToSequence = le::getU32(data + 4);
+    return true;
+  }
+  return false;
+}
+
+void encodeSleepWindow(const SleepWindow& window,
+                       uint8_t out[kSleepWindowBytes]) {
+  ::encodeSleepWindow(window, out);
+}
+
+bool decodeSleepWindow(const uint8_t* data, uint16_t length,
+                       SleepWindow& window) {
+  return ::decodeSleepWindow(data, length, window);
 }
 
 bool decodeLogSyncControl(const uint8_t* data, uint16_t length,

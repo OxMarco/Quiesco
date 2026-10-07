@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include <algorithm>
 #include <cstring>
+#include <vector>
 #include "doctest.h"
 #include <Arduino.h>
 #include <ArduinoBLE.h>
@@ -27,6 +28,8 @@ constexpr char kAuth[] = "7A1E0010-8E6F-4A7A-AE32-515549455343";
 constexpr char kInterval[] = "7A1E0001-8E6F-4A7A-AE32-515549455343";
 constexpr char kReset[] = "7A1E000D-8E6F-4A7A-AE32-515549455343";
 constexpr char kReading[] = "7A1E0003-8E6F-4A7A-AE32-515549455343";
+constexpr char kStatus[] = "7A1E0004-8E6F-4A7A-AE32-515549455343";
+constexpr char kSleep[] = "7A1E0012-8E6F-4A7A-AE32-515549455343";
 const uint8_t key[16] = {1, 2, 3};
 BondTable knownBonds() {
   BondTable bonds;
@@ -243,6 +246,132 @@ TEST_CASE("app keeps erase intent until append") {
   SampleLog log; SampleLogCursor cursor; SampleRecord record;
   CHECK_MESSAGE((log.startRead(flash, 0, cursor) && log.readNext(flash, cursor, record) && record.sequence == 42),
                 "sequence floor survives a completely erased partition and reboot");
+}
+uint32_t newestSequence() { return LittleEndian::getU32(FakeBle::read(kStatus).data() + 12); }
+bool eraseFlag() { return (FakeBle::read(kStatus)[16] & 4) != 0; }
+void writeErase(uint32_t upTo) {
+  uint8_t erase[8] = {2, 0, 0xC7, 0xFA};
+  LittleEndian::putU32(erase + 4, upTo);
+  FakeBle::write(kReset, erase, sizeof erase);
+}
+TEST_CASE("app erase command") {
+  FlashSim::reset(); ticks = 0;
+  W25Q64Flash flash; flash.begin(); ConfigStore store;
+  Config saved = defaultConfig(); saved.measurementIntervalSeconds = 60;
+  CHECK_MESSAGE(store.save(flash, saved), "seed config");
+  CHECK_MESSAGE(store.saveBonds(flash, knownBonds()), "seed phone key");
+  SleepWindow window = defaultSleepWindow(); window.flags = 1; window.utcOffsetMinutes = 120;
+  CHECK_MESSAGE(store.saveSleepWindow(flash, window), "seed sleep window");
+  SampleLog original; Reading reading;
+  for (int i = 0; i < 50; ++i) CHECK_MESSAGE(original.append(flash, reading), "seed log");
+  App app; app.begin(); step(app, 1001); run(app, 20);
+  FakeBle::connect(20); step(app); prove(); step(app);
+  const uint32_t newest = newestSequence();
+  CHECK_MESSAGE(newest == 51, "first cycle appended after the seeded records");
+  const auto before = FlashSim::sampleSectorErases();
+
+  // A record later than up-to: refused, nothing erased, bit 2 never set.
+  writeErase(newest - 1);
+  for (int i = 0; i < 60; ++i) {
+    step(app);
+    CHECK_MESSAGE(!eraseFlag(), "refused erase never shows as pending");
+  }
+  CHECK_MESSAGE(FlashSim::sampleSectorErases() == before, "refused erase erases nothing");
+  ConfigStore journal; uint32_t floor = 99;
+  CHECK_MESSAGE((journal.loadLogErase(flash, floor) && floor == 0), "refused erase journals nothing");
+  // Wrong lengths and the factory reset's 4-byte form with opcode 2 are ignored.
+  const uint8_t shortErase[4] = {2, 0, 0xC7, 0xFA};
+  FakeBle::write(kReset, shortErase, sizeof shortErase);
+  uint8_t longErase[9] = {2, 0, 0xC7, 0xFA, 0xFF, 0xFF, 0xFF, 0xFF, 0};
+  FakeBle::write(kReset, longErase, sizeof longErase);
+  run(app, 30);
+  CHECK_MESSAGE((!eraseFlag() && FlashSim::sampleSectorErases() == before), "malformed erase ignored");
+
+  // Up to the newest record: accepted at once, then the journalled erase.
+  const uint32_t current = newestSequence();
+  writeErase(current);
+  step(app);
+  CHECK_MESSAGE(eraseFlag(), "accepted erase sets status bit 2 at once");
+  for (int i = 0; i < 250 && FlashSim::sampleSectorErases() == before; ++i) step(app);
+  CHECK_MESSAGE(FlashSim::sampleSectorErases() > before, "erase command starts the erase");
+  ConfigStore started;
+  CHECK_MESSAGE((started.loadLogErase(flash, floor) && floor == current + 1), "intent and floor durable first");
+  const uint32_t sectors = FlashStorageLayout::kSampleDbBytes / FlashStorageLayout::kSectorBytes;
+  run(app, sectors + 40);
+  CHECK_MESSAGE(!eraseFlag(), "bit 2 clears when the erase is done");
+  ConfigStore finished;
+  CHECK_MESSAGE((finished.loadLogErase(flash, floor) && floor == 0), "journal cleared after the fresh record");
+  CHECK_MESSAGE(newestSequence() == current + 1, "sequences continue");
+  SampleLog log; SampleLogCursor cursor; SampleRecord record;
+  CHECK_MESSAGE((log.startRead(flash, 0, cursor) && log.readNext(flash, cursor, record) &&
+                 record.sequence == current + 1 && !log.readNext(flash, cursor, record)),
+                "only the fresh record remains");
+  // Nothing else changed: config, phone keys, sleep window.
+  ConfigStore check; Config config; BondTable bonds; SleepWindow kept;
+  CHECK_MESSAGE((check.load(flash, config) && config.measurementIntervalSeconds == 60), "config kept");
+  CHECK_MESSAGE((check.loadBonds(flash, bonds) && bonds.count() == 1), "phone keys kept");
+  CHECK_MESSAGE((check.loadSleepWindow(flash, kept) && kept.utcOffsetMinutes == 120), "sleep window kept");
+  FakeBle::disconnect();
+}
+TEST_CASE("app erase command before the log is mounted") {
+  FlashSim::reset(); ticks = 0;
+  W25Q64Flash flash; flash.begin(); ConfigStore store;
+  CHECK_MESSAGE(store.save(flash, defaultConfig()), "seed config");
+  CHECK_MESSAGE(store.saveBonds(flash, knownBonds()), "seed phone key");
+  SampleLog original; Reading reading;
+  for (int i = 0; i < 30; ++i) CHECK_MESSAGE(original.append(flash, reading), "seed log");
+  const auto before = FlashSim::sampleSectorErases();
+  // Authenticate between loading settings and the first append: the app
+  // only knows "up to 0", which the 30 records on flash must refuse.
+  App app; app.begin(); step(app, 1001); step(app);  // settings loaded, BLE up
+  FakeBle::connect(21); step(app); prove(); step(app);
+  writeErase(0);  // reaches App before this cycle's first append
+  run(app, 80);
+  CHECK_MESSAGE(FlashSim::sampleSectorErases() == before, "unmounted log is checked before erasing");
+  CHECK_MESSAGE(!eraseFlag(), "refused erase leaves bit 2 clear");
+  CHECK_MESSAGE(newestSequence() >= 31, "history kept");
+  FakeBle::disconnect();
+}
+TEST_CASE("app sleep window") {
+  FlashSim::reset(); ticks = 0;
+  W25Q64Flash flash; flash.begin(); ConfigStore store;
+  CHECK_MESSAGE(store.save(flash, defaultConfig()), "seed config");
+  CHECK_MESSAGE(store.saveBonds(flash, knownBonds()), "seed phone key");
+  const std::vector<uint8_t> defaults = {0, 0, 0, 0, 0x82, 0x05, 0xA4, 0x01, 0xFF, 0xFF, 0xFF, 0xFF};
+  const std::vector<uint8_t> golden = {1, 0, 0x78, 0, 0x82, 0x05, 0xA4, 0x01, 0xFF, 0xFF, 0xFF, 0xFF};
+  {
+    App app; app.begin(); step(app, 1001); run(app, 20);
+    FakeBle::connect(22); step(app); prove(); step(app);
+    CHECK_MESSAGE(FakeBle::read(kSleep) == defaults, "fresh unit reads the default window");
+    FakeBle::write(kSleep, golden.data(), static_cast<int>(golden.size()));
+    run(app, 40);
+    CHECK_MESSAGE(FakeBle::read(kSleep) == golden, "valid write applied");
+    std::vector<uint8_t> bad = golden; bad[10] = 0x00; bad[11] = 0x01;  // only one weekend 0xFFFF
+    FakeBle::write(kSleep, bad.data(), static_cast<int>(bad.size()));
+    step(app);
+    CHECK_MESSAGE(FakeBle::read(kSleep) == golden, "invalid write reverts");
+    bad = golden; bad.push_back(0);  // 13 bytes
+    FakeBle::write(kSleep, bad.data(), static_cast<int>(bad.size()));
+    step(app);
+    CHECK_MESSAGE(FakeBle::read(kSleep) == golden, "over-long write reverts");
+    ConfigStore check; SleepWindow stored;
+    CHECK_MESSAGE((check.loadSleepWindow(flash, stored) && stored.followsApp() &&
+                   stored.utcOffsetMinutes == 120), "window saved to flash");
+    FakeBle::disconnect();
+  }
+  {
+    App reboot; reboot.begin(); step(reboot, 1001); run(reboot, 20);
+    FakeBle::connect(23); step(reboot); prove(); step(reboot);
+    CHECK_MESSAGE(FakeBle::read(kSleep) == golden, "window survives a reboot");
+    const uint8_t reset[4] = {1, 0, 0xC7, 0xFA};
+    FakeBle::write(kReset, reset, sizeof reset);
+    run(reboot, 60);
+    CHECK_MESSAGE(FakeBle::read(kSleep) == defaults, "factory reset restores the default window");
+    ConfigStore check; SleepWindow stored;
+    CHECK_MESSAGE((check.loadSleepWindow(flash, stored) && !stored.followsApp() &&
+                   stored.utcOffsetMinutes == 0), "default window saved by the reset");
+    FakeBle::disconnect();
+  }
 }
 TEST_CASE("app retries config read") {
   FlashSim::reset(); ticks = 0;

@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "../model/Config.h"
+#include "../model/SleepWindow.h"
 #include "../third_party/flashdb/flashdb.h"
 
 class BondTable;
@@ -22,6 +23,12 @@ class ConfigStore {
   // means none stored or unreadable; the table is left empty.
   bool loadBonds(W25Q64Flash& flash, BondTable& bonds);
   bool saveBonds(W25Q64Flash& flash, const BondTable& bonds);
+
+  // The sleep window, under its own key so Config's version stays put.
+  // Sets the default when none is stored or the record is not valid; false
+  // only when nothing valid was read (check healthy() for a storage fault).
+  bool loadSleepWindow(W25Q64Flash& flash, SleepWindow& window);
+  bool saveSleepWindow(W25Q64Flash& flash, const SleepWindow& window);
 
   bool healthy() const { return healthy_; }
   // 0 means no pending erase; otherwise the first sequence after deletion.

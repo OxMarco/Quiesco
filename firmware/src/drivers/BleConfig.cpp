@@ -37,6 +37,7 @@ constexpr char kCalibrationStateUuid[] =
 constexpr char kDiagnosticsUuid[] = "7A1E000F-8E6F-4A7A-AE32-515549455343";
 constexpr char kAuthUuid[] = "7A1E0010-8E6F-4A7A-AE32-515549455343";
 constexpr char kEnrolKeyUuid[] = "7A1E0011-8E6F-4A7A-AE32-515549455343";
+constexpr char kSleepWindowUuid[] = "7A1E0012-8E6F-4A7A-AE32-515549455343";
 
 // Bluetooth SIG Device Information Service and its string characteristics.
 constexpr char kDisServiceUuid[] = "180A";
@@ -104,14 +105,19 @@ BLECharacteristic calibrationStateCharacteristic(
     BleCodec::kCalibrationStateBytes, true);
 BLECharacteristic diagnosticsCharacteristic(
     kDiagnosticsUuid, BLERead | kProtected, BleCodec::kDiagnosticsBytes, true);
+// Sized for the longest opcode (log erase, 8 bytes); the codec checks each
+// opcode's own length, so a 4-byte factory reset still arrives exact.
 BLECharacteristic deviceControlCharacteristic(
     kDeviceControlUuid, BLEWrite | kProtected,
-    BleCodec::kDeviceControlBytes + kSpareByte, false);
+    BleCodec::kMaxDeviceControlBytes + kSpareByte, false);
 BLECharacteristic authCharacteristic(kAuthUuid, BLERead | BLEWrite,
                                      BleCodec::kAuthProveBytes + kSpareByte,
                                      false);
 BLECharacteristic enrolKeyCharacteristic(kEnrolKeyUuid, BLERead,
                                          BleCodec::kEnrolKeyBytes, true);
+BLECharacteristic sleepWindowCharacteristic(
+    kSleepWindowUuid, BLERead | BLEWrite | kProtected,
+    BleCodec::kSleepWindowBytes + kSpareByte, false);
 
 BLEService disService(kDisServiceUuid);
 BLECharacteristic disManufacturer(kDisManufacturerUuid, BLERead,
@@ -138,6 +144,7 @@ enum WriteSlot : uint8_t {
   kSlotSyncControl,
   kSlotCalControl,
   kSlotDeviceControl,
+  kSlotSleepWindow,
   kSlotAuth,  // handled by BleConfig::poll itself, never gated
   kSlotCount,
 };
@@ -226,6 +233,7 @@ ProtectedValue protectedValues[] = {
     {&nameCharacteristic, {}, 0},
     {&calibrationStateCharacteristic, {}, BleCodec::kCalibrationStateBytes},
     {&diagnosticsCharacteristic, {}, BleCodec::kDiagnosticsBytes},
+    {&sleepWindowCharacteristic, {}, BleCodec::kSleepWindowBytes},
 };
 
 void setProtected(BLECharacteristic& characteristic, const uint8_t* value,
@@ -318,6 +326,7 @@ bool BleConfig::begin(const Config& config, const char* serialNumber,
   service.addCharacteristic(diagnosticsCharacteristic);
   service.addCharacteristic(authCharacteristic);
   service.addCharacteristic(enrolKeyCharacteristic);
+  service.addCharacteristic(sleepWindowCharacteristic);
   BLE.addService(service);
   intervalCharacteristic.setEventHandler(BLEWritten, written<kSlotInterval>);
   configCharacteristic.setEventHandler(BLEWritten, written<kSlotCoreConfig>);
@@ -332,10 +341,13 @@ bool BleConfig::begin(const Config& config, const char* serialNumber,
                                            written<kSlotCalControl>);
   deviceControlCharacteristic.setEventHandler(BLEWritten,
                                               written<kSlotDeviceControl>);
+  sleepWindowCharacteristic.setEventHandler(BLEWritten,
+                                            written<kSlotSleepWindow>);
   authCharacteristic.setEventHandler(BLEWritten, written<kSlotAuth>);
   clearEnrolKey();
   newChallenge();
   publishConfig(config);
+  publishSleepWindow(sleepWindow_);
   active_ = true;
   publishEpoch(epochMs_);
   advertising_ = BLE.advertise() != 0;
@@ -662,11 +674,27 @@ bool BleConfig::takePendingFrcRequest(uint16_t& targetPpm) {
          BleCodec::decodeCalibrationControl(wire, length, targetPpm);
 }
 
-bool BleConfig::takePendingFactoryReset(bool& eraseLog) {
+bool BleConfig::takePendingDeviceControl(
+    BleCodec::DeviceControlRequest& request) {
   uint8_t wire[kMaxWriteBytes];
   uint8_t length = 0;
   return takeWrite(kSlotDeviceControl, wire, length) &&
-         BleCodec::decodeDeviceControl(wire, length, eraseLog);
+         BleCodec::decodeDeviceControl(wire, length, request);
+}
+
+bool BleConfig::takePendingSleepWindow(SleepWindow& window) {
+  uint8_t wire[kMaxWriteBytes];
+  uint8_t length = 0;
+  if (!takeWrite(kSlotSleepWindow, wire, length)) {
+    return false;
+  }
+  SleepWindow candidate = sleepWindow_;
+  if (!BleCodec::decodeSleepWindow(wire, length, candidate)) {
+    publishSleepWindow(sleepWindow_);  // revert to the value in use
+    return false;
+  }
+  window = candidate;
+  return true;
 }
 
 bool BleConfig::notifyLogData(const uint8_t* data, uint16_t length) {
@@ -744,6 +772,13 @@ void BleConfig::publishEpoch(uint64_t epochMs) {
   uint8_t out[8];
   LittleEndian::putU64(out, epochMs);
   setProtected(epochCharacteristic, out, sizeof out);
+}
+
+void BleConfig::publishSleepWindow(const SleepWindow& window) {
+  sleepWindow_ = window;
+  uint8_t out[BleCodec::kSleepWindowBytes];
+  BleCodec::encodeSleepWindow(window, out);
+  setProtected(sleepWindowCharacteristic, out, sizeof out);
 }
 
 void BleConfig::publishStatus(const BleCodec::StatusInfo& info) {

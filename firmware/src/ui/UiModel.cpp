@@ -70,9 +70,10 @@ uint8_t batteryPercentFromVolts(float volts) {
 }
 
 UiModel buildUiModel(const Reading& reading, uint8_t configuredScreen,
-                     uint8_t temperatureUnit, bool charging) {
+                     uint8_t temperatureUnit, bool charging, JudgeMode mode) {
   UiModel model;
   model.fahrenheit = temperatureUnit == TEMPERATURE_UNIT_FAHRENHEIT;
+  model.mode = mode;
 
   // Judged on the rounded °C value whatever the unit, so the verdict never
   // depends on how the digits are written.
@@ -85,22 +86,24 @@ UiModel buildUiModel(const Reading& reading, uint8_t configuredScreen,
     model.validMask |= 1u << i;
     const float value = metricValue(reading, metric);
     judged[i] = roundToInt(value);
-    model.severities[i] = bandSeverity(metric, static_cast<float>(judged[i]));
+    model.severities[i] =
+        bandSeverity(metric, static_cast<float>(judged[i]), mode);
     model.values[i] = metric == UiMetric::kTemperature && model.fahrenheit
                           ? roundToInt(value * 9.0f / 5.0f + 32.0f)
                           : judged[i];
   }
 
   // Worst valid metric wins the face; enum order is the tie-break priority.
+  // An unjudged metric is always kOk, so it never wins.
   for (uint8_t i = 0; i < kUiMetricCount; ++i) {
     const UiMetric metric = static_cast<UiMetric>(i);
-    if (metric == UiMetric::kLight || !(model.validMask & (1u << i))) {
+    if (!isJudged(metric, mode) || !(model.validMask & (1u << i))) {
       continue;
     }
     if (model.severities[i] > model.faceSeverity) {
       model.faceSeverity = model.severities[i];
       model.worstMetric = metric;
-      model.worstAbove = judged[i] > metricBand(metric).okHi;
+      model.worstAbove = judged[i] > metricBand(metric, mode).okHi;
     }
   }
 
@@ -145,12 +148,19 @@ bool hasSameRenderedContent(const UiModel& a, const UiModel& b) {
       if (a.faceSeverity == Severity::kOk) {
         return true;
       }
+      if (a.mode != b.mode) {
+        return false;  // the nudge words differ by mode
+      }
       const uint8_t ai = static_cast<uint8_t>(a.worstMetric);
       const uint8_t bi = static_cast<uint8_t>(b.worstMetric);
       return a.worstMetric == b.worstMetric && a.worstAbove == b.worstAbove &&
              a.values[ai] == b.values[bi];
     }
     case ScreenId::kLedger:
+      if (a.mode != b.mode) {
+        return false;  // the gauges' comfort bands differ by mode
+      }
+      return a.validMask == b.validMask && haveSameMetrics(a, b);
     case ScreenId::kBento:
       if (a.validMask != b.validMask) {
         return false;

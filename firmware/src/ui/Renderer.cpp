@@ -130,7 +130,8 @@ void printCallout(EpaperDisplay& d, const char* name, const char* value,
   printDeg(d, unit, 2, -9, kBlack);
 }
 
-const char* nudgeText(UiMetric metric, Severity severity, bool above) {
+const char* nudgeText(UiMetric metric, Severity severity, bool above,
+                      JudgeMode mode) {
   const bool bad = severity == Severity::kBad;
   switch (metric) {
     case UiMetric::kCo2:
@@ -142,6 +143,8 @@ const char* nudgeText(UiMetric metric, Severity severity, bool above) {
       if (above) return bad ? "too humid" : "a bit damp";
       return bad ? "too dry" : "a bit dry";
     case UiMetric::kNoise:
+      // By day noise is judged for hearing, so the words do not mention sleep.
+      if (mode == JudgeMode::kDay) return bad ? "very loud" : "loud";
       return bad ? "too loud" : "a bit loud";
     case UiMetric::kLight:
       break;  // never drives the face
@@ -174,7 +177,9 @@ void drawFace(EpaperDisplay& d, const UiModel& m) {
     printCallout(d, m.worstMetric == UiMetric::kCo2 ? "CO2 " : "", value,
                  metricUnit(m.worstMetric, m.fahrenheit), 76, 126);
     d.setFont(Font::kRegular9);
-    printCentered(d, nudgeText(m.worstMetric, m.faceSeverity, m.worstAbove),
+    printCentered(d,
+                  nudgeText(m.worstMetric, m.faceSeverity, m.worstAbove,
+                            m.mode),
                   76, 145, 2, -9, kBlack);
   }
 }
@@ -246,11 +251,11 @@ void drawLedgerRow(EpaperDisplay& d, const UiModel& m, const LedgerRow& r,
   const int y = base + 9;
   dottedHLine(d, kGaugeX0, kGaugeX1, y);  // full scale
 
-  // Light is the exception: ComfortEvaluation never judges it, so drawing it a
-  // band would put the marker outside one in a bright room and read as a fault
-  // that no other screen agrees with.
-  if (r.metric != UiMetric::kLight) {
-    const MetricBand& band = metricBand(r.metric);
+  // An unjudged metric gets no band: light always, temperature and humidity
+  // by day. A band would put the marker outside it and read as a fault that
+  // no other screen agrees with.
+  if (isJudged(r.metric, m.mode)) {
+    const MetricBand& band = metricBand(r.metric, m.mode);
     const float bandLo = band.okLo < r.lo ? r.lo : band.okLo;
     const float bandHi = band.okHi > r.hi ? r.hi : band.okHi;
     const int bx0 = gaugeX(r, bandLo), bx1 = gaugeX(r, bandHi);

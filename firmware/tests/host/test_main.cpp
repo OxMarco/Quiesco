@@ -10,7 +10,10 @@
 #include "model/Reading.h"
 #include "services/SampleRecord.h"
 #include "services/Scheduler.h"
+#include "model/SleepWindow.h"
+#include "parity/sleep_parity_vectors.h"
 #include "ui/ComfortEvaluation.h"
+#include "ui/SleepSchedule.h"
 #include "ui/UiModel.h"
 
 namespace {
@@ -223,6 +226,183 @@ TEST_CASE("fahrenheit display") {
   // Other metrics are untouched.
   const uint8_t h = static_cast<uint8_t>(UiMetric::kHumidity);
   CHECK_EQ(c.values[h], f.values[h]);
+}
+
+// The app's judge-mode tests, run against the firmware: every case of
+// parity/sleep_parity_vectors.h is the app's own judgeMode (sleep.ts) swept
+// over nine days in 15 s steps under a fixed UTC offset, covering bedtimes
+// before and after midnight, weekend nights and the rounded 60 min lead.
+TEST_CASE("judge mode parity with the app") {
+  for (const SleepParity::Case& c : SleepParity::kCases) {
+    CAPTURE(c.name);
+    SleepWindow window = defaultSleepWindow();
+    window.flags = SleepWindow::kFlagFollowApp;
+    window.utcOffsetMinutes = c.offsetMin;
+    window.weekdayBedMin = c.bed;
+    window.weekdayWakeMin = c.wake;
+    window.weekendBedMin = c.weekendBed;
+    window.weekendWakeMin = c.weekendWake;
+    REQUIRE(isValidSleepWindow(window));
+    uint32_t next = 0;
+    uint8_t expected = 0;
+    uint32_t mismatches = 0;
+    for (uint32_t step = 0; step < SleepParity::kSteps; ++step) {
+      if (next < c.count && c.changes[next].step == step) {
+        expected = c.changes[next++].sleep;
+      }
+      const uint64_t epochMs =
+          SleepParity::kStartMs + uint64_t{step} * SleepParity::kStepMs;
+      const bool sleep =
+          SleepSchedule::judgeMode(epochMs, window) == JudgeMode::kSleep;
+      if (sleep != (expected == 1)) {
+        if (mismatches++ == 0) {
+          CAPTURE(step);
+          CHECK_MESSAGE(false, "first mismatch with the app");
+        }
+      }
+    }
+    CHECK_EQ(uint32_t{0}, mismatches);
+  }
+}
+
+TEST_CASE("judge mode around bedtime and wake") {
+  SleepWindow window = defaultSleepWindow();  // 23:30-07:00
+  window.flags = SleepWindow::kFlagFollowApp;
+  // Thursday 2026-10-01, UTC.
+  const uint64_t day = 1790812800000ULL;
+  const uint64_t minute = 60000;
+  auto at = [&](uint64_t ms) { return SleepSchedule::judgeMode(ms, window); };
+  CHECK(at(day + 12 * 60 * minute) == JudgeMode::kDay);
+  // The lead is rounded like the app's Math.round: 60.5 min before is day,
+  // a second later is sleep.
+  const uint64_t bed = day + (23 * 60 + 30) * minute;
+  CHECK(at(bed - 60 * minute - 30000) == JudgeMode::kDay);
+  CHECK(at(bed - 60 * minute - 29000) == JudgeMode::kSleep);
+  CHECK(at(bed) == JudgeMode::kSleep);
+  // Across midnight until wake, then day again.
+  CHECK(at(day + 24 * 60 * minute + 3 * 60 * minute) == JudgeMode::kSleep);
+  CHECK(at(day + 24 * 60 * minute + 7 * 60 * minute - 1) == JudgeMode::kSleep);
+  CHECK(at(day + 24 * 60 * minute + 7 * 60 * minute) == JudgeMode::kDay);
+
+  // A changed offset moves every boundary with it, as a daylight-saving
+  // change does once the app rewrites the offset: 22:00 UTC is 23:00 at
+  // UTC+60, inside the lead, and 21:00 at UTC-60.
+  const uint64_t tenPm = day + 22 * 60 * minute;
+  CHECK(at(tenPm) == JudgeMode::kDay);
+  window.utcOffsetMinutes = 60;
+  CHECK(at(tenPm) == JudgeMode::kSleep);
+  window.utcOffsetMinutes = -60;
+  CHECK(at(tenPm) == JudgeMode::kDay);
+  // 06:30 UTC: still asleep at UTC+0, awake at UTC+60 (07:30 local).
+  const uint64_t morning = day + 24 * 60 * minute + 6 * 60 * minute + 30 * minute;
+  window.utcOffsetMinutes = 0;
+  CHECK(at(morning) == JudgeMode::kSleep);
+  window.utcOffsetMinutes = 60;
+  CHECK(at(morning) == JudgeMode::kDay);
+
+  // Weekend times apply to Friday and Saturday nights only.
+  window.utcOffsetMinutes = 0;
+  window.weekendBedMin = 60;    // 01:00
+  window.weekendWakeMin = 600;  // 10:00
+  const uint64_t friday = day + 24 * 60 * minute;
+  CHECK(at(friday + (23 * 60 + 30) * minute) == JudgeMode::kDay);
+  CHECK(at(friday + (24 * 60 + 30) * minute) == JudgeMode::kSleep);
+  CHECK(at(friday + (24 * 60 + 9 * 60 + 59) * minute) == JudgeMode::kSleep);
+  // Thursday night keeps the weekday window: awake at 07:30 on Friday.
+  CHECK(at(friday + (7 * 60 + 30) * minute) == JudgeMode::kDay);
+}
+
+TEST_CASE("panel judge mode falls back to sleep bands") {
+  SleepWindow window = defaultSleepWindow();
+  const uint64_t noon = 1790812800000ULL + 12 * 3600000ULL;
+  // Flag clear: sleep bands all day, as before the window existed.
+  CHECK(SleepSchedule::panelJudgeMode(window, true, noon) == JudgeMode::kSleep);
+  window.flags = SleepWindow::kFlagFollowApp;
+  CHECK(SleepSchedule::panelJudgeMode(window, true, noon) == JudgeMode::kDay);
+  // An unsynced clock cannot tell the hour.
+  CHECK(SleepSchedule::panelJudgeMode(window, false, noon) == JudgeMode::kSleep);
+  CHECK(SleepSchedule::panelJudgeMode(window, true, 0) == JudgeMode::kSleep);
+}
+
+TEST_CASE("day mode bands") {
+  CHECK(isJudged(UiMetric::kCo2, JudgeMode::kDay));
+  CHECK(isJudged(UiMetric::kNoise, JudgeMode::kDay));
+  CHECK(!isJudged(UiMetric::kTemperature, JudgeMode::kDay));
+  CHECK(!isJudged(UiMetric::kHumidity, JudgeMode::kDay));
+  CHECK(!isJudged(UiMetric::kLight, JudgeMode::kDay));
+  CHECK(!isJudged(UiMetric::kLight, JudgeMode::kSleep));
+  // CO2 keeps its band.
+  CHECK(Severity::kWarn == bandSeverity(UiMetric::kCo2, 801.0f, JudgeMode::kDay));
+  CHECK(Severity::kBad == bandSeverity(UiMetric::kCo2, 1201.0f, JudgeMode::kDay));
+  // Noise on the hearing band, the app's DAY_NOISE: warn above 70, bad above 85.
+  CHECK(Severity::kOk == bandSeverity(UiMetric::kNoise, 70.0f, JudgeMode::kDay));
+  CHECK(Severity::kWarn == bandSeverity(UiMetric::kNoise, 71.0f, JudgeMode::kDay));
+  CHECK(Severity::kWarn == bandSeverity(UiMetric::kNoise, 85.0f, JudgeMode::kDay));
+  CHECK(Severity::kBad == bandSeverity(UiMetric::kNoise, 86.0f, JudgeMode::kDay));
+  // Temperature and humidity are never off by day.
+  CHECK(Severity::kOk == bandSeverity(UiMetric::kTemperature, 35.0f, JudgeMode::kDay));
+  CHECK(Severity::kOk == bandSeverity(UiMetric::kHumidity, 5.0f, JudgeMode::kDay));
+}
+
+TEST_CASE("day mode face and comparison") {
+  Reading reading = comfortableReading();
+  reading.temperatureC = 29.0f;  // bad on the sleep band
+  reading.humidityPct = 80.0f;   // bad on the sleep band
+  reading.noiseDb = 60.0f;       // warn at night, fine by day
+  UiModel night = buildUiModel(reading, DISPLAY_SCREEN_FACE,
+                               TEMPERATURE_UNIT_CELSIUS, false, JudgeMode::kSleep);
+  CHECK(night.faceSeverity == Severity::kBad);
+  CHECK(night.worstMetric == UiMetric::kTemperature);
+  UiModel day = buildUiModel(reading, DISPLAY_SCREEN_FACE,
+                             TEMPERATURE_UNIT_CELSIUS, false, JudgeMode::kDay);
+  CHECK(day.mode == JudgeMode::kDay);
+  CHECK(day.faceSeverity == Severity::kOk);  // shown, not judged
+  const uint8_t t = static_cast<uint8_t>(UiMetric::kTemperature);
+  CHECK_EQ(int32_t{29}, day.values[t]);
+  CHECK(day.severities[t] == Severity::kOk);
+  // A smiling face looks the same by day and night.
+  reading = comfortableReading();
+  CHECK(hasSameRenderedContent(
+      buildUiModel(reading, DISPLAY_SCREEN_FACE, TEMPERATURE_UNIT_CELSIUS, false,
+                   JudgeMode::kSleep),
+      buildUiModel(reading, DISPLAY_SCREEN_FACE, TEMPERATURE_UNIT_CELSIUS, false,
+                   JudgeMode::kDay)));
+
+  // Loud by day: noise drives the face on the hearing band; the nudge words
+  // differ by mode, so the same verdict in another mode is a redraw.
+  reading.noiseDb = 90.0f;
+  day = buildUiModel(reading, DISPLAY_SCREEN_FACE, TEMPERATURE_UNIT_CELSIUS,
+                     false, JudgeMode::kDay);
+  night = buildUiModel(reading, DISPLAY_SCREEN_FACE, TEMPERATURE_UNIT_CELSIUS,
+                       false, JudgeMode::kSleep);
+  CHECK(day.faceSeverity == Severity::kBad);
+  CHECK(day.worstMetric == UiMetric::kNoise);
+  CHECK(day.worstAbove);
+  CHECK(night.faceSeverity == Severity::kBad);
+  CHECK(!hasSameRenderedContent(day, night));
+  reading.noiseDb = 75.0f;
+  day = buildUiModel(reading, DISPLAY_SCREEN_FACE, TEMPERATURE_UNIT_CELSIUS,
+                     false, JudgeMode::kDay);
+  CHECK(day.faceSeverity == Severity::kWarn);
+
+  // The ledger draws bands, which change with the mode; the bento only
+  // inverts tiles, which the severities already capture.
+  reading = comfortableReading();
+  CHECK(!hasSameRenderedContent(
+      buildUiModel(reading, DISPLAY_SCREEN_LEDGER, TEMPERATURE_UNIT_CELSIUS,
+                   false, JudgeMode::kSleep),
+      buildUiModel(reading, DISPLAY_SCREEN_LEDGER, TEMPERATURE_UNIT_CELSIUS,
+                   false, JudgeMode::kDay)));
+  CHECK(hasSameRenderedContent(
+      buildUiModel(reading, DISPLAY_SCREEN_BENTO, TEMPERATURE_UNIT_CELSIUS,
+                   false, JudgeMode::kSleep),
+      buildUiModel(reading, DISPLAY_SCREEN_BENTO, TEMPERATURE_UNIT_CELSIUS,
+                   false, JudgeMode::kDay)));
+  reading.temperatureC = 29.0f;
+  const UiModel bentoDay = buildUiModel(reading, DISPLAY_SCREEN_BENTO,
+                                        TEMPERATURE_UNIT_CELSIUS, false,
+                                        JudgeMode::kDay);
+  CHECK(bentoDay.severities[t] == Severity::kOk);  // no inverted tile
 }
 
 // Covers hasSameRenderedContent, the comparison App actually gates panel

@@ -7,6 +7,7 @@ struct Config;
 struct FaultStatus;
 struct Reading;
 struct SampleRecord;
+struct SleepWindow;
 
 // Wire encoding for every Quiesco BLE characteristic. Pure C++ (host-tested);
 // the transport lives in drivers/BleConfig. All fields little-endian; every
@@ -42,12 +43,15 @@ enum Capability : uint32_t {
   kCapAppAuth = 1u << 10,  // app-layer authentication (0010, 0011)
   kCapChargingState = 1u << 11,  // status charging flag, device info no-battery flag
   kCapTemperatureUnit = 1u << 12,  // core config byte 14
+  kCapEraseLogCommand = 1u << 13,  // device control opcode 2
+  kCapSleepWindow = 1u << 14,  // 0012: panel judges by time of day
 };
 constexpr uint32_t kCapabilities =
     kCapScreenSelect | kCapCalibrationOffsets | kCapForcedRecalibration |
     kCapDeviceRename | kCapLogSync | kCapFactoryReset | kCapLogErase |
     kCapBootCounter | kCapCalibrationState | kCapDiagnostics | kCapAppAuth |
-    kCapChargingState | kCapTemperatureUnit;
+    kCapChargingState | kCapTemperatureUnit | kCapEraseLogCommand |
+    kCapSleepWindow;
 
 constexpr uint16_t kDeviceInfoBytes = 20;
 constexpr uint16_t kCoreConfigBytes = 16;
@@ -57,7 +61,10 @@ constexpr uint16_t kCalibrationOffsetsBytes = 12;
 constexpr uint16_t kCalibrationStateBytes = 12;
 constexpr uint16_t kDiagnosticsBytes = 12;
 constexpr uint16_t kCalibrationControlBytes = 4;
-constexpr uint16_t kDeviceControlBytes = 4;
+constexpr uint16_t kDeviceControlBytes = 4;  // factory reset
+constexpr uint16_t kEraseLogControlBytes = 8;
+constexpr uint16_t kMaxDeviceControlBytes = kEraseLogControlBytes;
+constexpr uint16_t kSleepWindowBytes = 12;
 constexpr uint16_t kLogSyncControlBytes = 10;
 constexpr uint16_t kAuthStateBytes = 20;
 constexpr uint16_t kEnrolKeyBytes = 20;
@@ -83,11 +90,14 @@ enum LogPacketType : uint8_t {
 
 enum SyncOpcode : uint8_t { kSyncOpStart = 1, kSyncOpAbort = 2 };
 enum CalibrationOpcode : uint8_t { kCalOpForcedRecalibration = 1 };
-enum DeviceControlOpcode : uint8_t { kControlFactoryReset = 1 };
+enum DeviceControlOpcode : uint8_t {
+  kControlFactoryReset = 1,
+  kControlEraseLog = 2,
+};
 enum FactoryResetFlags : uint8_t { kResetEraseLog = 1u << 0 };
 enum AuthOpcode : uint8_t { kAuthOpEnrol = 1, kAuthOpProve = 2 };
-// A factory reset must also carry this value, so a stray or fuzzed write to
-// the control characteristic cannot wipe a unit.
+// A factory reset or log erase must also carry this value, so a stray or
+// fuzzed write to the control characteristic cannot wipe a unit.
 constexpr uint16_t kFactoryResetConfirm = 0xFAC7;
 
 // Mirrored in the status payload; App owns the progression.
@@ -143,6 +153,13 @@ struct Diagnostics {
   bool i2cBusStuck;        // SDA still low after recovery, last cycle
 };
 
+// A device control write (§6.11).
+struct DeviceControlRequest {
+  uint8_t opcode;          // DeviceControlOpcode
+  bool eraseLog;           // factory reset: also erase the sample log
+  uint32_t upToSequence;   // log erase: refuse if the newest record is later
+};
+
 struct LogSyncRequest {
   uint8_t opcode;
   uint32_t startSequence;
@@ -178,8 +195,15 @@ bool decodeCalibrationControl(const uint8_t* data, uint16_t length,
                               uint16_t& targetPpm);
 // Validates and NUL-terminates into out (17 bytes).
 bool decodeDeviceName(const uint8_t* data, uint16_t length, char* out);
+// Factory reset (4 bytes) or log erase (8 bytes); any other length,
+// opcode, flag or confirmation is refused.
 bool decodeDeviceControl(const uint8_t* data, uint16_t length,
-                         bool& eraseLog);
+                         DeviceControlRequest& request);
+// Sleep window (§6.17), the layout in model/SleepWindow.h.
+void encodeSleepWindow(const SleepWindow& window,
+                       uint8_t out[kSleepWindowBytes]);
+bool decodeSleepWindow(const uint8_t* data, uint16_t length,
+                       SleepWindow& window);
 bool decodeLogSyncControl(const uint8_t* data, uint16_t length,
                           LogSyncRequest& request);
 

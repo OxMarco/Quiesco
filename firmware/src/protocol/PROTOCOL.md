@@ -74,7 +74,9 @@ The device accepts one connection at a time.
 4. Authenticate (§3): read the auth characteristic (`0010`) for its
    challenge and write the proof with the key stored for this serial. With no
    stored key, enrol first, which the unit accepts only on USB power.
-5. Write the current time to epoch (`0005`) on **every** connection (§6.5).
+5. Write the current time to epoch (`0005`) on **every** connection (§6.5),
+   and with capability bit 14 the sleep window (`0012`) with the phone's
+   current UTC offset (§6.17).
 6. Subscribe to reading (`0003`) and status (`0004`); read both once for their
    current values.
 7. Read the config characteristics you need.
@@ -164,7 +166,7 @@ All read-only UTF-8 strings, readable without authentication.
 | `2A24` | Model number | `Quiesco v1` |
 | `2A25` | Serial number | 16 uppercase hex digits: the nRF52840 factory device ID, stable for the life of the unit |
 | `2A26` | Firmware revision | `MAJOR.MINOR.PATCH`, with `-debug` appended for development images |
-| `2A27` | Hardware revision | `1` |
+| `2A27` | Hardware revision | `1.0.0` |
 
 ### Quiesco service `7A1E0000-8E6F-4A7A-AE32-515549455343`
 
@@ -186,11 +188,12 @@ reads as zeros and ignores writes until the connection has authenticated (§3).
 | `000A` | Log sync data | notify | ≤ 180 | §7 |
 | `000B` | Calibration control | write | 4 | §6.10 |
 | `000C` | Device info | read | 20 | §6.12 |
-| `000D` | Device control | write | 4 | §6.11 |
+| `000D` | Device control | write | 4 or 8, by opcode | §6.11 |
 | `000E` | Calibration state | read | 12 | §6.13 |
 | `000F` | Diagnostics | read | 12 | §6.14 |
 | `0010` | Auth | read, write | 20; writes 2 or 20 | §6.15 |
 | `0011` | Enrolment metadata | read | 20 | §6.16 |
+| `0012` | Sleep window | read, write | 12 | §6.17 |
 
 ## 5. Conventions
 
@@ -207,8 +210,9 @@ reads as zeros and ignores writes until the connection has authenticated (§3).
 Use **write with response** for every characteristic.
 
 - **Exact length.** Each write must be exactly the length in its layout
-  table; the device name accepts 1–16 bytes. A write of any other length is
-  rejected. Split writes are not supported.
+  table; the device name accepts 1–16 bytes, and device control 4 or 8 bytes
+  depending on the opcode. A write of any other length is rejected. Split
+  writes are not supported.
 - **Rejected writes change nothing.** Validation happens on the device's main
   loop, after the GATT write has been acknowledged, so the phone always sees
   a successful write. (Before the connection authenticates, the write is
@@ -342,7 +346,7 @@ Flags:
 |---|---|
 | 0 | wall clock synced since boot |
 | 1 | log download active |
-| 2 | log erase pending or running (factory reset) |
+| 2 | log erase pending or running (factory reset or erase command, §9) |
 | 3 | charging (capability bit 11) |
 | 4–7 | reserved |
 
@@ -463,6 +467,8 @@ See §8. Example: recalibrate to 420 ppm (fresh outdoor air):
 
 ### 6.11 Device control `000D`
 
+The opcode sets the length. Factory reset, 4 bytes:
+
 | Offset | Type | Field |
 |---|---|---|
 | 0 | u8 | opcode: 1 = factory reset |
@@ -473,6 +479,24 @@ See §9. Example, factory reset with log erase:
 
 ```text
 01 01 c7 fa
+```
+
+Erase log, 8 bytes (capability bit 13):
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | u8 | opcode: 2 = erase log |
+| 1 | u8 | flags, reserved, 0 |
+| 2 | u16 | confirmation, must be `0xFAC7` |
+| 4 | u32 | up-to sequence: erase only if the log's newest sequence is ≤ this value; otherwise refuse and erase nothing |
+
+Erases the whole sample log and nothing else (§9.1). Send the last sequence
+you hold intact, so the unit never erases a record you have not downloaded:
+a measurement that lands after your download makes the unit refuse. Example,
+erase once everything up to record 1443 is safe on the phone:
+
+```text
+02 00 c7 fa a3 05 00 00
 ```
 
 ### 6.12 Device info `000C`
@@ -505,16 +529,18 @@ Capability flags:
 | 10 | app-layer authentication (`0010`, `0011`) |
 | 11 | charging flag in status (§6.4) and no-battery flag in device info |
 | 12 | temperature unit in core config (§6.2) |
+| 13 | log erase command (`000D` opcode 2, §9.1) |
+| 14 | sleep window (`0012`): the panel can judge by time of day like the app |
 
 The SCD41 serial becomes available after the first measurement cycle, about
 1 s after boot, as does the boot counter; re-read if either is zero.
 Device info is readable without authentication, so an app can check
 compatibility and guide enrolment before it has access to anything else.
-Example: protocol 6, capabilities 0x1FFF, firmware 1.2.3 release build,
+Example: protocol 6, capabilities 0x7FFF, firmware 1.2.3 release build,
 enrolment open, no phone enrolled yet, SCD41 serial 0xA1B2C3D4E5F6, boot 7:
 
 ```text
-06 00 ff 1f 00 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00
+06 00 ff 7f 00 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00
 ```
 
 ### 6.13 Calibration state `000E`
@@ -639,6 +665,62 @@ for 30 seconds. Phone key a0 a1 … af:
 
 The phone stores that key and its id; it never stores the setup key. See §3
 for expiration.
+
+### 6.17 Sleep window `0012`
+
+Capability bit 14. The user's sleep window, so the panel can judge the room
+the way the app does instead of on the sleep bands at every hour.
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | u8 | flags: bit 0 = the panel judges by time of day like the app; bits 1–7 reserved |
+| 1 | u8 | reserved, 0 |
+| 2 | i16 | the phone's local time offset from UTC, minutes, −720 … +840 |
+| 4 | u16 | weekday bedtime, minutes after local midnight, 0–1439 |
+| 6 | u16 | weekday wake time, 0–1439 |
+| 8 | u16 | weekend bedtime (Friday and Saturday nights), or `0xFFFF` = no separate weekend times |
+| 10 | u16 | weekend wake time, or `0xFFFF` |
+
+A write with a reserved bit or byte set, a time or offset out of range, or
+only one of the weekend pair `0xFFFF` is rejected and changes nothing. The
+offset is a fixed number of minutes, so **rewrite it on every connection**
+(after the epoch time, §6.5); a daylight-saving change then follows at the
+next connection. The window is saved apart from the core config and survives
+resets; factory reset restores the default. A new unit, or one reset, has the
+flag clear, offset 0 and 23:30–07:00 with no weekend times:
+
+```text
+00 00 00 00 82 05 a4 01 ff ff ff ff
+```
+
+Judging by time of day, UTC+2, 23:30–07:00 every night:
+
+```text
+01 00 78 00 82 05 a4 01 ff ff ff ff
+```
+
+**What the panel does.** With bit 0 clear, or until the clock has been set
+since boot (status flag bit 0), the panel judges every metric on its sleep
+bands at every hour, as before this characteristic existed. With bit 0 set and
+the clock synced it follows the app's rule, in local time (UTC epoch + the
+offset):
+
+- A moment belongs to the night named by its local date 12 hours earlier.
+  That night's times are the weekend ones if it is a Friday or Saturday night
+  and weekend times are set, otherwise the weekday ones. A bedtime before noon
+  falls on the next calendar day; the window lasts from bedtime to the wrapped
+  wake time. Once a night's window has ended, the next night's applies.
+- **Sleep**, from 60 minutes before bedtime (the minutes to bedtime rounded
+  to the nearest minute, as the app does) until wake: every metric on the
+  sleep bands, with the night nudges.
+- **Day**, otherwise: CO2 on the same bands; noise on hearing bands, warn
+  above 70 and bad above 85 dB(A), with the nudges "loud" and "very loud";
+  temperature, humidity and light shown but not judged (no frown, no nudge, no
+  inverted tile, no ledger band).
+
+The panel changes mode with the next measurement or redraw after the
+boundary, so it can lag the app by up to one measurement interval. A write
+that changes the mode right away redraws the panel at once.
 
 ---
 
@@ -832,7 +914,7 @@ on hardware, `WORKPLAN.md` M4). The last FRC is recorded in calibration state
 A second FRC request while one is pending or soaking is ignored. Factory reset
 cancels a pending or soaking FRC.
 
-## 9. Factory reset
+## 9. Factory reset and log erase
 
 Writing `000D` with a valid confirmation:
 
@@ -856,6 +938,35 @@ disconnects. Erase intent and the next sequence are committed before reset
 settings. After power loss, boot resumes deletion before permitting history
 access. The intent clears only after a fresh record is durable; even a reset
 between the final sector erase and the first append cannot reuse sequences.
+
+Factory reset also restores the default sleep window (§6.17).
+
+### 9.1 Erasing the log only
+
+The erase command (`000D` opcode 2, capability bit 13) runs the same erase as
+a factory reset with flag bit 0, and changes nothing else: config, device
+name, enrolled phones, calibration offsets and the sleep window stay as they
+are.
+
+- It is accepted only if the log's newest sequence is at most the up-to
+  sequence in the request. Otherwise it is refused and nothing changes:
+  status flag bit 2 never sets and every record stays.
+  The check is made against the log itself; within about 11 s of a reboot,
+  before the first measurement has opened the log, it is made when that
+  measurement starts writing, and bit 2 sets only if it passes.
+- Once accepted: any running download is aborted, a measurement starts, the
+  erase runs during it (about 90 s, status flag bit 2 set throughout, status
+  notified when it starts and ends), and the record that measurement took is
+  the first of the fresh log. Sequence numbers continue; they are never reused.
+- Erase intent and the sequence floor are journalled first, so a power loss
+  mid-erase resumes the erase on the next boot, as for a factory reset.
+- A request while an erase is already pending or running is ignored.
+
+App flow: download to the end, then write the erase with the sequence of the
+last record you received intact; watch status bit 2 set, then clear; after it
+clears, newest sequence is the fresh record's and your cursor stays valid.
+If bit 2 never sets within one measurement (about 15 s), the request was
+refused: download again and retry.
 
 ## 10. Changing this protocol
 

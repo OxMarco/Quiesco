@@ -35,6 +35,8 @@ class SampleLog {
   bool append(W25Q64Flash& flash, const Reading& reading);
 
   uint32_t lastSequence() const { return nextSequence_ - 1; }
+  // lastSequence() is only the log's own until it has been mounted this boot.
+  bool mounted() const { return mounted_; }
 
   // Boot counter stamped on every later record; 0 (the default) = unknown.
   void setBootCount(uint32_t bootCount) { bootCount_ = bootCount; }

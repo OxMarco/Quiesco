@@ -13,6 +13,10 @@ constexpr char kConfigKey[] = "config";
 constexpr char kBootCountKey[] = "boot";
 constexpr char kBondsKey[] = "bonds";
 constexpr char kLogEraseKey[] = "log_erase";
+constexpr char kSleepWindowKey[] = "sleep";
+// Format byte ahead of the 12-byte wire layout, so the record can grow.
+constexpr uint8_t kSleepWindowFormat = 1;
+constexpr size_t kSleepWindowRecordBytes = 1 + SleepWindow::kBytes;
 
 void advanceSequence(uint32_t& sequence) {
   sequence++;
@@ -145,4 +149,27 @@ bool ConfigStore::saveLogErase(W25Q64Flash& flash, uint32_t nextSequence) {
   struct fdb_blob blob;
   fdb_blob_make(&blob, bytes, sizeof bytes);
   return finishOperation(fdb_kv_set_blob(&db_, kLogEraseKey, &blob) == FDB_NO_ERR);
+}
+
+bool ConfigStore::loadSleepWindow(W25Q64Flash& flash, SleepWindow& window) {
+  window = defaultSleepWindow();
+  if (!initialize(flash)) return false;
+  uint8_t record[kSleepWindowRecordBytes] = {};
+  struct fdb_blob blob;
+  fdb_blob_make(&blob, record, sizeof record);
+  const size_t length = fdb_kv_get_blob(&db_, kSleepWindowKey, &blob);
+  return finishOperation(true) && length == sizeof record &&
+         record[0] == kSleepWindowFormat &&
+         decodeSleepWindow(record + 1, SleepWindow::kBytes, window);
+}
+
+bool ConfigStore::saveSleepWindow(W25Q64Flash& flash,
+                                  const SleepWindow& window) {
+  if (!isValidSleepWindow(window) || !initialize(flash)) return false;
+  uint8_t record[kSleepWindowRecordBytes];
+  record[0] = kSleepWindowFormat;
+  encodeSleepWindow(window, record + 1);
+  struct fdb_blob blob;
+  fdb_blob_make(&blob, record, sizeof record);
+  return finishOperation(fdb_kv_set_blob(&db_, kSleepWindowKey, &blob) == FDB_NO_ERR);
 }

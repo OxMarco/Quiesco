@@ -11,6 +11,7 @@
 #include "model/Config.h"
 #include "model/FaultStatus.h"
 #include "model/Reading.h"
+#include "model/SleepWindow.h"
 #include "platform/MonotonicClock.h"
 #include "platform/HardwareWatchdog.h"
 #include "drivers/BleConfig.h"
@@ -67,6 +68,16 @@ class App {
   static constexpr uint32_t kFrcSoakMs = 330000;
   static constexpr uint32_t kSyncProgressTimeoutMs = 10000;
   static constexpr uint8_t kSyncBatchMax = 3;
+  // Minimum gap between log notifications. ArduinoBLE's notify always
+  // reports success and the stack drops packets under load, so the stream is
+  // paced instead. Measured from a Mac (2026-10-07, MTU 247, 3 records a
+  // packet): 0 ms lost ~45 % of records, 15-20 ms lost 4-35 % and once
+  // stalled, 30 ms lost none at 54 records/s. The app still checks the packet
+  // counter and asks again from the first missing record (PROTOCOL.md 7.4).
+#ifndef QUIESCO_SYNC_GAP_MS
+#define QUIESCO_SYNC_GAP_MS 30
+#endif
+  static constexpr uint32_t kSyncPacketGapMs = QUIESCO_SYNC_GAP_MS;
 
   void startCycle(uint64_t nowMs, CycleKind kind);
   void commitConfig(uint64_t nowMs);
@@ -74,6 +85,13 @@ class App {
   void applyBleConfig(uint64_t nowMs);
   void takeBleCommands(uint64_t nowMs);
   void factoryReset(uint64_t nowMs, bool eraseLog);
+  void requestLogErase(uint64_t nowMs, uint32_t upToSequence);
+  void startLogErase();
+  void applySleepWindow(uint64_t nowMs);
+  JudgeMode judgeModeAt(uint64_t nowMs) const;
+  bool settingsSavePending() const {
+    return configSavePending_ || bondsSavePending_ || sleepSavePending_;
+  }
   void finishPersisting(bool flashPresent);
   bool saveSettings(uint64_t nowMs);
   void servicePairing(uint64_t nowMs);
@@ -160,7 +178,15 @@ class App {
   bool publishedPairingOpen_ = false;
   bool publishedBonded_ = false;
   bool publishedAscDisabled_ = false;
-  // Factory reset: the log erase rides the next cycle's persisting step.
+  // The sleep window (PROTOCOL.md §6.17), persisted under its own key.
+  SleepWindow sleepWindow_ = defaultSleepWindow();
+  bool sleepSavePending_ = false;
+  // Factory reset or the erase command: the log erase rides the next cycle's
+  // persisting step. An erase command that arrives before the log is mounted
+  // waits in logEraseRequested_ until saveSettings() can check its up-to
+  // sequence against the newest record.
+  bool logEraseRequested_ = false;
+  uint32_t logEraseUpTo_ = 0;
   bool logErasePending_ = false;
   uint32_t logEraseSequence_ = 0;
   bool logEraseCompleted_ = false;
@@ -187,6 +213,7 @@ class App {
   uint16_t syncAttPayload_ = 0;
   uint32_t lastSentSequence_ = 0;
   uint64_t syncDeadlineMs_ = 0;
+  uint64_t syncLastSendMs_ = 0;
   SampleRecord syncBatch_[kSyncBatchMax];
   uint8_t syncWire_[BleCodec::kWireRecordBytes];
   uint8_t syncPacket_[BleCodec::kMaxLogPacketBytes];

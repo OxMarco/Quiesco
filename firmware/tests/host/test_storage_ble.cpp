@@ -14,6 +14,7 @@
 #include "model/Config.h"
 #include "model/FaultStatus.h"
 #include "model/Reading.h"
+#include "model/SleepWindow.h"
 #include "platform/HmacSha256.h"
 #include "protocol/BleCodec.h"
 #include "protocol/LittleEndian.h"
@@ -28,7 +29,7 @@
 
 // Golden wire vectors (lowercase hex bytes); see testProtocolGoldenVectors.
 #define GOLDEN_DEVICE_INFO \
-  "06 00 ff 1f 00 00 01 02 03 02 f6 e5 d4 c3 b2 a1 " \
+  "06 00 ff 7f 00 00 01 02 03 02 f6 e5 d4 c3 b2 a1 " \
   "07 00 00 00"
 #define GOLDEN_INTERVAL "2c 01 00 00"
 #define GOLDEN_CORE_CONFIG "05 00 00 00 2c 01 00 00 0a 00 00 00 01 02 00 00"
@@ -45,6 +46,9 @@
 #define GOLDEN_SYNC_START "01 00 b1 04 00 00 00 00 f4 00"
 #define GOLDEN_FRC "01 00 a4 01"
 #define GOLDEN_RESET "01 01 c7 fa"
+#define GOLDEN_ERASE_LOG "02 00 c7 fa a3 05 00 00"
+#define GOLDEN_SLEEP_WINDOW "01 00 78 00 82 05 a4 01 ff ff ff ff"
+#define GOLDEN_SLEEP_WINDOW_DEFAULT "00 00 00 00 82 05 a4 01 ff ff ff ff"
 #define GOLDEN_WIRE_RECORD \
   "b1 04 00 00 7f 00 01 00 10 c7 55 69 80 ee 36 00 " \
   "00 00 00 00 00 00 ac 41 00 00 35 42 80 e6 c5 47 " \
@@ -809,24 +813,46 @@ TEST_CASE("BLE codec control") {
   CHECK(!BleCodec::decodeCoreConfig(wire, sizeof wire, decoded));
   CHECK_EQ(uint32_t{60}, decoded.measurementIntervalSeconds);  // untouched
 
-  bool eraseLog = true;
-  uint8_t control[4] = {BleCodec::kControlFactoryReset, 0, 0, 0};
+  BleCodec::DeviceControlRequest request = {};
+  uint8_t control[9] = {BleCodec::kControlFactoryReset, 0, 0, 0};
   LittleEndian::putU16(control + 2, BleCodec::kFactoryResetConfirm);
-  CHECK(BleCodec::decodeDeviceControl(control, 4, eraseLog));
-  CHECK(!eraseLog);
+  CHECK(BleCodec::decodeDeviceControl(control, 4, request));
+  CHECK_EQ(uint8_t{BleCodec::kControlFactoryReset}, request.opcode);
+  CHECK(!request.eraseLog);
   control[1] = BleCodec::kResetEraseLog;
-  CHECK(BleCodec::decodeDeviceControl(control, 4, eraseLog));
-  CHECK(eraseLog);
+  CHECK(BleCodec::decodeDeviceControl(control, 4, request));
+  CHECK(request.eraseLog);
   control[1] = 0x02;  // unknown flag
-  CHECK(!BleCodec::decodeDeviceControl(control, 4, eraseLog));
+  CHECK(!BleCodec::decodeDeviceControl(control, 4, request));
   control[1] = 0;
   LittleEndian::putU16(control + 2, 0xFAC6);  // wrong confirmation
-  CHECK(!BleCodec::decodeDeviceControl(control, 4, eraseLog));
+  CHECK(!BleCodec::decodeDeviceControl(control, 4, request));
   LittleEndian::putU16(control + 2, BleCodec::kFactoryResetConfirm);
-  control[0] = 2;
-  CHECK(!BleCodec::decodeDeviceControl(control, 4, eraseLog));
+  control[0] = 3;  // no such opcode
+  CHECK(!BleCodec::decodeDeviceControl(control, 4, request));
+  CHECK(!BleCodec::decodeDeviceControl(control, 8, request));
   control[0] = BleCodec::kControlFactoryReset;
-  CHECK(!BleCodec::decodeDeviceControl(control, 3, eraseLog));
+  CHECK(!BleCodec::decodeDeviceControl(control, 3, request));
+  CHECK(!BleCodec::decodeDeviceControl(control, 8, request));  // reset is 4
+
+  // Log erase: 8 bytes, reserved flags, the same confirmation.
+  control[0] = BleCodec::kControlEraseLog;
+  LittleEndian::putU32(control + 4, 1443);
+  CHECK(BleCodec::decodeDeviceControl(control, 8, request));
+  CHECK_EQ(uint8_t{BleCodec::kControlEraseLog}, request.opcode);
+  CHECK_EQ(uint32_t{1443}, request.upToSequence);
+  CHECK(!BleCodec::decodeDeviceControl(control, 4, request));  // too short
+  CHECK(!BleCodec::decodeDeviceControl(control, 7, request));
+  CHECK(!BleCodec::decodeDeviceControl(control, 9, request));  // ArduinoBLE spare
+  control[1] = BleCodec::kResetEraseLog;  // flags are reserved here
+  CHECK(!BleCodec::decodeDeviceControl(control, 8, request));
+  control[1] = 0;
+  LittleEndian::putU16(control + 2, 0xFAC6);
+  CHECK(!BleCodec::decodeDeviceControl(control, 8, request));
+  LittleEndian::putU16(control + 2, BleCodec::kFactoryResetConfirm);
+  LittleEndian::putU32(control + 4, 0);  // up to 0: only an empty log
+  CHECK(BleCodec::decodeDeviceControl(control, 8, request));
+  CHECK_EQ(uint32_t{0}, request.upToSequence);
 }
 
 // Frozen wire layouts. Each vector is also a worked example in PROTOCOL.md,
@@ -987,10 +1013,37 @@ TEST_CASE("protocol golden vectors") {
 
   const uint8_t reset[BleCodec::kDeviceControlBytes] = {
       BleCodec::kControlFactoryReset, BleCodec::kResetEraseLog, 0xC7, 0xFA};
-  bool eraseLog = false;
-  CHECK(BleCodec::decodeDeviceControl(reset, sizeof reset, eraseLog));
-  CHECK(eraseLog);
+  BleCodec::DeviceControlRequest control = {};
+  CHECK(BleCodec::decodeDeviceControl(reset, sizeof reset, control));
+  CHECK_EQ(uint8_t{BleCodec::kControlFactoryReset}, control.opcode);
+  CHECK(control.eraseLog);
   expectVector(doc, "factory reset", reset, sizeof reset, GOLDEN_RESET);
+
+  uint8_t erase[BleCodec::kEraseLogControlBytes] = {BleCodec::kControlEraseLog,
+                                                    0};
+  LittleEndian::putU16(erase + 2, BleCodec::kFactoryResetConfirm);
+  LittleEndian::putU32(erase + 4, 1443);
+  CHECK(BleCodec::decodeDeviceControl(erase, sizeof erase, control));
+  CHECK_EQ(uint8_t{BleCodec::kControlEraseLog}, control.opcode);
+  CHECK_EQ(uint32_t{1443}, control.upToSequence);
+  expectVector(doc, "log erase", erase, sizeof erase, GOLDEN_ERASE_LOG);
+
+  SleepWindow window = defaultSleepWindow();
+  uint8_t sleep[BleCodec::kSleepWindowBytes];
+  BleCodec::encodeSleepWindow(window, sleep);
+  expectVector(doc, "sleep window default", sleep, sizeof sleep,
+               GOLDEN_SLEEP_WINDOW_DEFAULT);
+  window.flags = SleepWindow::kFlagFollowApp;
+  window.utcOffsetMinutes = 120;
+  BleCodec::encodeSleepWindow(window, sleep);
+  expectVector(doc, "sleep window", sleep, sizeof sleep, GOLDEN_SLEEP_WINDOW);
+  SleepWindow decoded = defaultSleepWindow();
+  CHECK(BleCodec::decodeSleepWindow(sleep, sizeof sleep, decoded));
+  CHECK(decoded.followsApp());
+  CHECK_EQ(int16_t{120}, decoded.utcOffsetMinutes);
+  CHECK_EQ(uint16_t{1410}, decoded.weekdayBedMin);
+  CHECK_EQ(uint16_t{420}, decoded.weekdayWakeMin);
+  CHECK(!decoded.hasWeekend());
 
   Reading logged = reading;
   logged.monotonicMs = 3600000;
@@ -1109,6 +1162,102 @@ TEST_CASE("HMAC-SHA-256") {
   memcpy(other, digest, 32);
   other[31] ^= 1;
   CHECK(!HmacSha256::equal(digest, other, 32));
+}
+
+TEST_CASE("sleep window validation") {
+  const SleepWindow kept = defaultSleepWindow();
+  uint8_t good[12];
+  encodeSleepWindow(kept, good);
+  uint8_t wire[13];
+  SleepWindow window = kept;
+  auto rejects = [&](const char* why) {
+    CAPTURE(why);
+    window = kept;
+    window.weekdayBedMin = 1;  // a sentinel the decoder must not overwrite
+    CHECK(!BleCodec::decodeSleepWindow(wire, 12, window));
+    CHECK_EQ(uint16_t{1}, window.weekdayBedMin);
+    memcpy(wire, good, 12);
+  };
+  memcpy(wire, good, 12);
+  CHECK(BleCodec::decodeSleepWindow(wire, 12, window));
+  CHECK(!BleCodec::decodeSleepWindow(wire, 11, window));
+  CHECK(!BleCodec::decodeSleepWindow(wire, 13, window));  // ArduinoBLE spare
+  wire[0] = 0x02;
+  rejects("reserved flag bit");
+  wire[1] = 1;
+  rejects("reserved byte");
+  LittleEndian::putI16(wire + 2, -721);
+  rejects("offset below -720");
+  LittleEndian::putI16(wire + 2, 841);
+  rejects("offset above +840");
+  LittleEndian::putU16(wire + 4, 1440);
+  rejects("weekday bedtime");
+  LittleEndian::putU16(wire + 6, 1440);
+  rejects("weekday wake");
+  LittleEndian::putU16(wire + 8, 60);
+  rejects("weekend bedtime without wake");
+  LittleEndian::putU16(wire + 10, 600);
+  rejects("weekend wake without bedtime");
+  LittleEndian::putU16(wire + 8, 1440);
+  LittleEndian::putU16(wire + 10, 600);
+  rejects("weekend bedtime out of range");
+
+  // Edges are accepted.
+  LittleEndian::putI16(wire + 2, -720);
+  LittleEndian::putU16(wire + 4, 0);
+  LittleEndian::putU16(wire + 6, 1439);
+  LittleEndian::putU16(wire + 8, 1439);
+  LittleEndian::putU16(wire + 10, 0);
+  CHECK(BleCodec::decodeSleepWindow(wire, 12, window));
+  CHECK(window.hasWeekend());
+  CHECK_EQ(int16_t{-720}, window.utcOffsetMinutes);
+  LittleEndian::putI16(wire + 2, 840);
+  CHECK(BleCodec::decodeSleepWindow(wire, 12, window));
+}
+
+TEST_CASE("sleep window persistence") {
+  FlashSim::reset();
+  W25Q64Flash flash;
+  flash.begin();
+  ConfigStore store;
+  SleepWindow window = {};
+  CHECK(!store.loadSleepWindow(flash, window));  // none stored: the default
+  CHECK(store.healthy());
+  uint8_t wire[12];
+  encodeSleepWindow(window, wire);
+  CHECK_EQ(std::string(GOLDEN_SLEEP_WINDOW_DEFAULT), toHex(wire, 12));
+
+  // Stored beside the config without touching it.
+  CHECK(store.save(flash, sampleConfig()));
+  SleepWindow saved = defaultSleepWindow();
+  saved.flags = SleepWindow::kFlagFollowApp;
+  saved.utcOffsetMinutes = -300;
+  saved.weekendBedMin = 60;
+  saved.weekendWakeMin = 600;
+  CHECK(store.saveSleepWindow(flash, saved));
+  SleepWindow invalid = saved;
+  invalid.weekdayWakeMin = 1440;
+  CHECK(!store.saveSleepWindow(flash, invalid));
+  ConfigStore rebooted;
+  Config config = defaultConfig();
+  CHECK(rebooted.load(flash, config));
+  CHECK_EQ(sampleConfig().measurementIntervalSeconds,
+           config.measurementIntervalSeconds);
+  SleepWindow loaded = defaultSleepWindow();
+  CHECK(rebooted.loadSleepWindow(flash, loaded));
+  CHECK(loaded.followsApp());
+  CHECK_EQ(int16_t{-300}, loaded.utcOffsetMinutes);
+  CHECK_EQ(uint16_t{60}, loaded.weekendBedMin);
+  CHECK_EQ(uint16_t{600}, loaded.weekendWakeMin);
+
+  // An interrupted update keeps the committed window.
+  SleepWindow next = loaded;
+  next.utcOffsetMinutes = -240;
+  FlashSim::failNextPrograms(1);
+  CHECK(!rebooted.saveSleepWindow(flash, next));
+  ConfigStore recovered;
+  CHECK(recovered.loadSleepWindow(flash, loaded));
+  CHECK_EQ(int16_t{-300}, loaded.utcOffsetMinutes);
 }
 
 }  // namespace

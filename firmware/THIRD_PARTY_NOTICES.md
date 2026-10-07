@@ -21,7 +21,7 @@ belong to the code that was built.
 | Component | Version | Source | Licence | Local changes |
 |---|---|---|---|---|
 | Seeeduino mbed core (ArduinoCore-mbed, ArduinoCore-API) | 2.9.3 | [Seeed-Studio/ArduinoCore-mbed](https://github.com/Seeed-Studio/ArduinoCore-mbed), from [arduino/ArduinoCore-mbed](https://github.com/arduino/ArduinoCore-mbed) | LGPL-2.1 | none |
-| Mbed OS (bundled in the core, precompiled) | as shipped in core 2.9.3 | [ARMmbed/mbed-os](https://github.com/ARMmbed/mbed-os) | Apache-2.0, with components under their own permissive licences (Nordic nrfx: BSD-3-Clause; Arm Cordio BLE stack: Apache-2.0; CMSIS: Apache-2.0; Mbed TLS 2.25.0, called directly for HMAC-SHA-256: Apache-2.0) | none |
+| Mbed OS (bundled in the core, precompiled) | as shipped in core 2.9.3 | [ARMmbed/mbed-os](https://github.com/ARMmbed/mbed-os) | Apache-2.0, with components under their own licences (Nordic nrfx and SDK files: Nordic 5-Clause, see `licences/Nordic-5-Clause.txt`; Arm Cordio BLE stack: Apache-2.0; CMSIS: Apache-2.0; Mbed TLS 2.25.0, called directly for HMAC-SHA-256: Apache-2.0) | none |
 | `SPI`, `Wire` (core libraries) | core 2.9.3 | core | LGPL-2.1 | none |
 | Adafruit BME280 Library | 2.3.0 | [adafruit/Adafruit_BME280_Library](https://github.com/adafruit/Adafruit_BME280_Library) | BSD-3-Clause | none |
 | Adafruit VEML7700 Library | 2.1.6 | [adafruit/Adafruit_VEML7700](https://github.com/adafruit/Adafruit_VEML7700) | BSD-3-Clause | none |

@@ -12,7 +12,7 @@ namespace UnitIdentity {
 // Device Information Service strings. Product owns these values.
 constexpr char kManufacturer[] = "Quiesco";
 constexpr char kModel[] = "Quiesco v1";
-constexpr char kHardwareRevision[] = "1";
+constexpr char kHardwareRevision[] = "1.0.0";
 
 constexpr uint32_t kSerialChars = 16;  // 64-bit ID as uppercase hex
 constexpr uint32_t kNameSuffixChars = 4;
