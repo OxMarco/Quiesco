@@ -15,17 +15,17 @@ Background: [`SOFTWARE.md`](SOFTWARE.md) (firmware, including the BLE service),
 | Area | State |
 |---|---|
 | Measurement cycle, all seven readings, rail lifecycle | working on hardware |
-| Screens (face, ledger, bento, battery, unavailable), partial refresh | working on hardware; BUSY timeout (M1) has a likely cause and a fix, **not yet verified**. Setup-code screen added, not yet seen on hardware |
+| Screens (face, ledger, bento, battery, unavailable), partial refresh | working on hardware; BUSY timeout fix verified (M1, 4 reflashes); setup-code screen seen on hardware (enrolment 2026-10-07); day/sleep judging by the app's sleep window host-tested, not yet watched on the panel |
 | Config persistence, sample log | working on hardware |
-| BLE service: screen, config, readings, status, clock, log download, calibration, device info, factory reset | implemented and host-tested, **never tested on air** |
+| BLE service: screen, config, readings, status, clock, log download, calibration, device info, factory reset, sleep window, log erase | **tested on air from a Mac** (`scripts/ble-test.py`, 42 checks pass); log stream paced 30 ms (0 lost, ~99 records/s); a pass with the app on an iPhone and an Android phone remains |
 | App contract | **protocol v6** (v1 layouts + app-layer authentication + dB(A) noise + six-digit setup code); the app accepts v6 only; documented in [`src/protocol/PROTOCOL.md`](src/protocol/PROTOCOL.md) and pinned by golden vectors |
-| Security | application-layer authentication: enrolment on USB power with a six-digit code on the panel, challenge-response on every connection; no transport encryption (product decision); **never tested on air** |
-| CO2 measurement | power-cycled single shot per Sensirion AN (first shot discarded, pressure-compensated); **new, not yet run on hardware** |
-| Temperature/humidity | RH re-expressed for the temperature offset; self-heating ≈ +1 °C on USB (one comparison) |
-| Diagnostics and test tools | reset cause, uptime, boot counter; debug console (`i m d w`), `quiesco-console.py`, `log-report.py`; **console not yet run on hardware** |
-| Factory test | `smoke/sensors` `t` covers sensors, flash, display, BLE; procedure in `HARDWARE.md` §9; **new checks not yet run on hardware** |
+| Security | application-layer authentication: enrolment on USB power with a six-digit code on the panel, challenge-response on every connection; no transport encryption (product decision); **tested on air from a Mac**; refusal on battery and a fifth phone not yet tested |
+| CO2 measurement | power-cycled single shot per Sensirion AN (first shot discarded, pressure-compensated); running on hardware; FRC and a reference comparison not yet done |
+| Temperature/humidity | RH re-expressed for the temperature offset; **self-heating much larger than first thought**: the BME280 reads ~3.3 °C above the SCD41 in the case (~33 °C indoors on USB); needs a reference to set the default offset (M4) |
+| Diagnostics and test tools | reset cause, uptime, boot counter; debug console (`i m d w`), `quiesco-console.py`, `log-report.py`, `ble-test.py`; all run on hardware |
+| Factory test | `smoke/sensors` `t` covers sensors, flash, display, BLE; procedure in `HARDWARE.md` §9; PASS on the bench unit; the battery check passes without a cell on USB |
 | Firmware version | set from `VERSION` (1.0.0, matching the app and hardware revision) by the build; exposed in DIS and device info |
-| Licence | GPL-3.0-only; notices written |
+| Licence | GPL-3.0-only; notices and licence texts shipped by `make licences`; **legal review open**: the core's Nordic files are 5-Clause (M11) |
 | Firmware update | **missing** (M6 decision pending) |
 | Power budget | **not measured**; no battery fitted yet |
 
@@ -406,6 +406,36 @@ them early and in parallel. M8–M11 close out the release.
 
 Newest first. Each entry says what changed, what is verified, and where the
 next person should start.
+
+### 2026-10-07 — End of session: where to start next
+
+State at hand-off: everything is committed and pushed to `master` (last
+commit `171002d`). The bench unit runs the **1.0.0 debug** `--no-battery`
+build and holds two phone keys (the owner's phone and the Mac's
+`~/.quiesco-ble-test-key.json`). Its log holds ~6,700 empty filler records
+from the M8 `w` stress runs; a log erase or factory reset with erase clears
+them (along with the real history).
+
+Open, in order:
+1. **Repository visibility.** The repo is private, so GitHub Pages cannot
+   publish the landing site (enabling Pages returned HTTP 500) and every
+   public link to it 404s: the app's firmware-update button, the build guide,
+   and the privacy policy's "source is public" line. The app links
+   quiesco.rest/privacy, so this blocks store submission. Make the repo
+   public (Pages is free) or host the site elsewhere. DNS points at GitHub
+   Pages but lists only two of its four A records (add 185.199.110.153 and
+   185.199.111.153); HTTPS follows once Pages serves the custom domain.
+2. **Phones.** A new app build (`eas build --profile development`, new
+   native modules) on an iPhone and an Android phone: enrolment, sync with
+   the progress card, the three new unit settings, the diagnostic report.
+3. **M6 decision** (BLE DFU or USB only), and the **Nordic 5-Clause legal
+   review** (M11).
+4. **References:** temperature offset against the Airvalent (self-heating is
+   large), noise against a sound meter, FRC in fresh air.
+5. Deferred by the owner: battery (M7, battery parts of M5/M8), display
+   stress (M9), bench work.
+6. Release chores: multi-day soak, rebuild on a second machine, flash the
+   release build, factory procedure (M10), tag.
 
 ### 2026-10-07 — Log erase command and the sleep window (capability bits 13, 14)
 
