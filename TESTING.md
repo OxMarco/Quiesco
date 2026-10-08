@@ -27,6 +27,8 @@ was in how the pieces met.
 
 ### 1. CI for what already exists (small)
 
+**Done:** `.github/workflows/check.yml`.
+
 A workflow on every push and pull request to `master`:
 
 - `app/`: `npm ci`, `npx tsc --noEmit`, `npx expo lint`, `npx jest`
@@ -35,6 +37,13 @@ A workflow on every push and pull request to `master`:
   hardware)
 
 ### 2. App sync tests against a simulated unit (medium, most value)
+
+**Done:** `app/src/ble/__tests__/sync.test.ts`. With the old app code back
+in, the after-reboot test fails, so it catches this bug. On its first run it
+also found a second one: a stream the unit ended without END (its 10 s stall)
+finished the sync as "done" with part of the log. Still to add:
+`disconnectAfter` and `payload` above 20 (the tests all use the fragment
+path, because the app's payload stays at 20 without a real connect).
 
 A `FakeUnit` in `app/src/ble/__tests__/` that stands in for `./transport`
 (`subscribe`, `read`, `write`, `negotiatePayload`). It holds a log of

@@ -400,7 +400,7 @@ async function prove(enrolled: EnrolledKey, challenge: Uint8Array): Promise<bool
   throw new Error('The unit did not answer the sign-in. Try again.');
 }
 
-async function subscribeLive() {
+export async function subscribeLive() {
   const peripheralId = id();
   unsubscribers.push(
     await ble.subscribe(peripheralId, QUIESCO_SERVICE, Chr.reading, (data) =>
@@ -677,19 +677,20 @@ async function runSync(): Promise<number> {
       total += session.records.length;
       const next = session.nextCursor();
       await db.setCursor(serial, next, Date.now());
-      if (session.lost || error) {
-        // A dropped packet or a stalled stream: ask again from the first
-        // record we lack. Give up after a few rounds that bring nothing.
+      if (session.lost || error || !session.ended) {
+        // A dropped packet, a stalled stream, or one the unit ended without
+        // END (§7.1 step 4): ask again from the first record we lack. Give up
+        // after a few rounds that bring nothing.
         fruitless = session.records.length > 0 ? 0 : fruitless + 1;
         if (fruitless >= MAX_FRUITLESS_ROUNDS || link.get().phase !== 'ready') {
           throw error ?? new Error('The unit kept dropping data. Sync again to continue.');
         }
-        trace('sync retry', `${cursor} -> ${next}`, session.lost ? 'packet lost' : errorText(error));
+        trace('sync retry', `${cursor} -> ${next}`, session.lost ? 'packet lost' : error ? errorText(error) : 'no END');
         cursor = next;
         continue;
       }
       const newest = link.get().status?.newestSequence ?? 0;
-      if (!session.ended || session.records.length < BATCH || (newest > 0 && next > newest)) break;
+      if (session.records.length < BATCH || (newest > 0 && next > newest)) break;
       cursor = next;
     }
     link.set({ sync: { state: 'done', received: total, remaining: 0, expected } });

@@ -1,0 +1,53 @@
+# Type-checks, lints and tests the app, and runs the firmware's host tests,
+# on every push to master and every pull request (TESTING.md item 1).
+name: Check app and firmware
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'app/**'
+      - 'firmware/**'
+      - '.github/workflows/check.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'firmware/**'
+      - '.github/workflows/check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx expo lint
+      - run: npx jest --ci
+
+  firmware:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v7
+      # Mbed TLS for the host HMAC; Ubuntu ships 2.28, the line the unit links.
+      - run: sudo apt-get update && sudo apt-get install -y libmbedtls-dev
+      - run: make check
+      - run: make test
+        env:
+          MBEDTLS_PREFIX: /usr
+      - run: python3 scripts/ble-test.py --self-test
