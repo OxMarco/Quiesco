@@ -18,6 +18,15 @@ if [ ! -f "$mbedtls_prefix/include/mbedtls/md.h" ]; then
   echo "Mbed TLS 3.x not found: brew install mbedtls@3, or set MBEDTLS_PREFIX." >&2
   exit 1
 fi
+# A system copy (Linux CI: MBEDTLS_PREFIX=/usr, Ubuntu's 2.28) is on the
+# default paths already; -isystem /usr/include would break libstdc++'s
+# include_next of stdlib.h.
+mbedtls_include=()
+mbedtls_link=(-lmbedcrypto)
+if [ "$mbedtls_prefix" != /usr ]; then
+  mbedtls_include=(-isystem "$mbedtls_prefix/include")
+  mbedtls_link=(-L"$mbedtls_prefix/lib" -lmbedcrypto)
+fi
 
 mkdir -p "$flashdb_build_dir"
 flashdb_objects=()
@@ -75,7 +84,7 @@ done
   -I"$root/tests/host/fakes" \
   -I"$root/src" \
   -I"$root/src/third_party/flashdb" \
-  -isystem "$mbedtls_prefix/include" \
+  ${mbedtls_include[@]+"${mbedtls_include[@]}"} \
   -DQUIESCO_PROTOCOL_DOC="\"$root/src/protocol/PROTOCOL.md\"" \
   -isystem "$doctest_dir" \
   "$root/tests/host/test_storage_ble.cpp" \
@@ -93,7 +102,7 @@ done
   "$root/src/services/UnitIdentity.cpp" \
   "$root/src/services/BondTable.cpp" \
   "${flashdb_objects[@]}" \
-  -L"$mbedtls_prefix/lib" -lmbedcrypto \
+  "${mbedtls_link[@]}" \
   -o "$storage_binary"
 
 "$storage_binary"
@@ -103,7 +112,7 @@ runtime_binary="${TMPDIR:-/tmp}/quiesco-runtime-tests"
   -DARDUINO_SEEED_XIAO_NRF52840_PLUS \
   -DQUIESCO_BLE_OTA=1 \
   -I"$root/tests/host/fakes" -I"$root/src" -I"$root/src/third_party/flashdb" \
-  -isystem "$mbedtls_prefix/include" \
+  ${mbedtls_include[@]+"${mbedtls_include[@]}"} \
   -isystem "$doctest_dir" \
   "$root/tests/host/test_runtime.cpp" "$doctest_main" \
   "$root/tests/host/fakes/W25Q64FlashSim.cpp" \
@@ -119,7 +128,7 @@ runtime_binary="${TMPDIR:-/tmp}/quiesco-runtime-tests"
   "$root/src/services/Scheduler.cpp" "$root/src/ui/UiModel.cpp" \
   "$root/src/ui/ComfortEvaluation.cpp" "$root/src/ui/SleepSchedule.cpp" \
   "${flashdb_objects[@]}" \
-  -L"$mbedtls_prefix/lib" -lmbedcrypto -o "$runtime_binary"
+  "${mbedtls_link[@]}" -o "$runtime_binary"
 "$runtime_binary"
 
 "${CXX:-c++}" \

@@ -21,8 +21,11 @@ Config defaultConfigForUnit(uint64_t deviceId) {
   memcpy(base, config.deviceName, sizeof base);
   char serial[kSerialChars + 1];
   formatSerial(deviceId, serial);
-  snprintf(config.deviceName, sizeof config.deviceName, "%s %s", base,
-           serial + kSerialChars - kNameSuffixChars);
+  // The base is capped so the serial suffix always fits.
+  const int baseChars =
+      static_cast<int>(sizeof config.deviceName - 2 - kNameSuffixChars);
+  snprintf(config.deviceName, sizeof config.deviceName, "%.*s %s", baseChars,
+           base, serial + kSerialChars - kNameSuffixChars);
   return config;
 }
 
