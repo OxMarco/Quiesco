@@ -18,7 +18,8 @@ npm run build    # static site in dist/
 | `src/lib/bento.ts` | Bento layout and comfort bands, ported from `firmware/src/ui` |
 | `src/lib/units.ts` | °F for visitors whose time zone is in the US (or another °F country) |
 | `src/lib/night.ts` | The generated sample night on the app preview |
-| `src/site.ts` | External links (X, GitHub, the build guide, Kickstarter) |
+| `src/lib/inview.ts` | Holds each section's animations until it scrolls into view |
+| `src/site.ts` | External links (X, GitHub, the build guide, the campaign) |
 | `src/styles/global.css` | Tide & Sand palette and shared styles |
 
 Fonts are self-hosted through Fontsource, and the page loads nothing from third parties.

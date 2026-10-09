@@ -25,6 +25,7 @@ const scene = SCENES[initial].reading;
 
 <script>
   import { bentoSvg, readoutHtml, SCENES, type SceneId } from '../lib/bento';
+  import { reducedMotion } from '../lib/inview';
   import { usesFahrenheit } from '../lib/units';
 
   const fahrenheit = usesFahrenheit();
@@ -45,10 +46,33 @@ const scene = SCENES[initial].reading;
     }
   }
 
+  function press(b: HTMLButtonElement) {
+    buttons.forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+    show(b.dataset.scene as SceneId, true);
+  }
+
+  // The unit walks through the rooms on its own while it is on screen, until the
+  // visitor picks one.
+  let timer = 0;
+  let picked = false;
+  const stop = () => clearInterval(timer);
+  const start = () => {
+    stop();
+    if (picked) return;
+    timer = window.setInterval(() => {
+      const i = [...buttons].findIndex((b) => b.getAttribute('aria-pressed') === 'true');
+      press(buttons[(i + 1) % buttons.length]);
+    }, 4200);
+  };
+  if (!reducedMotion()) {
+    new IntersectionObserver(([e]) => (e.isIntersecting ? start() : stop()), { threshold: 0.5 }).observe(glass);
+  }
+
   buttons.forEach((b) =>
     b.addEventListener('click', () => {
-      buttons.forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
-      show(b.dataset.scene as SceneId, true);
+      picked = true;
+      stop();
+      press(b);
     }),
   );
   if (fahrenheit) {

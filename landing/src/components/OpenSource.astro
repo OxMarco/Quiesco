@@ -1,4 +1,25 @@
 ---
+const steps = [
+  { name: 'Wake', note: 'Sensors power up in turn', icon: '<path d="M12 3v8M6.3 7.3a8 8 0 1 0 11.4 0"/>' },
+  { name: 'Burst', note: 'A quick run of readings', icon: '<path d="M5 18v-4M9 18V8M13 18v-7M17 18V6M21 18v-5"/>' },
+  { name: 'Filter', note: 'One value with an error estimate', icon: '<path d="M4 5h16l-6 7v6l-4 2v-8z"/>' },
+  {
+    name: 'Store',
+    note: 'Kept on flash until you sync',
+    icon: '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>',
+  },
+  { name: 'Sleep', note: 'Deep sleep until the next one', icon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>' },
+];
+
+const parts: [string, string][] = [
+  ['SCD41', 'CO₂, temperature, humidity'],
+  ['VEML7700', 'Light'],
+  ['SPH0641', 'Noise, A-weighted'],
+  ['nRF52840', 'Processor, Bluetooth'],
+  ['1.54″', 'E-ink, 152 × 152'],
+  ['LiPo', 'Rechargeable'],
+];
+
 const specs: [string, string][] = [
   ['Processor', 'nRF52840 (Seeed XIAO nRF52840 Plus)'],
   ['Connection', 'Bluetooth Low Energy'],
@@ -19,72 +40,237 @@ const specs: [string, string][] = [
       <p class="eyebrow">Open source</p>
       <h2>Yours to open, reflash and change</h2>
     </div>
-    <p>
-      Hardware, firmware and app live in one repository under GPLv3. The unit runs the Arduino bootloader, so you can
-      change the firmware from the Arduino IDE and flash it over USB.
-    </p>
+    <p>Hardware, firmware and app in one GPLv3 repository. Change the firmware in the Arduino IDE and flash it over USB.</p>
   </div>
+
+  <div class="pipeline">
+    <p class="every">One sample every <span class="num">60 s</span> by default (10 s to 10 min)</p>
+    <div class="track">
+      <span class="pulse" aria-hidden="true"></span>
+      <ol>
+        {
+          steps.map((s, i) => (
+            <li style={`--i:${i}`}>
+              <span class="node">
+                <svg viewBox="0 0 24 24" class="icon" aria-hidden="true" set:html={s.icon} />
+              </span>
+              <b>{s.name}</b>
+              <span class="note">{s.note}</span>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+  </div>
+
   <div class="open">
-    <div class="body">
-      <p>
-        Temperature and humidity come from the SCD41, the same sensor that measures CO₂, instead of a board sensor that
-        warms itself up. There is no VOC sensor: it draws too much current for a battery device and its number is hard
-        to act on.
-      </p>
-      <p>
-        Each sample wakes the sensors in turn, takes a burst of readings and filters it into one value with an error
-        estimate, so a reading far from the trend can be dropped. Between samples the unit sleeps.
-      </p>
-      <blockquote>
-        I own an Airvalent and a couple of Xiaomi sensors, and I felt these little devices could do more. I wanted data
-        you can act on: high CO₂, open a window; too much light, use a sleep mask; too much noise, try earplugs.
-        <cite>From the maker, who started Quiesco in 2026</cite>
-      </blockquote>
+    <div>
+      <ul class="parts">
+        {
+          parts.map(([name, what]) => (
+            <li>
+              <b class="num">{name}</b>
+              <span>{what}</span>
+            </li>
+          ))
+        }
+      </ul>
+      <details>
+        <summary>Full specifications</summary>
+        <div class="specs-wrap">
+          <table>
+            <tbody>
+              {
+                specs.map(([k, v]) => (
+                  <tr>
+                    <th scope="row">{k}</th>
+                    <td>{v}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Temperature and humidity come from the SCD41 instead of a board sensor that warms itself up. There is no VOC
+          sensor: it draws too much current for a battery device and its number is hard to act on.
+        </p>
+      </details>
     </div>
-    <div class="specs-wrap">
-      <table>
-        <tbody>
-          {
-            specs.map(([k, v]) => (
-              <tr>
-                <th scope="row">{k}</th>
-                <td>{v}</td>
-              </tr>
-            ))
-          }
-        </tbody>
-      </table>
-    </div>
+    <blockquote>
+      I wanted data you can act on: high CO₂, open a window; too much light, use a sleep mask; too much noise, try
+      earplugs.
+      <cite>From the maker, who started Quiesco in 2026</cite>
+    </blockquote>
   </div>
 </section>
 
+<script>
+  import { playWhenSeen } from '../lib/inview';
+
+  playWhenSeen(document.querySelectorAll('#open .pipeline'), false);
+</script>
+
 <style>
+  .pipeline {
+    padding: 28px 20px 24px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 24px;
+  }
+  .every {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .every .num {
+    color: var(--tide);
+  }
+  .track {
+    position: relative;
+    margin-top: 18px;
+  }
+  /* The rail runs between the first and last node centres. */
+  .track::before {
+    content: '';
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    top: 27px;
+    border-top: 2px solid var(--line);
+  }
+  ol {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    text-align: center;
+  }
+  li {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .node {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    margin-bottom: 4px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1.5px solid var(--line);
+    color: var(--muted);
+  }
+  .node .icon {
+    width: 24px;
+    height: 24px;
+  }
+  li b {
+    font-size: 15px;
+  }
+  .note {
+    font-size: 13px;
+    line-height: 1.35;
+    color: var(--muted);
+  }
+  .pulse {
+    display: none;
+  }
+
+  /* A pulse travels the rail behind the nodes and lights each step as it passes. */
+  .armed .pulse {
+    display: block;
+    position: absolute;
+    top: 21px;
+    left: 10%;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
+    border-radius: 50%;
+    background: var(--tide);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--tide) 18%, transparent);
+    animation: travel 6s ease-in-out infinite paused;
+  }
+  .armed .node {
+    animation: lit 6s ease-in-out calc(var(--i) * 1.2s) infinite paused;
+  }
+  .inview .pulse,
+  .inview .node {
+    animation-play-state: running;
+  }
+  @keyframes travel {
+    80%,
+    100% {
+      left: 90%;
+    }
+  }
+  @keyframes lit {
+    0%,
+    4% {
+      border-color: var(--tide);
+      color: var(--tide);
+      background: color-mix(in srgb, var(--tide) 14%, var(--surface));
+    }
+    16%,
+    100% {
+      border-color: var(--line);
+      color: var(--muted);
+      background: var(--surface);
+    }
+  }
+
   .open {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 56px;
+    align-items: start;
+    margin-top: 40px;
   }
-  .body p {
+  .parts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .parts li {
+    align-items: start;
+    gap: 0;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+  }
+  .parts b {
+    font-size: 19px;
+    color: var(--tide);
+  }
+  .parts span {
+    font-size: 13px;
+    line-height: 1.4;
     color: var(--muted);
   }
-  .body p + p {
+  details {
+    margin-top: 16px;
+  }
+  summary {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    font-weight: 600;
+    color: var(--tide);
+    cursor: pointer;
+  }
+  details > p {
     margin-top: 14px;
-  }
-  blockquote {
-    margin: 28px 0 0;
-    padding-left: 18px;
-    border-left: 2px solid var(--drift);
-    font-family: var(--display);
-    font-weight: 300;
-    font-size: 19px;
-    line-height: 1.55;
-  }
-  cite {
-    display: block;
-    margin-top: 10px;
-    font-family: var(--text);
-    font-style: normal;
-    font-size: 14px;
+    font-size: 15px;
     color: var(--muted);
   }
   .specs-wrap {
@@ -98,7 +284,7 @@ const specs: [string, string][] = [
   th,
   td {
     text-align: left;
-    padding: 11px 0;
+    padding: 10px 0;
     border-bottom: 1px solid var(--line);
     vertical-align: top;
   }
@@ -108,9 +294,35 @@ const specs: [string, string][] = [
     width: 38%;
     padding-right: 16px;
   }
+  blockquote {
+    margin: 0;
+    padding-left: 18px;
+    border-left: 2px solid var(--drift);
+    font-family: var(--display);
+    font-weight: 300;
+    font-size: 21px;
+    line-height: 1.55;
+  }
+  cite {
+    display: block;
+    margin-top: 10px;
+    font-family: var(--text);
+    font-style: normal;
+    font-size: 14px;
+    color: var(--muted);
+  }
   @media (max-width: 860px) {
     .open {
       grid-template-columns: 1fr;
+      gap: 40px;
+    }
+  }
+  @media (max-width: 560px) {
+    .parts {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .note {
+      display: none;
     }
   }
 </style>

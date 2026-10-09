@@ -104,6 +104,15 @@ p {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+/* Line icons on a 24 × 24 grid, drawn in the text colour. */
+.icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .lede {
   font-size: 19px;
   color: var(--muted);

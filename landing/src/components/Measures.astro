@@ -1,164 +1,190 @@
 ---
 // Night references from app/src/ui/references.ts, drawn on the panel's gauge
-// scales (firmware/UI.md §4, Ledger). Temperatures carry data-c so the page can
-// show them in °F.
+// scales (firmware/UI.md §4, Ledger). On each card a sample reading drifts from
+// `calm` out to `off`, the fix lights up, and the reading comes back.
+// Temperatures carry data-c so the page can show them in °F.
 
-interface Row {
+interface Card {
   name: string;
   part: string;
+  icon: string;
   lo: number;
   hi: number;
   okLo: number;
   okHi: number;
+  calm: number;
+  off: number;
   range: string;
   unit: string;
-  ticks: string[];
-  title: string;
-  body: string;
+  ticks: [string, string];
+  fix: string;
+  why: string;
 }
 
 const t = (c: number) => `<span data-c="${c}">${c}</span>`;
 const deg = (s: string) => `<span data-deg>${s}</span>`;
 
-const rows: Row[] = [
+const cards: Card[] = [
   {
-    name: 'CO₂', part: 'Sensirion SCD41', lo: 400, hi: 2000, okLo: 400, okHi: 800,
-    range: 'under 800', unit: 'ppm', ticks: ['400', '1,200', '2,000'],
-    title: 'Stuffy air',
-    body: 'Sleep studies see worse sleep from a night average of 1,000 ppm. Open a window or leave the door ajar.',
+    name: 'CO₂', part: 'Sensirion SCD41', icon: '<path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/>',
+    lo: 400, hi: 2000, okLo: 400, okHi: 800, calm: 590, off: 1340,
+    range: '&lt; 800', unit: 'ppm', ticks: ['400', '2,000'],
+    fix: 'Open a window or leave the door ajar',
+    why: "Sleep studies see worse sleep from a night average of 1,000 ppm. The range follows ventilation research and Health Canada's residential limit.",
   },
   {
-    name: 'Temperature', part: 'Sensirion SCD41', lo: 10, hi: 35, okLo: 16, okHi: 20,
-    range: `${t(16)} – ${t(20)}`, unit: `${deg('°C')} at night`, ticks: [t(10), t(22.5), t(35)],
-    title: 'Too warm to sleep well',
-    body: `Sleep efficiency falls above ${t(25)} ${deg('°C')}. Turn the heating down or use a lighter duvet.`,
+    name: 'Temperature', part: 'Sensirion SCD41', icon: '<path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z"/>',
+    lo: 10, hi: 35, okLo: 16, okHi: 20, calm: 17.5, off: 28,
+    range: `${t(16)}–${t(20)}`, unit: `${deg('°C')} at night`, ticks: [t(10), t(35)],
+    fix: 'Turn the heating down or use a lighter duvet',
+    why: `Sleep efficiency falls above ${t(25)} ${deg('°C')}. Comfort varies from person to person.`,
   },
   {
-    name: 'Humidity', part: 'Sensirion SCD41', lo: 0, hi: 100, okLo: 40, okHi: 60,
-    range: '40 – 60', unit: '%', ticks: ['0', '50', '100'],
-    title: 'Dry airways or damp walls',
-    body: 'Under 30 % dries your throat, over 70 % favours mould. Use a humidifier or ventilate.',
+    name: 'Humidity', part: 'Sensirion SCD41', icon: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
+    lo: 0, hi: 100, okLo: 40, okHi: 60, calm: 50, off: 82,
+    range: '40–60', unit: '%', ticks: ['0', '100'],
+    fix: 'Use a humidifier or ventilate',
+    why: 'Under 30 % dries your throat, over 70 % favours mould. Comfort varies from person to person.',
   },
   {
     // log₁₀ lux over 1–10,000; the band is "1 lux or less".
-    name: 'Light', part: 'Vishay VEML7700', lo: 0, hi: 4, okLo: 0, okHi: 0,
-    range: '1 or less', unit: 'lux asleep', ticks: ['1', '100', '10,000'],
-    title: 'Too bright',
-    body: 'Light while asleep disturbs your body clock. Try blackout curtains or a sleep mask.',
+    name: 'Light', part: 'Vishay VEML7700',
+    icon: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    lo: 0, hi: 4, okLo: 0, okHi: 0, calm: 0.08, off: 2,
+    range: '≤ 1', unit: 'lux asleep', ticks: ['1', '10,000'],
+    fix: 'Blackout curtains or a sleep mask',
+    why: 'Light while you sleep disturbs your body clock.',
   },
   {
-    name: 'Noise', part: 'SPH0641 microphone', lo: 30, hi: 100, okLo: 30, okHi: 45,
-    range: 'under 45', unit: 'dB peaks, 30 dB average', ticks: ['30', '65', '100'],
-    title: 'Too loud',
-    body: "Single sounds over 45 dB wake the brain even when you don't notice. Try earplugs or close the window.",
+    name: 'Noise', part: 'SPH0641 microphone', icon: '<path d="M4 10v4h4l5 4V6L8 10H4zM16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11"/>',
+    lo: 30, hi: 100, okLo: 30, okHi: 45, calm: 37, off: 64,
+    range: '&lt; 45', unit: 'dB peaks', ticks: ['30', '100'],
+    fix: 'Earplugs, or close the window',
+    why: "Single sounds over 45 dB wake the brain even when you don't notice. From the WHO night noise guidelines; the night average should stay near 30 dB.",
   },
 ];
 
-const x = (r: Row, v: number) => 4 + ((v - r.lo) / (r.hi - r.lo)) * 292;
-const band = (r: Row) => {
-  const x1 = x(r, r.okLo);
-  return { x: x1, w: Math.max(x(r, r.okHi) - x1, 6) };
-};
+const pct = (c: Card, v: number) => `${(((v - c.lo) / (c.hi - c.lo)) * 100).toFixed(1)}%`;
+const band = (c: Card) => `left:${pct(c, c.okLo)};width:max(${pct(c, c.okHi)} - ${pct(c, c.okLo)}, 8px)`;
 ---
 
 <section id="measures">
   <div class="head">
     <div>
       <p class="eyebrow">What it measures</p>
-      <h2>Five readings, each with something you can do about it</h2>
+      <h2>Five readings. Each comes with a fix</h2>
     </div>
-    <p>
-      General air monitors report a number and leave the rest to you. Quiesco judges your bedroom against what sleep
-      research asks of it, and when a reading is off it tells you the fix.
-    </p>
+    <p>Judged against what sleep research asks of a bedroom, not office air standards. By day the app only judges CO₂ and noise.</p>
   </div>
 
-  <div class="ledger">
+  <div class="cards">
     {
-      rows.map((r) => (
-        <div class="row">
-          <div>
-            <h3>{r.name}</h3>
-            <p class="part">{r.part}</p>
+      cards.map((c, i) => (
+        <article style={`--calm:${pct(c, c.calm)};--off:${pct(c, c.off)};--delay:${i * 0.7}s`}>
+          <div class="name">
+            <svg viewBox="0 0 24 24" class="icon" aria-hidden="true" set:html={c.icon} />
+            <h3>{c.name}</h3>
           </div>
-          <div class="gauge">
-            <p class="range num">
-              <Fragment set:html={r.range} />
-              <small set:html={r.unit} />
-            </p>
-            <svg viewBox="0 0 300 22" preserveAspectRatio="none" aria-hidden="true">
-              <line x1="4" y1="11" x2="296" y2="11" class="track" />
-              <rect x={band(r).x} y="8" width={band(r).w} height="6" rx="3" class="band" />
-            </svg>
-            <div class="scale">
-              {r.ticks.map((tick) => <span set:html={tick} />)}
-            </div>
-          </div>
-          <p class="act">
-            <b>{r.title}</b>
-            <Fragment set:html={r.body} />
+          <p class="range">
+            <span class="num" set:html={c.range} />
+            <small set:html={c.unit} />
           </p>
-        </div>
+          <div class="track" aria-hidden="true">
+            <span class="band" style={band(c)} />
+            <span class="dot" />
+          </div>
+          <div class="scale" aria-hidden="true">
+            <span set:html={c.ticks[0]} />
+            <span set:html={c.ticks[1]} />
+          </div>
+          <p class="fix">
+            <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+              <path d="M5 12l4 4 10-10" />
+            </svg>
+            {c.fix}
+          </p>
+          <details>
+            <summary>Why this range</summary>
+            <p>
+              <Fragment set:html={c.why} /> Sensor: {c.part}.
+            </p>
+          </details>
+        </article>
       ))
     }
   </div>
-  <p class="note">
-    The ranges shown are the references the app uses for the night. Temperature and humidity are comfort, which varies
-    from person to person; noise follows the WHO night noise guidelines, CO₂ follows ventilation research and Health
-    Canada's residential limit. By day the app only judges CO₂ and noise.
-  </p>
 </section>
 
+<script>
+  import { playWhenSeen } from '../lib/inview';
+
+  playWhenSeen(document.querySelectorAll('#measures .cards'), false);
+</script>
+
 <style>
-  .ledger {
+  .cards {
     display: grid;
-    border-top: 1px solid var(--line);
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 14px;
   }
-  .row {
-    display: grid;
-    grid-template-columns: 170px 1fr 1.15fr;
-    gap: 28px;
-    padding-block: 24px;
-    border-bottom: 1px solid var(--line);
+  article {
+    display: flex;
+    flex-direction: column;
+    padding: 20px 18px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+  }
+  .name {
+    display: flex;
     align-items: center;
+    gap: 10px;
+  }
+  .name .icon {
+    width: 24px;
+    height: 24px;
+    color: var(--tide);
   }
   h3 {
     font-family: var(--text);
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 600;
   }
-  .part {
-    font-size: 13px;
-    color: var(--muted);
-    margin-top: 2px;
-  }
   .range {
-    font-size: 22px;
+    margin-top: 14px;
     color: var(--tide);
   }
+  .range .num {
+    font-size: 30px;
+  }
   .range small {
-    font-family: var(--text);
-    font-weight: 500;
+    margin-left: 4px;
     font-size: 13px;
     color: var(--muted);
-    margin-left: 6px;
-  }
-  svg {
-    display: block;
-    width: 100%;
-    height: 22px;
-    margin-top: 6px;
-    overflow: visible;
   }
   .track {
-    stroke: var(--muted);
-    stroke-width: 1.5;
-    stroke-dasharray: 1.5 4;
-    stroke-linecap: round;
-    opacity: 0.7;
+    position: relative;
+    height: 10px;
+    margin: 22px 0 6px;
+    background: radial-gradient(circle, var(--muted) 1px, transparent 1.5px) 0 50% / 7px 4px repeat-x;
   }
   .band {
-    fill: var(--tide);
+    position: absolute;
+    top: 1px;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--tide);
+  }
+  .dot {
+    position: absolute;
+    top: -4px;
+    left: var(--calm);
+    width: 18px;
+    height: 18px;
+    margin-left: -9px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 3px solid var(--tide);
   }
   .scale {
     display: flex;
@@ -167,26 +193,93 @@ const band = (r: Row) => {
     color: var(--muted);
     font-variant-numeric: tabular-nums;
   }
-  .act {
-    font-size: 15px;
+  .fix {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 16px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--bg);
     color: var(--muted);
-  }
-  .act b {
-    display: block;
-    color: var(--ink);
-    font-weight: 600;
-    margin-bottom: 2px;
-  }
-  .note {
     font-size: 14px;
-    color: var(--muted);
-    margin-top: 22px;
-    max-width: 52em;
+    font-weight: 500;
+    line-height: 1.35;
   }
-  @media (max-width: 860px) {
-    .row {
-      grid-template-columns: 1fr;
-      gap: 10px;
+  .fix .icon {
+    width: 18px;
+    height: 18px;
+  }
+  details {
+    margin-top: auto;
+    padding-top: 10px;
+  }
+  summary {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tide);
+    cursor: pointer;
+    list-style: none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary::before {
+    content: '+';
+    width: 16px;
+  }
+  details[open] summary::before {
+    content: '–';
+  }
+  details p {
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  /* The reading drifts out of its band, the fix lights up, and the reading comes back. */
+  .armed .dot,
+  .armed .fix {
+    animation: 7s ease-in-out var(--delay) infinite both paused;
+  }
+  .armed .dot {
+    animation-name: drift;
+  }
+  .armed .fix {
+    animation-name: light-up;
+  }
+  .inview .dot,
+  .inview .fix {
+    animation-play-state: running;
+  }
+  @keyframes drift {
+    0%,
+    18%,
+    88%,
+    100% {
+      left: var(--calm);
+      border-color: var(--tide);
+    }
+    45%,
+    68% {
+      left: var(--off);
+      border-color: var(--bad);
+    }
+  }
+  @keyframes light-up {
+    0%,
+    38%,
+    82%,
+    100% {
+      background: var(--bg);
+      color: var(--muted);
+    }
+    46%,
+    72% {
+      background: color-mix(in srgb, var(--bad) 16%, var(--surface));
+      color: var(--ink);
     }
   }
 </style>
