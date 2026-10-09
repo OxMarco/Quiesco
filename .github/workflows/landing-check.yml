@@ -1,4 +1,4 @@
-# Type-checks and builds landing/ on pull requests, so a broken page never reaches main.
+# Type-checks and builds landing/ on pull requests, so a broken page never reaches master.
 name: Check landing page
 
 on:

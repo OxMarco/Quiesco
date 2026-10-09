@@ -26,7 +26,7 @@ Fonts are self-hosted through Fontsource, and the page loads nothing from third 
 
 ## Deploying
 
-The site lives in the Quiesco monorepo, and its workflows are at the repository root. Pushing to `main` with changes under `landing/` runs [`landing-deploy.yml`](../.github/workflows/landing-deploy.yml), which builds the site and publishes it to GitHub Pages. Pull requests that touch `landing/` run [`landing-check.yml`](../.github/workflows/landing-check.yml) (type-check and build). Changes elsewhere in the repository don't trigger either one.
+The site lives in the Quiesco monorepo, and its workflows are at the repository root. Pushing to `master` with changes under `landing/` runs [`landing-deploy.yml`](../.github/workflows/landing-deploy.yml), which builds the site and publishes it to GitHub Pages. Pull requests that touch `landing/` run [`landing-check.yml`](../.github/workflows/landing-check.yml) (type-check and build). Changes elsewhere in the repository don't trigger either one.
 
 One-time setup on GitHub:
 
