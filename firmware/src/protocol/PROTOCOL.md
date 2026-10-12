@@ -696,18 +696,23 @@ the way the app does instead of on the sleep bands at every hour.
 | 0 | u8 | flags: bit 0 = the panel judges by time of day like the app; bits 1–7 reserved |
 | 1 | u8 | reserved, 0 |
 | 2 | i16 | the phone's local time offset from UTC, minutes, −720 … +840 |
-| 4 | u16 | weekday bedtime, minutes after local midnight, 0–1439 |
-| 6 | u16 | weekday wake time, 0–1439 |
-| 8 | u16 | weekend bedtime (Friday and Saturday nights), or `0xFFFF` = no separate weekend times |
-| 10 | u16 | weekend wake time, or `0xFFFF` |
+| 4 | u16 | bedtime, minutes after local midnight, 0–1439 |
+| 6 | u16 | wake time, 0–1439 |
+| 8 | u16 × 2 | reserved for per-night windows, always `0xFFFF 0xFFFF` |
 
-A write with a reserved bit or byte set, a time or offset out of range, or
-only one of the weekend pair `0xFFFF` is rejected and changes nothing. The
+One window applies to every night. Bytes 8–11 are reserved as `FF FF FF FF`
+rather than zero: earlier builds of this version used them for separate
+Friday and Saturday times, with `0xFFFF` meaning none, so a window written by
+any app in use stays valid. A later capability may define them for custom
+per-night windows.
+
+A write with a reserved bit or byte set (bytes 8–11 anything but `FF`), or a
+time or offset out of range, is rejected and changes nothing. The
 offset is a fixed number of minutes, so **rewrite it on every connection**
 (after the epoch time, §6.5); a daylight-saving change then follows at the
 next connection. The window is saved apart from the core config and survives
 resets; factory reset restores the default. A new unit, or one reset, has the
-flag clear, offset 0 and 23:30–07:00 with no weekend times:
+flag clear, offset 0 and 23:30–07:00:
 
 ```text
 00 00 00 00 82 05 a4 01 ff ff ff ff
@@ -726,10 +731,8 @@ the clock synced it follows the app's rule, in local time (UTC epoch + the
 offset):
 
 - A moment belongs to the night named by its local date 12 hours earlier.
-  That night's times are the weekend ones if it is a Friday or Saturday night
-  and weekend times are set, otherwise the weekday ones. A bedtime before noon
-  falls on the next calendar day; the window lasts from bedtime to the wrapped
-  wake time. Once a night's window has ended, the next night's applies.
+  A bedtime before noon falls on the next calendar day; the window lasts
+  from bedtime to the wrapped wake time. Once a night's window has ended, the next night's applies.
 - **Sleep**, from 60 minutes before bedtime (the minutes to bedtime rounded
   to the nearest minute, as the app does) until wake: every metric on the
   sleep bands, with the night nudges.

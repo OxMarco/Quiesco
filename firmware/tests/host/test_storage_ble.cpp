@@ -1105,9 +1105,8 @@ TEST_CASE("protocol golden vectors") {
   CHECK(BleCodec::decodeSleepWindow(sleep, sizeof sleep, decoded));
   CHECK(decoded.followsApp());
   CHECK_EQ(int16_t{120}, decoded.utcOffsetMinutes);
-  CHECK_EQ(uint16_t{1410}, decoded.weekdayBedMin);
-  CHECK_EQ(uint16_t{420}, decoded.weekdayWakeMin);
-  CHECK(!decoded.hasWeekend());
+  CHECK_EQ(uint16_t{1410}, decoded.bedMin);
+  CHECK_EQ(uint16_t{420}, decoded.wakeMin);
 
   Reading logged = reading;
   logged.monotonicMs = 3600000;
@@ -1237,9 +1236,9 @@ TEST_CASE("sleep window validation") {
   auto rejects = [&](const char* why) {
     CAPTURE(why);
     window = kept;
-    window.weekdayBedMin = 1;  // a sentinel the decoder must not overwrite
+    window.bedMin = 1;  // a sentinel the decoder must not overwrite
     CHECK(!BleCodec::decodeSleepWindow(wire, 12, window));
-    CHECK_EQ(uint16_t{1}, window.weekdayBedMin);
+    CHECK_EQ(uint16_t{1}, window.bedMin);
     memcpy(wire, good, 12);
   };
   memcpy(wire, good, 12);
@@ -1255,26 +1254,26 @@ TEST_CASE("sleep window validation") {
   LittleEndian::putI16(wire + 2, 841);
   rejects("offset above +840");
   LittleEndian::putU16(wire + 4, 1440);
-  rejects("weekday bedtime");
+  rejects("bedtime");
   LittleEndian::putU16(wire + 6, 1440);
-  rejects("weekday wake");
+  rejects("wake");
+  // Bytes 8-11 are reserved for per-night windows: anything but FF is
+  // rejected, including the weekend times earlier firmware accepted.
   LittleEndian::putU16(wire + 8, 60);
-  rejects("weekend bedtime without wake");
+  rejects("reserved bytes 8-9");
   LittleEndian::putU16(wire + 10, 600);
-  rejects("weekend wake without bedtime");
-  LittleEndian::putU16(wire + 8, 1440);
+  rejects("reserved bytes 10-11");
+  LittleEndian::putU16(wire + 8, 60);
   LittleEndian::putU16(wire + 10, 600);
-  rejects("weekend bedtime out of range");
+  rejects("a former weekend pair");
 
   // Edges are accepted.
   LittleEndian::putI16(wire + 2, -720);
   LittleEndian::putU16(wire + 4, 0);
   LittleEndian::putU16(wire + 6, 1439);
-  LittleEndian::putU16(wire + 8, 1439);
-  LittleEndian::putU16(wire + 10, 0);
   CHECK(BleCodec::decodeSleepWindow(wire, 12, window));
-  CHECK(window.hasWeekend());
   CHECK_EQ(int16_t{-720}, window.utcOffsetMinutes);
+  CHECK_EQ(uint16_t{1439}, window.wakeMin);
   LittleEndian::putI16(wire + 2, 840);
   CHECK(BleCodec::decodeSleepWindow(wire, 12, window));
 }
@@ -1296,11 +1295,11 @@ TEST_CASE("sleep window persistence") {
   SleepWindow saved = defaultSleepWindow();
   saved.flags = SleepWindow::kFlagFollowApp;
   saved.utcOffsetMinutes = -300;
-  saved.weekendBedMin = 60;
-  saved.weekendWakeMin = 600;
+  saved.bedMin = 60;
+  saved.wakeMin = 600;
   CHECK(store.saveSleepWindow(flash, saved));
   SleepWindow invalid = saved;
-  invalid.weekdayWakeMin = 1440;
+  invalid.wakeMin = 1440;
   CHECK(!store.saveSleepWindow(flash, invalid));
   ConfigStore rebooted;
   Config config = defaultConfig();
@@ -1311,8 +1310,8 @@ TEST_CASE("sleep window persistence") {
   CHECK(rebooted.loadSleepWindow(flash, loaded));
   CHECK(loaded.followsApp());
   CHECK_EQ(int16_t{-300}, loaded.utcOffsetMinutes);
-  CHECK_EQ(uint16_t{60}, loaded.weekendBedMin);
-  CHECK_EQ(uint16_t{600}, loaded.weekendWakeMin);
+  CHECK_EQ(uint16_t{60}, loaded.bedMin);
+  CHECK_EQ(uint16_t{600}, loaded.wakeMin);
 
   // An interrupted update keeps the committed window.
   SleepWindow next = loaded;

@@ -21,12 +21,6 @@ int64_t wrapMinutes(int64_t minutes) {
 }
 
 // Nights are named by the local day number of the evening that starts them.
-// 1970-01-01 was a Thursday (getDay() 4); Friday and Saturday nights are the
-// weekend (isWeekendNight).
-bool isWeekendNight(int64_t night) {
-  const int64_t weekday = ((night + 4) % 7 + 7) % 7;
-  return weekday == 5 || weekday == 6;
-}
 
 struct Window {
   int64_t fromMs;  // local
@@ -36,9 +30,8 @@ struct Window {
 // windowForNight: a bedtime before noon falls in the small hours after the
 // evening; the window lasts the wrapped wake − bed.
 Window windowForNight(int64_t night, const SleepWindow& window) {
-  const bool weekend = window.hasWeekend() && isWeekendNight(night);
-  const int64_t bed = weekend ? window.weekendBedMin : window.weekdayBedMin;
-  const int64_t wake = weekend ? window.weekendWakeMin : window.weekdayWakeMin;
+  const int64_t bed = window.bedMin;
+  const int64_t wake = window.wakeMin;
   const int64_t day = bed < kNoonMin ? night + 1 : night;
   Window out;
   out.fromMs = day * kDayMs + bed * kMinuteMs;

@@ -16,14 +16,14 @@ import path from 'node:path';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sleepTs = path.resolve(here, '../../../../app/src/ui/sleep.ts');
 
-// [name, weekday bed, weekday wake, weekend bed or null, weekend wake]
+// [name, bed, wake]
 const WINDOWS = [
-  ['default 23:30-07:00', 1410, 420, null, null],
-  ['weekend 01:00-10:00 after weekday 22:00-06:30', 1320, 390, 60, 600],
-  ['bedtime after midnight 00:30-08:00', 30, 480, null, null],
-  ['weekend earlier 21:00-05:00, weekday 23:45-07:15', 1425, 435, 1260, 300],
-  ['bedtime 11:45 wraps the noon rule, wake 19:00', 705, 1140, null, null],
-  ['bedtime 12:00 is an evening bedtime, wake 20:00', 720, 1200, null, null],
+  ['default 23:30-07:00', 1410, 420],
+  ['early 22:00-06:30', 1320, 390],
+  ['bedtime after midnight 00:30-08:00', 30, 480],
+  ['early evening 21:00-05:00', 1260, 300],
+  ['bedtime 11:45 wraps the noon rule, wake 19:00', 705, 1140],
+  ['bedtime 12:00 is an evening bedtime, wake 20:00', 720, 1200],
 ];
 // [UTC offset minutes, fixed-offset zone the app runs in]
 const ZONES = [
@@ -42,9 +42,8 @@ const STEPS = (9 * 24 * 3600 * 1000) / STEP_MS;
 
 const child = `
   const { judgeMode } = await import(${JSON.stringify(pathToFileURL(sleepTs).href)});
-  const [bed, wake, wbed, wwake, start, step, steps] = JSON.parse(process.argv[1]);
-  const w = { weekday: { bedMin: bed, wakeMin: wake },
-              weekend: wbed === null ? null : { bedMin: wbed, wakeMin: wwake }, set: true };
+  const [bed, wake, start, step, steps] = JSON.parse(process.argv[1]);
+  const w = { times: { bedMin: bed, wakeMin: wake }, set: true };
   let last = null; const out = [];
   for (let i = 0; i < steps; i++) {
     const m = judgeMode(start + i * step, w) === 'sleep' ? 1 : 0;
@@ -74,16 +73,16 @@ lines.push('');
 lines.push('struct Case {');
 lines.push('  const char* name;');
 lines.push('  int16_t offsetMin;');
-lines.push('  uint16_t bed, wake, weekendBed, weekendWake;  // 0xFFFF = none');
+lines.push('  uint16_t bed, wake;');
 lines.push('  const Change* changes;');
 lines.push('  uint32_t count;');
 lines.push('};');
 lines.push('');
 const cases = [];
 let n = 0;
-for (const [name, bed, wake, wbed, wwake] of WINDOWS) {
+for (const [name, bed, wake] of WINDOWS) {
   for (const [offset, tz] of ZONES) {
-    const args = JSON.stringify([bed, wake, wbed, wwake, START_MS, STEP_MS, STEPS]);
+    const args = JSON.stringify([bed, wake, START_MS, STEP_MS, STEPS]);
     const json = execFileSync(process.execPath, ['--no-warnings', '--input-type=module', '-e', child, args], {
       env: { ...process.env, TZ: tz },
       encoding: 'utf8',
@@ -94,7 +93,7 @@ for (const [name, bed, wake, wbed, wwake] of WINDOWS) {
     lines.push(`constexpr Change ${id}[] = {${body}};`);
     cases.push(
       `    {${JSON.stringify(`${name}, UTC${offset >= 0 ? '+' : ''}${offset}`)}, ${offset}, ${bed}, ${wake}, ` +
-        `${wbed ?? '0xFFFF'}, ${wwake ?? '0xFFFF'}, ${id}, ${changes.length}},`,
+        `${id}, ${changes.length}},`,
     );
   }
 }

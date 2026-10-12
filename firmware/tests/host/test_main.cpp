@@ -231,17 +231,15 @@ TEST_CASE("fahrenheit display") {
 // The app's judge-mode tests, run against the firmware: every case of
 // parity/sleep_parity_vectors.h is the app's own judgeMode (sleep.ts) swept
 // over nine days in 15 s steps under a fixed UTC offset, covering bedtimes
-// before and after midnight, weekend nights and the rounded 60 min lead.
+// before and after midnight and the rounded 60 min lead.
 TEST_CASE("judge mode parity with the app") {
   for (const SleepParity::Case& c : SleepParity::kCases) {
     CAPTURE(c.name);
     SleepWindow window = defaultSleepWindow();
     window.flags = SleepWindow::kFlagFollowApp;
     window.utcOffsetMinutes = c.offsetMin;
-    window.weekdayBedMin = c.bed;
-    window.weekdayWakeMin = c.wake;
-    window.weekendBedMin = c.weekendBed;
-    window.weekendWakeMin = c.weekendWake;
+    window.bedMin = c.bed;
+    window.wakeMin = c.wake;
     REQUIRE(isValidSleepWindow(window));
     uint32_t next = 0;
     uint8_t expected = 0;
@@ -300,16 +298,11 @@ TEST_CASE("judge mode around bedtime and wake") {
   window.utcOffsetMinutes = 60;
   CHECK(at(morning) == JudgeMode::kDay);
 
-  // Weekend times apply to Friday and Saturday nights only.
+  // Friday and Saturday nights use the same window as every other night.
   window.utcOffsetMinutes = 0;
-  window.weekendBedMin = 60;    // 01:00
-  window.weekendWakeMin = 600;  // 10:00
   const uint64_t friday = day + 24 * 60 * minute;
-  CHECK(at(friday + (23 * 60 + 30) * minute) == JudgeMode::kDay);
-  CHECK(at(friday + (24 * 60 + 30) * minute) == JudgeMode::kSleep);
-  CHECK(at(friday + (24 * 60 + 9 * 60 + 59) * minute) == JudgeMode::kSleep);
-  // Thursday night keeps the weekday window: awake at 07:30 on Friday.
-  CHECK(at(friday + (7 * 60 + 30) * minute) == JudgeMode::kDay);
+  CHECK(at(friday + (23 * 60 + 30) * minute) == JudgeMode::kSleep);
+  CHECK(at(friday + (24 * 60 + 7 * 60 + 30) * minute) == JudgeMode::kDay);
 }
 
 TEST_CASE("panel judge mode falls back to sleep bands") {

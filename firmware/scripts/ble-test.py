@@ -249,32 +249,27 @@ def decode_device_control(data):
     return None
 
 
-NO_WEEKEND = 0xFFFF
+RESERVED_TIME = 0xFFFF  # bytes 8-11, kept for per-night windows
 
 
 def clock_text(minutes):
-    return "none" if minutes == NO_WEEKEND else f"{minutes // 60:02d}:{minutes % 60:02d}"
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
-def encode_sleep_window(follow_app, utc_offset_min, weekday, weekend=None, flags=None):
-    """§6.17; weekday and weekend are (bed, wake) minutes after local midnight.
+def encode_sleep_window(follow_app, utc_offset_min, times, reserved=(RESERVED_TIME, RESERVED_TIME), flags=None):
+    """§6.17; times is (bed, wake) in minutes after local midnight.
     No validation: the run suite also builds invalid windows with it."""
-    weekend_bed, weekend_wake = weekend if weekend else (NO_WEEKEND, NO_WEEKEND)
     flags = (1 if follow_app else 0) if flags is None else flags
-    return struct.pack("<BBhHHHH", flags, 0, utc_offset_min, weekday[0], weekday[1],
-                       weekend_bed, weekend_wake)
+    return struct.pack("<BBhHHHH", flags, 0, utc_offset_min, times[0], times[1], *reserved)
 
 
 def decode_sleep_window(data):
     _check_length("sleep window", data, 12)
-    flags, reserved, offset, bed, wake, wbed, wwake = struct.unpack("<BBhHHHH", data)
+    flags, reserved, offset, bed, wake, r8, r10 = struct.unpack("<BBhHHHH", data)
     return {"follow_app": bool(flags & 1), "flags": flags, "reserved": reserved,
-            "utc_offset_min": offset, "weekday_bed": bed, "weekday_wake": wake,
-            "weekend_bed": wbed, "weekend_wake": wwake,
+            "utc_offset_min": offset, "bed": bed, "wake": wake, "reserved_times": (r8, r10),
             "summary": f"{'follows the app' if flags & 1 else 'sleep bands all day'}, "
-                       f"UTC{offset:+d} min, weekday {clock_text(bed)}-{clock_text(wake)}, "
-                       f"weekend " + (f"{clock_text(wbed)}-{clock_text(wwake)}"
-                                      if wbed != NO_WEEKEND else "same")}
+                       f"UTC{offset:+d} min, {clock_text(bed)}-{clock_text(wake)}"}
 
 
 def sleep_window_valid(data):
@@ -282,11 +277,10 @@ def sleep_window_valid(data):
     if len(data) != 12:
         return False
     w = decode_sleep_window(data)
-    no_weekend = w["weekend_bed"] == NO_WEEKEND and w["weekend_wake"] == NO_WEEKEND
     return (w["flags"] & ~1 == 0 and w["reserved"] == 0
             and -720 <= w["utc_offset_min"] <= 840
-            and w["weekday_bed"] < 1440 and w["weekday_wake"] < 1440
-            and (no_weekend or (w["weekend_bed"] < 1440 and w["weekend_wake"] < 1440)))
+            and w["bed"] < 1440 and w["wake"] < 1440
+            and w["reserved_times"] == (RESERVED_TIME, RESERVED_TIME))
 
 
 CAPABILITY_NAMES = ["screen", "offsets", "frc", "rename", "log", "reset", "erase",
@@ -653,8 +647,8 @@ def self_test():
            encode_sleep_window(True, 120, (1410, 420)) == window)
     decoded = decode_sleep_window(window)
     expect("sleep window decode", decoded["follow_app"] and decoded["utc_offset_min"] == 120
-           and decoded["weekday_bed"] == 1410 and decoded["weekday_wake"] == 420
-           and decoded["weekend_bed"] == NO_WEEKEND, decoded)
+           and decoded["bed"] == 1410 and decoded["wake"] == 420
+           and decoded["reserved_times"] == (RESERVED_TIME, RESERVED_TIME), decoded)
     default = vec("sleep window default", "00 00 00 00 82 05 a4 01 ff ff ff ff")
     expect("sleep window default", encode_sleep_window(False, 0, (1410, 420)) == default
            and sleep_window_valid(default))
@@ -664,10 +658,11 @@ def self_test():
                encode_sleep_window(True, -721, (1410, 420)),
                encode_sleep_window(True, 841, (1410, 420)),
                encode_sleep_window(True, 0, (1440, 420)),
-               encode_sleep_window(True, 0, (1410, 420), (60, NO_WEEKEND)),
+               encode_sleep_window(True, 0, (1410, 420), (60, RESERVED_TIME)),
+               encode_sleep_window(True, 0, (1410, 420), (60, 600)),
                window[:1] + b"\x01" + window[2:], window[:11], window + b"\0"]
     expect("invalid sleep windows refused", not any(sleep_window_valid(w) for w in invalid))
-    expect("weekend pair accepted", sleep_window_valid(encode_sleep_window(True, 840, (0, 1439), (1439, 0))))
+    expect("edge times accepted", sleep_window_valid(encode_sleep_window(True, 840, (0, 1439))))
 
     cal = decode_calibration_state(vec("calibration state", "00 b9 55 69 a4 01 db ff 01 00 00 00"))
     expect("calibration state", cal == {"last_frc_epoch_s": epoch_ms // 1000,
@@ -1799,8 +1794,8 @@ class Suite:
                 (SLEEP_WINDOW, "reserved byte", good[:1] + b"\x01" + good[2:]),
                 (SLEEP_WINDOW, "offset -721", encode_sleep_window(False, -721, (1410, 420))),
                 (SLEEP_WINDOW, "bedtime 1440", encode_sleep_window(False, 0, (1440, 420))),
-                (SLEEP_WINDOW, "one weekend 0xFFFF", encode_sleep_window(False, 0, (1410, 420),
-                                                                          (60, NO_WEEKEND))),
+                (SLEEP_WINDOW, "reserved bytes 8-11 not FF", encode_sleep_window(False, 0, (1410, 420),
+                                                                                  (60, 600))),
             ]
         if not has_cap(self.info, CAP_RENAME):
             cases = [c for c in cases if c[0] != NAME]
@@ -1916,17 +1911,17 @@ class Suite:
         # follow-app stays as the user had it so the panel's verdicts are unchanged.
         follow = bool(original[:1] and original[0] & 1)
         local = int(datetime.datetime.now().astimezone().utcoffset().total_seconds() // 60)
-        test = encode_sleep_window(follow, local, (1395, 405), (75, 615))
+        test = encode_sleep_window(follow, local, (1395, 405))
         if test == original:
-            test = encode_sleep_window(follow, local, (1380, 390), (90, 630))
+            test = encode_sleep_window(follow, local, (1380, 390))
         applied = await self.write_confirmed(SLEEP_WINDOW, test)
         self.check("M4 sleep window write reads back", applied, decode_sleep_window(test)["summary"])
-        bad = encode_sleep_window(follow, local, (1395, 405), (75, NO_WEEKEND))
+        bad = encode_sleep_window(follow, local, (1395, 405), (75, 615))
         await self.unit.write(SLEEP_WINDOW, bad)
         await asyncio.sleep(1.5)
         after_bad = await self.unit.read(SLEEP_WINDOW)
         self.check("M4 sleep window invalid write rejected, value unchanged", after_bad == test,
-                   "only one of the weekend pair 0xFFFF" if after_bad == test else hexs(after_bad))
+                   "reserved bytes 8-11 not FF" if after_bad == test else hexs(after_bad))
         restored = await self.write_confirmed(SLEEP_WINDOW, original)
         self.check("M4 sleep window original restored", restored, hexs(original))
 

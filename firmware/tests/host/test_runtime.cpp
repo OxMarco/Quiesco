@@ -448,7 +448,7 @@ TEST_CASE("app sleep window") {
     FakeBle::write(kSleep, golden.data(), static_cast<int>(golden.size()));
     run(app, 40);
     CHECK_MESSAGE(FakeBle::read(kSleep) == golden, "valid write applied");
-    std::vector<uint8_t> bad = golden; bad[10] = 0x00; bad[11] = 0x01;  // only one weekend 0xFFFF
+    std::vector<uint8_t> bad = golden; bad[10] = 0x00; bad[11] = 0x01;  // reserved bytes 8-11 not FF
     FakeBle::write(kSleep, bad.data(), static_cast<int>(bad.size()));
     step(app);
     CHECK_MESSAGE(FakeBle::read(kSleep) == golden, "invalid write reverts");
