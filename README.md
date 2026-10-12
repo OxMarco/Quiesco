@@ -213,6 +213,7 @@ Going deeper:
 - [x] App: more than one unit per phone, each with its own name and sleep window
 - [ ] App on the App Store and Google Play
 - [ ] Units for sale — *coming soon*
+- [ ] Later: Quiesco XL, with PM2.5, PM10 and more sensors for fuller air-quality control, and a bigger screen
 
 ## 📖 The story behind it
 
