@@ -205,7 +205,7 @@ bool decodeCalibrationControl(const uint8_t* data, uint16_t length,
                               uint16_t& targetPpm);
 // Validates and NUL-terminates into out (17 bytes).
 bool decodeDeviceName(const uint8_t* data, uint16_t length, char* out);
-// Factory reset (4 bytes) or log erase (8 bytes); any other length,
+// Factory reset or enter update (4 bytes), or log erase (8 bytes); any other length,
 // opcode, flag or confirmation is refused.
 bool decodeDeviceControl(const uint8_t* data, uint16_t length,
                          DeviceControlRequest& request);

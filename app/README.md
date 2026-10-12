@@ -58,16 +58,16 @@ anything.
 ### Check your changes
 
 ```sh
-npm test                          # protocol tests
+npm test                          # protocol, sync and UI tests (jest)
 npx tsc --noEmit && npx expo lint
 ```
 
 ### No hardware yet?
 
-A simulator has no Bluetooth. The welcome screen offers **Explore with demo
+A simulator has no Bluetooth. The welcome screen offers **Try it with demo
 data**, which adds a demo unit with three made-up nights so the screens can be
 checked without hardware. It works in release builds too, and the demo can be
-removed in Settings.
+removed in **Settings → Remove demo data**.
 
 ## Layout
 
@@ -76,8 +76,8 @@ removed in Settings.
 | `src/protocol/` | The BLE protocol in plain TypeScript: codecs, log packets and CRC, the comfort policy. Mirrors `firmware/src/protocol` and `firmware/src/ui/ComfortEvaluation`. |
 | `src/protocol/__tests__/` | Golden vectors, checked against the examples in `firmware/src/protocol/PROTOCOL.md` |
 | `src/ble/` | `transport.ts` wraps the Bluetooth library; `link.ts` runs the connect sequence, enrolment and authentication, confirmed writes and log download; `session.ts` reconnects and syncs |
-| `src/data/` | SQLite store keyed by the unit's serial; the dev-only sample data |
-| `src/app/` | Screens (Expo Router): Room, Nights, Unit tabs; Connect and Calibrate modals |
+| `src/data/` | SQLite store keyed by the unit's serial; the demo unit and its sample nights |
+| `src/app/` | Screens (Expo Router): Room, Nights and Settings tabs; Connect, Calibrate, Sleep window, metric detail and 'why' screens |
 | `src/components/`, `src/ui/` | Shared components, metric formatting, night summaries |
 | `src/theme/` | The palette, the single source for NativeWind variables and SVG colours |
 | `brand/` | Logo sources and the identity explorations |

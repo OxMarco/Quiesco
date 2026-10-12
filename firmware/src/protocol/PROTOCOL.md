@@ -9,7 +9,7 @@ Protocol version: 6
 The encoders and decoders live in [`BleCodec.cpp`](BleCodec.cpp), the GATT
 table in [`../drivers/BleConfig.cpp`](../drivers/BleConfig.cpp). Every hex
 example below is produced by the codec in the host tests
-(`testProtocolGoldenVectors` in `tests/host/test_storage_ble.cpp`), which also
+(the "protocol golden vectors" test case in `tests/host/test_storage_ble.cpp`), which also
 fails if this document stops containing it. The examples cannot drift from the
 firmware.
 
@@ -85,7 +85,7 @@ The device accepts one connection at a time.
 
 Only an enrolled phone can read the unit's data or change anything.
 
-Versions 4 and 5 authenticate at the application layer. LE Secure Connections
+Since version 4 the unit authenticates at the application layer. LE Secure Connections
 pairing was dropped: on the firmware's BLE stack (ArduinoBLE 2.1.0 on the
 Seeed mbed core) it failed on air with a MIC failure when encryption started,
 or hung the unit. No characteristic requires an encrypted link, and the unit
@@ -556,7 +556,8 @@ The SCD41 serial becomes available after the first measurement cycle, about
 1 s after boot, as does the boot counter; re-read if either is zero.
 Device info is readable without authentication, so an app can check
 compatibility and guide enrolment before it has access to anything else.
-Example: protocol 6, capabilities 0x7FFF, firmware 1.2.3 release build,
+Example: protocol 6, capabilities 0x17FFF (bits 0–14 and 16; shipped
+firmware never sets bit 15), firmware 1.2.3 release build,
 enrolment open, no phone enrolled yet, SCD41 serial 0xA1B2C3D4E5F6, boot 7:
 
 ```text
@@ -617,7 +618,8 @@ Read:
 | 2 | u8 × 16 | challenge: random, new for every connection and after every PROVE |
 | 18 | u16 | reserved, 0 |
 
-Write ENROL (2 bytes), accepted only while enrolment is open:
+Write ENROL (2 bytes), accepted only while enrolment is open, no setup is
+pending and the connection has fewer than 5 failed proofs:
 
 | Offset | Type | Field |
 |---|---|---|
@@ -702,9 +704,11 @@ the way the app does instead of on the sleep bands at every hour.
 
 One window applies to every night. Bytes 8–11 are reserved as `FF FF FF FF`
 rather than zero: earlier builds of this version used them for separate
-Friday and Saturday times, with `0xFFFF` meaning none, so a window written by
-any app in use stays valid. A later capability may define them for custom
-per-night windows.
+Friday and Saturday times, with `0xFFFF` meaning none, so a window those
+builds wrote without weekend times stays valid. One with weekend times is
+rejected; a stored one falls back to the default until the app writes the
+window again. A later capability may define the bytes for custom per-night
+windows.
 
 A write with a reserved bit or byte set (bytes 8–11 anything but `FF`), or a
 time or offset out of range, is rejected and changes nothing. The
@@ -774,7 +778,7 @@ resume on the device.
 1. **Subscribe to `000A` first.** A notification that cannot be delivered
    stalls the session, and it ends 10 s later.
 2. Write START to `0009`. If a measurement is due, the download rides it and
-   streaming begins when it finishes, about 12 s later (longer during an FRC
+   streaming begins when it finishes, about 11 s later (longer during an FRC
    soak); otherwise streaming begins at once. Status notifies with flag bit 1
    set when streaming starts.
 3. The device sends DATA packets, or FRAGMENT packets at small MTUs, in
@@ -836,7 +840,7 @@ a 20-byte payload:
 ```
 
 **END** names the next sequence to request: one past the last record sent, or
-the requested sequence if nothing was sent. Example, after record 1201:
+the requested sequence if nothing was sent (1 if you asked for 0). Example, after record 1201:
 
 ```text
 02 01 b2 04 00 00 00 00 00 00 00 ab
@@ -879,6 +883,11 @@ b1 04 00 00 7f 00 01 00 10 c7 55 69 80 ee 36 00
 
 ### 7.4 App rules
 
+- **Lost packets.** The stack can drop a notification without telling the
+  unit, so check the packet counter (§7.2): DATA and FRAGMENT packets count
+  up and END carries the next count. If the counter skips, or a packet fails
+  its CRC, ignore everything after it, END included, and save one past the
+  highest record received intact. The next START resends from there.
 - **Cursor.** Start at 0 for a unit you have never synced. After an END, save
   its next sequence as the cursor. Without an END (abort, disconnect,
   timeout), save one past the highest sequence received intact; nothing is

@@ -32,7 +32,7 @@ belong to the code that was built.
 | Sensirion Core | 0.7.3 | [Sensirion/arduino-core](https://github.com/Sensirion/arduino-core) | BSD-3-Clause | none |
 | GxEPD2 | 1.6.9 | [ZinggJM/GxEPD2](https://github.com/ZinggJM/GxEPD2) | **GPL-3.0** | none |
 | ArduinoBLE | 2.1.0 | [arduino-libraries/ArduinoBLE](https://github.com/arduino-libraries/ArduinoBLE) | **LGPL-2.1** | none |
-| FlashDB (vendored in `src/third_party/flashdb`) | 2.2.0 | [armink/FlashDB](https://github.com/armink/FlashDB) | Apache-2.0 | yes: `fdb_tsdb.c` initialises an erased TSDB one sector at a time (see `README.quiesco.md`); `fdb_cfg.h` and `fal_cfg.h` are Quiesco configuration |
+| FlashDB (vendored in `src/third_party/flashdb`) | 2.2.0 | [armink/FlashDB](https://github.com/armink/FlashDB) | Apache-2.0 | yes, each change marked `Quiesco:` (see `README.quiesco.md`): `fdb_tsdb.c` initialises an erased TSDB one sector at a time, `fdb_kvdb.c` formats only blank sectors, `fdb_def.h`/`flashdb.h` add a resumable iterator; `fdb_cfg.h` and `fal_cfg.h` are Quiesco configuration |
 | Fredoka font, as bitmaps in `src/ui/fonts` | Google Fonts `ofl/fredoka` (variable font) | [google/fonts](https://github.com/google/fonts/tree/main/ofl/fredoka) | SIL OFL 1.1, © 2016 The Fredoka Project Authors | converted to Adafruit GFX bitmaps by `scripts/convert-fonts.sh`; no reserved font name |
 
 Not linked:
@@ -68,7 +68,7 @@ For reference, what each licence would ask of a binary-only release:
 | Licence | Components | Obligation for a binary-only firmware release |
 |---|---|---|
 | MIT, BSD-2/3-Clause, SIL OFL 1.1 | Adafruit libraries, Sensirion libraries, Fredoka | Reproduce the copyright notices and licence texts in documentation or another place the user can find them, for example the app's "open-source licences" screen or the product manual. The BSD-3 texts also forbid using the authors' names to endorse the product. |
-| Apache-2.0 | FlashDB, Adafruit Unified Sensor, Mbed OS | Ship the licence text and any upstream NOTICE file; state changes in modified files, which `fdb_tsdb.c` now does in its header. |
+| Apache-2.0 | FlashDB, Adafruit Unified Sensor, Mbed OS | Ship the licence text and any upstream NOTICE file; state changes in modified files, which each patched FlashDB file does in its header. |
 | LGPL-2.1 | ArduinoBLE, the core, `SPI`, `Wire` | Statically linked into one image, so the recipient must be able to relink the firmware with a modified version of the library. In practice, ship the LGPL text, offer the library source, and provide the application's object files (or its source) with instructions to relink and flash. |
 | GPL-3.0 | GxEPD2 | Linking GxEPD2 makes the distributed firmware a combined work under GPL-3.0: the complete corresponding source of the whole firmware must be offered under GPL-3.0. |
 

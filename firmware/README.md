@@ -30,7 +30,8 @@ display or the BLE stack can be swapped by touching one file.
 - macOS or Linux with `make`, `bash` and `python3`
 - [`arduino-cli`](https://arduino.github.io/arduino-cli/) on your `PATH`, or the
   Arduino IDE 2 installed in `/Applications` (the scripts use its bundled CLI)
-- For the host tests only: `brew install mbedtls@3`
+- For the host tests only: Mbed TLS (`brew install mbedtls@3` on macOS;
+  `apt install libmbedtls-dev` and `MBEDTLS_PREFIX=/usr` on Linux)
 
 ### Build and flash
 
@@ -146,8 +147,9 @@ firmware.ino          setup() and loop() only
 src/
   App.*               composition root and state machine
   board/              BoardPins (every pin), PowerDomain (the sensor rail)
-  platform/           clock, watchdog, device ID, reset reason, I²C recovery
-  model/              Reading, Config, FaultStatus
+  platform/           clock, watchdog, device ID, reset reason, I²C recovery,
+                      HMAC-SHA-256, bootloader entry
+  model/              Reading, Config, SleepWindow, FaultStatus
   drivers/            one adapter per chip: SCD41, BME280, VEML7700, PDM mic,
                       battery, e-ink, flash, BLE
   dsp/                A-weighted acoustic metrics

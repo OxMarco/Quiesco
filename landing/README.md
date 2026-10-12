@@ -14,6 +14,8 @@ npm run build    # static site in dist/
 | Path | Contents |
 |---|---|
 | `src/pages/index.astro` | The page, assembled from the sections in `src/components/` |
+| `src/pages/privacy.astro` | The privacy page (quiesco.rest/privacy) |
+| `src/layouts/Base.astro` | The shared page shell |
 | `src/components/UnitDemo.astro` | The unit's bento screen with the example rooms |
 | `src/lib/bento.ts` | Bento layout and comfort bands, ported from `firmware/src/ui` |
 | `src/lib/units.ts` | °F for visitors whose time zone is in the US (or another °F country) |

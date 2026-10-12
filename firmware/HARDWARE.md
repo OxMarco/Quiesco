@@ -182,7 +182,9 @@ cycle, 1× oversampling, filter off.
 
 ### VEML7700 — U5
 
-Address `0x10`. Gain 1/8, 100 ms integration, enabled per cycle.
+Address `0x10`. Auto-ranged each cycle: gain 1/8 at 100 ms first, then a
+re-read at a gain or integration time that suits the light (see `SOFTWARE.md`,
+Ambient light).
 
 ### Microphone — U4
 

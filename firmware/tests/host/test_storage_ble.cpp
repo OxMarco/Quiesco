@@ -27,7 +27,7 @@
 #include "services/WallClock.h"
 #include "storage/FlashStorageLayout.h"
 
-// Golden wire vectors (lowercase hex bytes); see testProtocolGoldenVectors.
+// Golden wire vectors (lowercase hex bytes); see the "protocol golden vectors" test case.
 #define GOLDEN_DEVICE_INFO \
   "06 00 ff 7f 01 00 01 02 03 02 f6 e5 d4 c3 b2 a1 " \
   "07 00 00 00"

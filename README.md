@@ -87,7 +87,7 @@ your favourite editor.
 The same bands drive the e-ink screen and the app, so the phone and the panel
 always agree. The full policy is in [`firmware/UI.md`](firmware/UI.md#3-comfort-bands).
 
-## ⚙️ How it works
+## ⚙ How it works
 
 ```mermaid
 flowchart LR
@@ -167,13 +167,13 @@ cd Quiesco
    Build it onto your phone, plug the unit into USB and pair.
 
 > [!TIP]
-> Only want to try the software? The app has a **Load sample data** option in
-> development builds, so you can explore every screen without hardware.
+> Only want to try the software? The app's welcome screen has **Try it with
+> demo data**, so you can explore every screen without hardware.
 
-## ⬆️ Upgrade firmware
+## ⬆ Upgrade firmware
 
 No software needed, on macOS, Windows or Linux. Plug the unit into a
-computer, tap **Unit → Update firmware** in the app, and a drive called
+computer, tap **Settings → Update firmware** in the app, and a drive called
 `XIAO-BOOT` appears. Copy `quiesco-X.Y.Z.uf2` onto it, and the unit restarts
 with the new firmware. Settings, enrolled phones, calibration and history
 are kept.
@@ -206,7 +206,7 @@ Going deeper:
 - [x] Persistent sample log on the on-board flash
 - [x] BLE protocol with phone enrolment and authentication
 - [x] Companion app: live reading, night charts, calibration
-- [ ] BLE tested on air with iOS and Android
+- [ ] BLE tested on air: iPhone and Mac done (2026-10-07), Android still to test
 - [x] Firmware updates over USB, started from the app: copy one file, no software ([`AGENT.md`](AGENT.md))
 - [ ] Measured power budget and battery life
 - [ ] App: more than one unit per phone (today it shows only the first unit added)
@@ -233,8 +233,9 @@ free time to building Quiesco from the ground up.
 The choice of sensors was tough. There are clear contenders on the market, but
 most come with obvious drawbacks, like relying on the BME280's self-heating
 element for the primary temperature reading, or gas sensors that draw too much
-current for a rather generic value like VOC. So temperature and humidity are
-read from the SCD41, co-located with the CO₂ measurement.
+current for a rather generic value like VOC. So temperature, humidity and pressure
+come from a BME280 on the switched rail, never self-heated, and the SCD41 is
+used for CO₂ only.
 
 **I wanted data that is actionable:** high CO₂ → ventilate; too much light →
 wear a sleep mask; too much noise → check the acoustic insulation or use

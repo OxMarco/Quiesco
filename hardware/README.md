@@ -71,6 +71,7 @@ hardware/
     ├── L-1K1W1007851A_CASE.STEP     enclosure, editable
     ├── L-1K1W1007851A_ASM.STEP      full assembly with the PCBA
     └── … assembly instructions.docx
+└── renders/                         exploded-view animation
 ```
 
 ## Order the board
@@ -119,8 +120,8 @@ screens leave a 7 px top inset for the v1 case (see
 1. **Connect the display.** Open the J1 FPC latch, slide in the e-ink ribbon
    and close the latch. A badly seated ribbon shows up as missing rows in the
    factory test.
-2. **Fit the battery.** Plug it into J2 and fix it to the case or the PCBA
-   with double-sided tape.
+2. **Fit the battery.** Plug it into J2 and fix it in the lid, between
+   the two ribs above the XIAO module, with double-sided tape.
 3. **Seat the board in the lower shell.** Align the USB-C port with its
    opening first, then lower the board in.
 4. **Close the case.** Make sure the microphone opening in the upper cover

@@ -15,3 +15,6 @@ instead of erasing user configuration. `FlashDbPort` latches read failures for
 an operation and refuses subsequent writes/erases, even through legacy
 FlashDB recovery paths. ConfigStore discards caches after a failed operation,
 and App retries startup rather than overwriting unreadable settings.
+
+`fdb_def.h` and `flashdb.h` add a resumable forward iterator (marked
+`Quiesco:`) so the log can be read one batch per application step.

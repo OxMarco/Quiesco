@@ -33,10 +33,10 @@ it is reported as unavailable, and the cycle continues.
 | Command | What it does |
 |---|---|
 | `scripts/install-dependencies.sh` | installs the pinned core and libraries from `dependencies.lock` |
-| `make build` | release build (no serial output) into `.build/quiesco_firmware/`, versioned from `VERSION` |
+| `make build` | release build (no serial output) into `.build/quiesco_firmware/`, versioned from `VERSION`; also writes `quiesco-X.Y.Z.uf2` for the `XIAO-BOOT` drive ([`AGENT.md`](../AGENT.md)) |
 | `make build-debug` | the same with `QUIESCO_DEBUG=1`: one status line per cycle on USB serial |
 | `make build-trace` | debug build plus `QUIESCO_TRACE=1`: driver-level lines for diagnosing a faulty unit (see below) |
-| `make test` | host unit tests (plain C++, no board needed; needs `brew install mbedtls@3`) |
+| `make test` | host unit tests (plain C++, no board needed; needs Mbed TLS: `brew install mbedtls@3` on macOS, `libmbedtls-dev` with `MBEDTLS_PREFIX=/usr` on Linux) |
 | `make check` | source policy: no raw pin numbers or banned macros outside `BoardPins.h` |
 | `make verify` | `check` + `test` |
 | `make smoke` | builds the hardware test sketches: `smoke/sensors`, `smoke/ble` and `smoke/rftest` |
@@ -136,8 +136,8 @@ floats to `latest`.
 | Ambient light | Adafruit VEML7700 2.1.6 | BSD-3 | production |
 | CO2 | Sensirion I2C SCD4x 1.1.0 (+ Sensirion Core 0.7.3) | BSD-3 | production |
 | Graphics | Adafruit GFX 1.12.6 (+ BusIO 1.17.4, Unified Sensor 1.1.15) | BSD-3 / MIT / Apache-2.0 | production |
-| E-ink | GxEPD2 1.6.9 | GPL-3.0 | production candidate; licence settled by the GPL-3.0 release (§8) |
-| BLE | ArduinoBLE 2.1.0 | LGPL-2.1 | gated — on-air testing pending |
+| E-ink | GxEPD2 1.6.9 | GPL-3.0 | production; licence settled by the GPL-3.0 release (§8) |
+| BLE | ArduinoBLE 2.1.0 | LGPL-2.1 | production (tested on air 2026-10-07) |
 | Storage | FlashDB 2.2.0, vendored with a local patch | Apache-2.0 | production |
 
 Deliberately **not** used: a second RTOS or task scheduler, a filesystem, a
@@ -183,7 +183,7 @@ arrived. So does a log sync when a measurement is due; otherwise the sync
 powers only the bus (50 ms settle) and streams at once, so the batches and
 retries of a long download cost no measurement or redraw. A screen or calibration-offset change starts a **redraw** cycle
 instead: it powers the rail, commits the config if needed, re-applies the
-offsets to the last raw reading and draws it, without the ~11 s measurement.
+offsets to the last raw reading and draws it, without the ~10 s measurement.
 A change that lands mid-cycle before the sensors are collected is simply used
 by that cycle; one that lands later queues the redraw for idle. The first cycle starts immediately at boot. Its initialisation also loads the
 configuration from flash, so reading the config costs no extra rail power-up.
@@ -197,7 +197,7 @@ src/
   board/              BoardPins (every pin), PowerDomain (the rail)
   platform/           MonotonicClock (64-bit ms), HardwareWatchdog,
                       DeviceId (FICR serial source), ResetReason,
-                      I2cBusRecovery
+                      I2cBusRecovery, HmacSha256, BootloaderEntry
   model/              Reading, Config, SleepWindow, FaultStatus
   drivers/            one adapter per chip: Bme280Sensor, Veml7700Sensor,
                       Scd41Sensor, PdmMicrophone, BatteryMonitor,
@@ -208,9 +208,9 @@ src/
                       SampleLog/SampleRecord, UnitIdentity, BondTable
   protocol/           BleCodec (all BLE wire formats), LittleEndian,
                       PROTOCOL.md (the app team's BLE reference)
-  storage/            FlashStorageLayout (partition map)
+  storage/            FlashStorageLayout (partition map), TraceStore (trace ring)
   ui/                 ComfortEvaluation, SleepSchedule, UiModel, Renderer, fonts/
-  diagnostics/        BuildConfig, FirmwareVersion, DebugLog
+  diagnostics/        BuildConfig, FirmwareVersion, DebugLog, Trace
   third_party/flashdb vendored FlashDB 2.2.0
 smoke/sensors/        unit and factory test sketch (HARDWARE.md §8-9)
 smoke/ble/            BLE on-air test sketch
@@ -258,7 +258,7 @@ until each is ready or has timed out, then collects whatever succeeded.
 | Sensor | How it is driven | Timeout |
 |---|---|---|
 | BME280 | forced mode, 1× oversampling, filter off; one conversion per cycle | bounded poll of the status register |
-| VEML7700 | gain 1/8, 100 ms integration; read once the integration time has passed | 150 ms |
+| VEML7700 | auto-ranged: gain 1/8 at 100 ms first, re-read if needed (see Ambient light); each read waits 2.5× the integration time | 5 s |
 | SCD41 | power-cycled single shot: one stabilising shot (discarded), then the measured shot, pressure-compensated from the BME280 (~10 s) | 7 s per shot |
 
 The SCD41 follows Sensirion's power-cycled single-shot procedure ("SCD4x Low
@@ -369,6 +369,7 @@ The 8 MB flash is partitioned in `FlashStorageLayout.h`:
 |---|---|
 | `0x000000–0x001FFF` | unused |
 | `0x002000–0x003FFF` | configuration — FlashDB key-value store |
+| `0x004000–0x00FFFF` | trace ring, trace builds only (`kTraceRing*`) |
 | `0x010000–0x7FEFFF` | sample log — FlashDB time-series ring |
 | `0x7FF000–0x7FFFFF` | test sector: the factory test erases and programs it (`kTestSectorOffset`) |
 
@@ -417,7 +418,7 @@ error behaviour, notification timing and the log-download state machine) is
 in [`src/protocol/PROTOCOL.md`](src/protocol/PROTOCOL.md), next to the codec.
 Its worked examples are asserted byte for byte by the host tests, so the
 document cannot drift from the firmware. The layouts were frozen at protocol
-version 1; the current version is 5 (on-screen enrollment). Any change increments
+version 1; the current version is 6 (six-digit setup code). Any change increments
 `BleCodec::kProtocolVersion`.
 
 In short, the device exposes the standard Device Information Service
@@ -438,7 +439,7 @@ Quiesco service with 128-bit base UUID `7A1Exxxx-8E6F-4A7A-AE32-515549455343`:
 | `000A` | Log sync data | Notify |
 | `000B` | Calibration control (FRC) | W |
 | `000C` | Device info: protocol version, capability flags, firmware version, SCD41 serial | R |
-| `000D` | Device control: factory reset, optionally erasing the log; or erase the log only | W |
+| `000D` | Device control: factory reset, optionally erasing the log; erase the log only; or restart as the `XIAO-BOOT` USB drive for a firmware update | W |
 | `000E` | Calibration state: last FRC time, target and correction; ASC off | R |
 | `000F` | Diagnostics: last reset cause, uptime, I2C bus stuck | R |
 | `0010` | Authentication challenge and proof | R/W |
@@ -495,8 +496,10 @@ behaviours would otherwise hide a write's real length:
 
 **Log download.** The phone keeps the cursor: it asks for the first sequence
 it wants, the device streams what the ring still holds, and an END packet names
-the next sequence to request. The device advances only after the BLE stack has
-accepted a notification, so backpressure simply retries the same packet.
+the next sequence to request. ArduinoBLE reports a notification as sent even
+when the stack drops it, so the device paces the stream (30 ms between
+notifications, `QUIESCO_SYNC_GAP_MS`) and the app checks the packet counter
+and asks again from the first missing record (`PROTOCOL.md` §7.4).
 ArduinoBLE cannot report the negotiated MTU, so the phone sends its payload
 size in the request (20 bytes is assumed otherwise).
 
@@ -602,9 +605,11 @@ Working on hardware: the full measurement cycle with all seven readings, the
 rail lifecycle, configuration persistence, the sample log, all display
 screens, and the debug status line.
 
-Implemented and host-tested, but **not yet verified on air**: the BLE service
-(including device information and factory reset), log download, wall-clock sync
-and FRC.
+Verified on air (2026-10-07/08) from an iPhone (companion app and nRF Connect)
+and a Mac (`scripts/ble-test.py`): enrolment and authentication, the BLE
+service, log download and wall-clock sync, and the USB firmware update.
+Android is not yet tested. FRC is implemented and host-tested; a full run
+outdoors against a reference is still to do.
 
 ### Open work
 

@@ -21,7 +21,7 @@ was in how the pieces met.
 4. **Speed was never measured.** A 12 s wait before every batch and retry
    looked like slow radio. `ble-test.py download` stopped early after a lost
    packet, so even the bench numbers were wrong.
-5. **No CI for the app or firmware.** Only the landing page runs in CI.
+5. **No CI for the app or firmware** at the time. Only the landing page ran in CI.
 
 ## What to add, in order
 

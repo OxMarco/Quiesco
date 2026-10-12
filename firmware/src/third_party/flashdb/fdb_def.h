@@ -2,6 +2,9 @@
  * Copyright (c) 2020-2023, Armink, <armink.ztl@gmail.com>
  *
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * Modified for Quiesco (marked "Quiesco:"): state for a resumable forward TSDB iterator.
+ * See README.quiesco.md.
  */
 
 /**

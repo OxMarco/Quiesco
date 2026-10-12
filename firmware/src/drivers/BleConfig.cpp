@@ -60,7 +60,7 @@ constexpr uint8_t kStatusWireBytes = BleCodec::kStatusBytes;
 //   arrives one byte too long and is rejected.
 constexpr uint8_t kSpareByte = 1;
 
-// Protocol v5 authenticates at the application layer (PROTOCOL.md §3): no
+// Since protocol v4 the unit authenticates at the application layer (PROTOCOL.md §3): no
 // characteristic needs a link-layer encrypted link, because LE Secure
 // Connections pairing is unreliable on this stack (MIC failures, hangs).
 // Instead a phone proves a shared key through the auth characteristic, and
@@ -299,7 +299,7 @@ bool BleConfig::begin(const Config& config, const char* serialNumber,
   BLE.setEventHandler(BLEDisconnected, onDisconnected);
   resetSession(false);
   BLE.setLocalName(config.deviceName);
-  BLE.setPairable(Pairable::NO);  // protocol v5: no link-layer pairing
+  BLE.setPairable(Pairable::NO);  // since protocol v4: no link-layer pairing
   disService.addCharacteristic(disManufacturer);
   disService.addCharacteristic(disModel);
   disService.addCharacteristic(disSerial);
