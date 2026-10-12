@@ -99,7 +99,11 @@ export default function UnitScreen() {
       <Title>Settings</Title>
 
       <SectionLabel>App</SectionLabel>
-      <AppSettings />
+      <AppSettings
+        tempUnitHint={connected && !can(Capability.temperatureUnit) ? 'This unit’s screen always shows °C.' : undefined}
+        tempUnitError={errorAt('tempUnit')}
+        onTempUnit={(v) => void run('tempUnit', () => setTempUnit(v)).catch(() => {})}
+      />
 
       <SectionLabel>Device</SectionLabel>
       {!unit ? (
@@ -110,13 +114,9 @@ export default function UnitScreen() {
       ) : demo ? (
         <>
           <Card className="py-1">
-            <Row label="Name" value={unit.name} />
-            <T className="text-[13px] text-muted leading-[18px] pb-3.5">
-              Demo data, made up on this phone. There is no unit to connect to, so its settings are hidden. Remove the demo
-              to add your Quiesco.
-            </T>
+            <Row label="Name" value={unit.name} last />
           </Card>
-          <View className="h-6" />
+          <View className="h-4" />
           <DangerZone serial={unit.serial} connected={false} canErase={false} demo />
         </>
       ) : (
@@ -124,7 +124,7 @@ export default function UnitScreen() {
           {!connected && (
             <Card className="flex-row items-center gap-3">
               <T className="text-sm text-muted leading-5 shrink grow">
-                {connecting ? 'Connecting to the unit…' : 'Out of range or asleep. Its settings change on the unit itself, so connect to edit them.'}
+                {connecting ? 'Connecting…' : 'Out of range. Connect to change its settings.'}
               </T>
               <View className="shrink-0">
                 <Button title="Connect" kind="secondary" busy={connecting} onPress={() => reconnect()} />
@@ -138,10 +138,7 @@ export default function UnitScreen() {
               onSave={(name) => run('name', () => linkApi.setName(name).then(reloadUnits))}
               error={errorAt('name')}
             />
-            <Field
-              label="Screen"
-              hint="What the e-ink screen shows. Bento has the biggest numbers; Face shows a smile until something is wrong."
-              error={errorAt('screen')}>
+            <Field label="Screen" error={errorAt('screen')}>
               <ScreenPicker
                 disabled={!can(Capability.displayScreen)}
                 value={config?.displayScreen ?? null}
@@ -156,20 +153,7 @@ export default function UnitScreen() {
               />
               {screenApplying && <T className="text-sm text-muted leading-5">The unit’s screen updates in a moment.</T>}
             </Field>
-            <Field
-              label="Temperature"
-              hint={
-                connected && !can(Capability.temperatureUnit)
-                  ? 'Used in the app. This unit’s firmware always shows °C on its screen.'
-                  : 'Used in the app and on the unit’s screen.'
-              }
-              error={errorAt('tempUnit')}>
-              <TempUnitPicker
-                value={tempUnit}
-                onChange={(v) => void run('tempUnit', () => setTempUnit(v)).catch(() => {})}
-              />
-            </Field>
-            <Field label="Measure every" hint="More often gives finer charts and shorter battery life." error={errorAt('interval')}>
+            <Field label="Measure every" hint="More often uses more battery." error={errorAt('interval')}>
               <Segmented<IntervalSeconds>
                 disabled={!connected}
                 value={(config?.intervalSeconds as IntervalSeconds) ?? null}
@@ -179,7 +163,7 @@ export default function UnitScreen() {
             </Field>
             <Field
               label="Bluetooth"
-              hint="“Plugged in” lets the phone connect only while the unit is on USB power, and saves battery."
+              hint="Plugged in saves battery."
               error={errorAt('bluetooth')}
               last={!showPanelSleep && !showRefresh && !showEraseLog}>
               <Segmented<'always' | 'plugged'>
@@ -195,7 +179,7 @@ export default function UnitScreen() {
             {showPanelSleep && (
               <Field
                 label="Panel follows your sleep window"
-                hint="By day the unit only flags CO₂ and loud noise, like the app."
+                hint="By day it only flags CO₂ and loud noise."
                 error={errorAt('panelSleep')}
                 last={!showRefresh && !showEraseLog}>
                 <Segmented<'on' | 'off'>
@@ -212,7 +196,7 @@ export default function UnitScreen() {
             {showRefresh && s.config && (
               <Field
                 label="Deep refresh"
-                hint="Every so many screen updates. More often clears ghosting; less often flashes less and saves battery."
+                hint="Screen updates between full refreshes. Fewer clears ghosting; more saves battery."
                 error={errorAt('refresh')}
                 last={!showEraseLog}>
                 <Segmented<number>
@@ -226,7 +210,7 @@ export default function UnitScreen() {
             {showEraseLog && (
               <Field
                 label="Erase the unit’s log after syncing"
-                hint="Your history then lives only on this phone. At most once a day, and only once every record is here."
+                hint="Your history then lives only on this phone."
                 error={errorAt('eraseLog')}
                 last>
                 <Segmented<'on' | 'off'>
@@ -255,7 +239,7 @@ export default function UnitScreen() {
               />
             ) : (
               <T className="text-sm text-muted leading-5 py-3.5 border-b border-line">
-                Offsets for temperature, humidity and noise appear here once the unit has connected.
+                Connect once to see the offsets.
               </T>
             )}
             <Row
@@ -274,7 +258,8 @@ export default function UnitScreen() {
           <Card className="py-1">
             <Row label="Firmware" value={s.firmware ?? unit.firmware ?? '--'} />
             {can(Capability.usbUpdate) && <UpdateFirmwareRow />}
-            <Row label="Serial" value={unit.serial} last={!(s.status && connected)} />
+            <Row label="Serial" value={unit.serial} />
+            <Row label="Last synced" value={ago(unit.lastSyncMs)} last={!(s.status && connected)} />
             {s.status && connected && (
               <SensorsRow presentMask={s.status.presentMask} failures={s.status.failures} noBattery={s.info?.noBattery ?? false} />
             )}
@@ -354,17 +339,29 @@ function About() {
   );
 }
 
-/** What lives on the phone only: the sleep window and the theme. */
-function AppSettings() {
+/** What lives on the phone: the sleep window, the temperature unit (which the unit's screen follows) and the theme. */
+function AppSettings({
+  tempUnitHint,
+  tempUnitError,
+  onTempUnit,
+}: {
+  tempUnitHint?: string;
+  tempUnitError: string | null;
+  onTempUnit: (v: TempUnit) => void;
+}) {
   const sleep = useSession((s) => s.sleepWindow);
   const theme = useSession((s) => s.theme);
+  const tempUnit = useSession((s) => s.tempUnit);
   return (
     <Card className="py-1">
       <Row
         label="Sleep window"
-        value={`${formatClock(sleep.weekday.bedMin)} – ${formatClock(sleep.weekday.wakeMin)}`}
+        value={`${formatClock(sleep.times.bedMin)} – ${formatClock(sleep.times.wakeMin)}`}
         onPress={() => router.push('/sleep-window')}
       />
+      <Field label="Temperature" hint={tempUnitHint} error={tempUnitError}>
+        <TempUnitPicker value={tempUnit} onChange={onTempUnit} />
+      </Field>
       <Field label="Theme" last>
         <Segmented<ThemePref>
           value={theme}
@@ -491,8 +488,7 @@ function OffsetsForm({
   return (
     <View className="py-3.5 gap-1 border-b border-line">
       <T className="text-sm text-muted leading-5 mb-1">
-        Compare with a trusted reference and add the difference. Set temperature first: correcting it also corrects
-        humidity.
+        Add the difference from a trusted reference. Set temperature first; it also corrects humidity.
       </T>
       <Stepper
         label="Temperature"

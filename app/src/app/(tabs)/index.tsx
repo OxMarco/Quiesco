@@ -1,22 +1,21 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
-import { FIRMWARE_GUIDE_URL, type LinkState } from '@/ble/link';
+import { APP_STORE_URL, FIRMWARE_GUIDE_URL, type LinkState } from '@/ble/link';
 import { reconnect, reloadUnits, session, setTempUnit, syncNow, useSession } from '@/ble/session';
 import { BatteryIcon } from '@/components/battery';
 import { openEvidence } from '@/components/evidence';
 import { AppMark, Face } from '@/components/face';
 import { SyncCard } from '@/components/sync';
-import { TempUnitPicker } from '@/components/temp-unit';
 import { Button, Card, Pill, Screen, SEVERITY_CLASS, T, Title } from '@/components/ui';
 import type * as db from '@/data/db';
 import { isDemo, loadSampleData } from '@/data/sample';
 import type { Measurement, MetricKey } from '@/protocol/codec';
 import { metricValue, Severity, verdict } from '@/protocol/comfort';
 import { severityColor, useTheme } from '@/theme';
-import { feelsLikeLabel, hourDelta, type Issue, issueDetail, issueHeadline, issuesOf, judgeFor, trendSentence } from '@/ui/advice';
+import { feelsLikeLabel, hourDelta, type Issue, issueDetail, issueHeadline, issuesOf, judgeFor, stateWord, trendSentence } from '@/ui/advice';
 import { ago } from '@/ui/format';
 import { formatValue, METRICS } from '@/ui/metrics';
 import { formatDuration, formatTime, type JudgeMode, judgeMode, sleepPhase } from '@/ui/sleep';
@@ -93,28 +92,19 @@ function Welcome() {
   };
   return (
     <Screen scroll={false}>
-      {/* Scrolls so large Dynamic Type never pushes the buttons off screen. */}
-      <ScrollView className="flex-1" contentContainerClassName="grow justify-center gap-6 pt-6 pb-16">
-        <AppMark size={88} />
-        <View className="gap-3">
-          <T className="font-wordmark text-5xl leading-[60px]">Quiesco</T>
-          <T className="text-muted text-base leading-6">
-            See how your bedroom’s air, temperature, noise and light change through the night. Readings are stored
-            on this phone only.
-          </T>
-        </View>
-        <View className="gap-2">
-          <T className="font-body-semi text-xs uppercase tracking-widest text-muted px-1">Show temperature in</T>
-          <TempUnitPicker value={tempUnit} />
-        </View>
-        <Button title="Add your Quiesco" onPress={() => confirmUnit().then(() => router.push('/connect'))} />
-        <View className="gap-2">
-          <Button title="Explore with demo data" kind="secondary" busy={demoBusy} onPress={exploreDemo} />
-          <T className="text-xs text-muted text-center leading-5 px-2">
-            No unit yet? Look round with three made-up nights. Remove them any time in Settings.
-          </T>
+      {/* Scrolls so large Dynamic Type never pushes the buttons off screen.
+          The content sits low, near the thumb. The temperature unit follows the
+          locale and is changed in Settings. */}
+      <ScrollView className="flex-1" contentContainerClassName="grow justify-end pt-6 pb-28">
+        <AppMark size={84} />
+        <T className="font-wordmark text-5xl leading-[60px] mt-7">Quiesco</T>
+        <T className="text-muted text-lg leading-7 mt-2">See how your bedroom changes through the night.</T>
+        <View className="gap-1.5 mt-11">
+          <Button title="Add your Quiesco" onPress={() => confirmUnit().then(() => router.push('/connect'))} />
+          <Button title="Try it with demo data" kind="quiet" busy={demoBusy} onPress={exploreDemo} />
           {demoError && <T className="text-sm text-bad text-center leading-5">{demoError}</T>}
         </View>
+        <T className="text-[13px] text-muted text-center mt-4">Your readings stay on this phone.</T>
       </ScrollView>
     </Screen>
   );
@@ -123,7 +113,7 @@ function Welcome() {
 function Room({ unit }: { unit: db.Unit }) {
   const [now, setNow] = useState(() => Date.now());
   const sleepWindow = useSession((s) => s.sleepWindow);
-  const { state, connected, live, reading, measuredAt, recent, chargingV } = useReading(unit);
+  const { state, connected, live, reading, measuredAt, recent, chargingV, lowBattery } = useReading(unit);
   const demo = isDemo(unit);
 
   useEffect(() => {
@@ -148,7 +138,7 @@ function Room({ unit }: { unit: db.Unit }) {
         detail={
           <View className="flex-row items-center gap-2">
             {chargingV ? <BatteryIcon volts={chargingV} charging width={26} /> : null}
-            {demo ? <Pill tone="off">Demo</Pill> : <LinkPill state={state} connected={connected} />}
+            {demo ? <DemoPill /> : <LinkPill state={state} connected={connected} />}
           </View>
         }
       >
@@ -156,29 +146,21 @@ function Room({ unit }: { unit: db.Unit }) {
       </Title>
       <SleepStrip now={now} />
       {!demo && <VersionCard state={state} />}
-      {!demo && <SyncCard sync={state.sync} connected={connected} lastSyncMs={unit.lastSyncMs} now={now} />}
-      {demo && (
-        <Card className="gap-1">
-          <T className="font-body-semi text-sm">You’re looking at demo data</T>
-          <T className="text-[13px] text-muted leading-[18px]">
-            These readings are made up. To add a real unit, remove the demo in Settings first.
-          </T>
-        </Card>
-      )}
+      {!demo && <SyncCard sync={state.sync} connected={connected} />}
+      {!demo && lowBattery !== null && <BatteryNotice volts={lowBattery} />}
 
       {reading ? (
         <>
           <Issues reading={reading} mode={mode} recent={recent} nowS={(measuredAt ?? now) / 1000} />
-          <MetricCard metric="co2" reading={reading} mode={mode} />
-          <View className="flex-row flex-wrap gap-3">
+          <Hero metric="co2" reading={reading} mode={mode} />
+          <View className="flex-row flex-wrap gap-3.5">
             {(['temperature', 'humidity', 'light', 'noise'] as MetricKey[]).map((m) => (
               <Tile key={m} metric={m} reading={reading} mode={mode} />
             ))}
           </View>
-          <T className="text-xs text-muted px-1">
-            {demo
-              ? `Demo data · measured ${ago(measuredAt, now)}`
-              : `${live ? 'Live' : 'Last synced reading'} · measured ${ago(measuredAt, now)} · history synced ${ago(unit.lastSyncMs, now)}`}
+          {reading.pressurePa !== null && <PressureRow pa={reading.pressurePa} />}
+          <T className="text-[13px] text-muted text-center mt-2">
+            {live || demo ? `Updated ${ago(measuredAt, now)}` : `Last reading ${ago(measuredAt, now)}`}
           </T>
         </>
       ) : (
@@ -204,8 +186,63 @@ function VersionCard({ state }: { state: LinkState }) {
           ? 'This unit’s firmware is too old for this app. Update it over USB with the guide on GitHub, then pull down to reconnect.'
           : 'This unit’s firmware is newer than this app. Update the app from the store, then reopen it.'}
       </T>
-      {old && <Button title="Open the firmware guide" kind="secondary" onPress={() => void Linking.openURL(FIRMWARE_GUIDE_URL).catch(() => {})} />}
+      <Button
+        title={old ? 'Open the firmware guide' : 'Update the app'}
+        kind="secondary"
+        onPress={() => void Linking.openURL(old ? FIRMWARE_GUIDE_URL : APP_STORE_URL).catch(() => {})}
+      />
     </Card>
+  );
+}
+
+/** The unit's battery is nearly empty: the same moment the panel switches to its battery screen. */
+function BatteryNotice({ volts }: { volts: number }) {
+  const t = useTheme();
+  return (
+    <Card className="flex-row items-center gap-4" accessibilityLiveRegion="polite">
+      <BatteryIcon volts={volts} charging={false} width={34} />
+      <View className="shrink grow gap-0.5">
+        <T className="font-body-semi text-base" style={{ color: t.bad }}>
+          Battery low
+        </T>
+        <T className="text-sm leading-5 text-muted">Plug the unit into USB-C to charge it.</T>
+      </View>
+    </Card>
+  );
+}
+
+/**
+ * Air pressure, for interest: it is not judged, so it gets a quiet row rather
+ * than a tile, and no chart. Inches of mercury alongside °F, hPa otherwise.
+ */
+function PressureRow({ pa }: { pa: number }) {
+  const tempUnit = useSession((s) => s.tempUnit);
+  const value = tempUnit === 'F' ? (pa / 3386.389).toFixed(2) : `${Math.round(pa / 100)}`;
+  const unit = tempUnit === 'F' ? 'inHg' : 'hPa';
+  return (
+    <Card className="flex-row items-baseline justify-between py-3.5">
+      <T className="text-sm text-muted">Air pressure</T>
+      <T className="font-number text-xl">
+        {value}
+        <T className="font-body-medium text-sm text-muted"> {unit}</T>
+      </T>
+    </Card>
+  );
+}
+
+/** The demo's only label on the Room tab; a tap says what it means. */
+function DemoPill() {
+  return (
+    <Pressable
+      onPress={() =>
+        Alert.alert('Demo data', 'These readings are made up. To add your Quiesco, remove the demo in Settings.', [{ text: 'OK' }])
+      }
+      accessibilityRole="button"
+      accessibilityLabel="Demo data. What this means"
+      hitSlop={8}
+      className="active:opacity-60">
+      <Pill tone="off">Demo</Pill>
+    </Pressable>
   );
 }
 
@@ -231,33 +268,22 @@ function SleepStrip({ now }: { now: number }) {
   const w = useSession((s) => s.sleepWindow);
   const phase = sleepPhase(now, w);
   const range = `${formatTime(phase.fromS)} – ${formatTime(phase.toS)}`;
-  let lead: string;
-  let detail: string;
-  if (!w.set) {
-    lead = 'Set your sleep window';
-    detail = range;
-  } else if (phase.kind === 'during') {
-    lead = 'Judging for sleep';
-    detail = `until ${formatTime(phase.toS)}`;
-  } else if (judgeMode(now, w) === 'sleep') {
-    lead = 'Judging for sleep';
-    detail = `bed in ${formatDuration(Math.max(5, Math.round(phase.inMin / 5) * 5))}`;
-  } else {
-    lead = 'Bedtime';
-    detail = range;
-  }
+  let text: string;
+  if (!w.set) text = 'Set your sleep window';
+  else if (phase.kind === 'during') text = `Sleep mode until ${formatTime(phase.toS)}`;
+  else if (judgeMode(now, w) === 'sleep') text = `Bed in ${formatDuration(Math.max(5, Math.round(phase.inMin / 5) * 5))}`;
+  else text = `Bed ${range}`;
   return (
     <Pressable
       onPress={() => router.push('/sleep-window')}
       accessibilityRole="button"
-      accessibilityLabel={`${lead}, ${detail}. Change sleep window`}
-      className="bg-surface rounded-full h-11 px-4 flex-row items-center gap-2.5 active:opacity-70">
-      <Svg width={18} height={18} viewBox="0 0 24 24">
+      accessibilityLabel={`${text}. Change sleep window`}
+      hitSlop={8}
+      className="self-start flex-row items-center gap-2 py-1 active:opacity-60">
+      <Svg width={16} height={16} viewBox="0 0 24 24">
         <Path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke={t.primary} strokeWidth={2} strokeLinejoin="round" />
       </Svg>
-      <T className="font-body-semi text-sm">{lead}</T>
-      <T className="text-sm text-muted grow">{detail}</T>
-      <T className="text-muted text-lg">›</T>
+      <T className={`text-sm ${w.set ? 'text-muted' : 'font-body-semi text-primary'}`}>{text} ›</T>
     </Pressable>
   );
 }
@@ -309,19 +335,19 @@ function Issues({ reading, mode, recent, nowS }: { reading: Measurement; mode: J
   );
 }
 
-/** Inverted (ink ground) so the banner stands apart from the tinted tiles below it. */
+/** The worst issue: a face, what is wrong and what to do. Tapping it opens the evidence. */
 function LeadIssue({ issue, headline, detail }: { issue: Issue; headline: string; detail: string }) {
   return (
-    <Card className="flex-row items-center gap-4 bg-ink">
-      <Face size={52} severity={issue.severity} />
-      <View className="shrink gap-0.5">
-        <T className="font-body-semi text-base text-bg">{headline}</T>
-        <T className="text-sm leading-5 text-bg/80">{detail}</T>
-        <Pressable onPress={() => openEvidence(issue.metric)} accessibilityRole="link" hitSlop={10} className="self-start mt-1 active:opacity-60">
-          <T className="font-body-semi text-[13px] text-bg underline">Read more</T>
-        </Pressable>
-      </View>
-    </Card>
+    <Pressable onPress={() => openEvidence(issue.metric)} accessibilityRole="button" accessibilityHint="Shows why" className="active:opacity-70">
+      <Card className="flex-row items-center gap-4">
+        <Face size={52} severity={issue.severity} />
+        <View className="shrink grow gap-0.5">
+          <T className="font-body-semi text-base">{headline}</T>
+          <T className="text-sm leading-5 text-muted">{detail}</T>
+        </View>
+        <T className="text-muted text-lg">›</T>
+      </Card>
+    </Pressable>
   );
 }
 
@@ -329,16 +355,16 @@ function LeadIssue({ issue, headline, detail }: { issue: Issue; headline: string
 function MoreIssue({ issue, headline, detail }: { issue: Issue; headline: string; detail: string }) {
   const t = useTheme();
   return (
-    <Card className="flex-row items-start gap-3.5 py-3.5">
-      <Face size={36} severity={issue.severity} bare ink={severityColor(t, issue.severity)} />
-      <View className="shrink gap-0.5">
-        <T className={`font-body-semi text-[15px] ${SEVERITY_CLASS[issue.severity].text}`}>{headline}</T>
-        <T className="text-[13px] leading-[18px] text-muted">{detail}</T>
-        <Pressable onPress={() => openEvidence(issue.metric)} accessibilityRole="link" hitSlop={10} className="self-start mt-1 active:opacity-60">
-          <T className="font-body-semi text-[13px] text-muted underline">Read more</T>
-        </Pressable>
-      </View>
-    </Card>
+    <Pressable onPress={() => openEvidence(issue.metric)} accessibilityRole="button" accessibilityHint="Shows why" className="active:opacity-70">
+      <Card className="flex-row items-center gap-3.5 py-3.5">
+        <Face size={36} severity={issue.severity} bare ink={severityColor(t, issue.severity)} />
+        <View className="shrink grow gap-0.5">
+          <T className={`font-body-semi text-[15px] ${SEVERITY_CLASS[issue.severity].text}`}>{headline}</T>
+          <T className="text-[13px] leading-[18px] text-muted">{detail}</T>
+        </View>
+        <T className="text-muted text-lg">›</T>
+      </Card>
+    </Pressable>
   );
 }
 
@@ -362,22 +388,38 @@ function openMetric(metric: MetricKey) {
   router.push({ pathname: '/metric/[metric]', params: { metric } });
 }
 
-/** The big CO₂ card. */
-function MetricCard({ metric, reading, mode }: { metric: MetricKey; reading: Measurement; mode: JudgeMode }) {
+/** The tile's unit, short: the A-weighting is explained on the Why sheet. */
+function shortUnit(metric: MetricKey, tempUnit: TempUnit): string {
+  if (metric === 'temperature') return tempUnit === 'F' ? '°F' : '°C';
+  if (metric === 'noise') return 'dB';
+  return METRICS[metric].unit;
+}
+
+/** CO₂, large and on the page itself, with its verdict in one word. */
+function Hero({ metric, reading, mode }: { metric: MetricKey; reading: Measurement; mode: JudgeMode }) {
+  const t = useTheme();
   const tempUnit = useSession((s) => s.tempUnit);
+  const value = metricValue(reading, metric);
+  const severity = judgeFor(metric, value, mode);
+  const word = stateWord(metric, value, severity, mode);
   return (
     <Pressable
       onPress={() => openMetric(metric)}
       accessibilityRole="button"
       accessibilityLabel={metricA11y(metric, reading, mode, tempUnit)}
-      className="active:opacity-70">
-      <Card className={`gap-1 ${flagTint(metric, reading, mode)}`}>
-        <T className="font-body-semi text-xs uppercase tracking-widest text-muted">CO₂ · Air freshness</T>
-        <T className="font-number text-[56px] leading-[64px]">
-          {formatValue(metric, metricValue(reading, metric), false)}
-          <T className="font-body-medium text-lg text-muted"> {METRICS[metric].unit}</T>
-        </T>
-      </Card>
+      className="items-center pt-8 pb-7 active:opacity-70">
+      <T className="font-number text-[88px] leading-[96px]">
+        {formatValue(metric, value, false)}
+        <T className="font-body-medium text-xl text-muted"> {METRICS[metric].unit}</T>
+      </T>
+      {severity !== null && (
+        <View className="flex-row items-center gap-2 mt-1">
+          <Face size={22} severity={severity} bare ink={severityColor(t, severity)} />
+          <T className={`font-body-semi text-base ${SEVERITY_CLASS[severity].text}`}>
+            {word === 'fresh' ? 'Fresh air' : word.charAt(0).toUpperCase() + word.slice(1)}
+          </T>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -390,10 +432,13 @@ function Tile({ metric, reading, mode }: { metric: MetricKey; reading: Measureme
       onPress={() => openMetric(metric)}
       accessibilityRole="button"
       accessibilityLabel={metricA11y(metric, reading, mode, tempUnit)}
-      className="basis-[47%] grow active:opacity-70">
-      <Card className={`p-3.5 gap-0.5 ${flagTint(metric, reading, mode)}`}>
-        <T className="font-number text-[26px] leading-8">{formatValue(metric, value, true, tempUnit)}</T>
-        <T className="text-[13px] text-muted">
+      className="basis-[46%] grow active:opacity-70">
+      <Card className={`gap-0.5 ${flagTint(metric, reading, mode)}`}>
+        <T className="font-number text-[30px] leading-9">
+          {formatValue(metric, value, false, tempUnit)}
+          <T className="font-body-medium text-[15px] text-muted"> {shortUnit(metric, tempUnit)}</T>
+        </T>
+        <T className="text-sm text-muted">
           {(metric === 'temperature' && feelsLikeLabel(reading.temperatureC, reading.humidityPct, tempUnit)) || METRICS[metric].label}
         </T>
       </Card>

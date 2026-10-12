@@ -34,13 +34,14 @@ export async function loadSampleData() {
     const co2 = asleep ? 520 + sinceBed * (night === 1 ? 110 : 60) + wave * 20 : 460 + wave * 25;
     records.push({
       sequence: seq++,
-      validMask: 0x7b,
+      validMask: 0x7f,
       epochS: t,
       msSinceBoot: (t - (now - 3 * 86400)) * 1000,
       bootCounter: 1,
       temperatureC: (asleep ? 19.6 : 22) + wave * 0.4 + (night === 2 ? 1.5 : 0),
       humidityPct: 47 + wave * 3 + (asleep ? 6 : 0),
-      pressurePa: null,
+      // A slow weather front over the three days.
+      pressurePa: Math.round(101300 + Math.sin(t / 40000) * 600),
       co2Ppm: Math.round(co2),
       lux: asleep ? 0.4 + Math.max(0, wave) : hour > 8 && hour < 19 ? 300 + wave * 120 : 40,
       noiseDb: (asleep ? 30 : 42) + Math.abs(wave) * 4 + (night === 0 && hour > 2 && hour < 2.3 ? 30 : 0),

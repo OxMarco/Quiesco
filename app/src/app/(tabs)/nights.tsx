@@ -1,11 +1,10 @@
-import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 
 import { useSession } from '@/ble/session';
 import { MetricChart } from '@/components/metric-chart';
 import { UnitSyncCard } from '@/components/sync';
-import { Button, Card, Screen, SectionLabel, T, Title } from '@/components/ui';
+import { Button, Card, Screen, T, Title } from '@/components/ui';
 import * as db from '@/data/db';
 import { Severity } from '@/protocol/comfort';
 import { severityColor, useTheme } from '@/theme';
@@ -21,6 +20,7 @@ export default function NightsScreen() {
   const dataVersion = useSession((s) => s.dataVersion);
   const sleepWindow = useSession((s) => s.sleepWindow);
   const tempUnit = useSession((s) => s.tempUnit);
+  const t = useTheme();
   const [nights, setNights] = useState<string[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [points, setPoints] = useState<db.StoredPoint[]>([]);
@@ -85,6 +85,11 @@ export default function NightsScreen() {
   const view = viewForNight(selected, sleepWindow);
   const window = windowForNight(selected, sleepWindow);
   const story = analyzeNight(points, window);
+  const items = nightItems(story, window, tempUnit);
+  // Only what went wrong gets a full card; the rest is one line each.
+  const issues = items.filter((i) => i.report?.severity === Severity.Bad);
+  const rest = items.filter((i) => i.report?.severity !== Severity.Bad);
+  const chart = { points, view, window, tempUnit };
 
   return (
     <Screen>
@@ -97,38 +102,36 @@ export default function NightsScreen() {
             onPress={() => setSelected(n)}
             accessibilityRole="button"
             accessibilityState={{ selected: n === selected }}
-            className={`px-3.5 py-2 rounded-full ${n === selected ? 'bg-primary' : 'bg-surface'}`}>
-            <T className={`font-body-medium text-[13px] ${n === selected ? 'text-on-primary' : 'text-ink'}`}>{nightLabel(n)}</T>
+            className={`px-4 py-2 rounded-full ${n === selected ? 'bg-primary' : 'bg-surface'}`}>
+            <T className={`font-body-medium text-sm ${n === selected ? 'text-on-primary' : 'text-ink'}`}>{nightLabel(n)}</T>
           </Pressable>
         ))}
       </ScrollView>
 
-      <WindowRow window={window} />
-      {story.samples === 0 && (
+      {story.samples === 0 ? (
         <Card>
-          <T className="text-muted leading-6">No readings in your sleeping window.</T>
+          <T className="text-muted leading-6">No readings in your sleep window.</T>
         </Card>
-      )}
-
-      {story.samples > 0 && (
+      ) : (
         <>
-          <SectionLabel>Background noise</SectionLabel>
-          <NoiseCard story={story} points={points} view={view} window={window} />
-
-          <SectionLabel>Air freshness</SectionLabel>
-          <Co2Card story={story} points={points} view={view} window={window} />
-
-          <SectionLabel>Room temperature</SectionLabel>
-          <TemperatureCard story={story} points={points} view={view} window={window} tempUnit={tempUnit} />
-
-          <SectionLabel>Moisture</SectionLabel>
-          <HumidityCard story={story} points={points} view={view} window={window} />
-
-          {story.light && (
-            <>
-              <SectionLabel>Ambient light</SectionLabel>
-              <LightCard story={story} points={points} view={view} window={window} />
-            </>
+          {issues.map((item) => (
+            <Card key={item.metric} className="gap-1">
+              <T className="text-sm text-muted">{item.name}</T>
+              <T className="font-number text-[28px] leading-9" style={{ color: severityColor(t, Severity.Bad) }}>
+                {item.report!.text}
+              </T>
+              <T className="text-sm text-muted">{item.detail}</T>
+              <View className="mt-2">
+                <NightChart metric={item.metric} {...chart} />
+              </View>
+            </Card>
+          ))}
+          {rest.length > 0 && (
+            <Card className="py-1">
+              {rest.map((item, i) => (
+                <NightRow key={item.metric} item={item} chart={chart} last={i === rest.length - 1} />
+              ))}
+            </Card>
           )}
         </>
       )}
@@ -152,41 +155,18 @@ function NightsLoading() {
   );
 }
 
-function WindowRow({ window }: { window: Span }) {
-  return (
-    <View className="flex-row justify-between items-center gap-3 px-1">
-      <T className="text-[13px] text-muted shrink">
-        Sleeping window from {formatTime(window.fromS)} to {formatTime(window.toS)}
-      </T>
-      <Pressable onPress={() => router.push('/sleep-window')} accessibilityRole="button" hitSlop={10} className="active:opacity-60">
-        <T className="font-body-semi text-[13px] text-primary">Change</T>
-      </Pressable>
-    </View>
-  );
-}
+type NightMetric = 'noise' | 'co2' | 'temperature' | 'humidity' | 'light';
+type ChartInput = { points: db.StoredPoint[]; view: Span; window: Span; tempUnit: TempUnit };
 
-interface CardProps {
-  story: NightStory;
-  points: db.StoredPoint[];
-  view: Span;
-  window: Span;
-}
-
-function CardHead({ label }: { label: string }) {
-  return <T className="font-body-semi">{label}</T>;
-}
-
-/** The card's report line in its verdict colour (tide, amber or red), with a muted detail under it. */
-function Report({ text, severity, detail }: { text: string; severity: Severity; detail: string }) {
-  const t = useTheme();
-  return (
-    <View className="gap-0.5">
-      <T className="font-number text-[28px] leading-9" style={{ color: severityColor(t, severity) }}>
-        {text}
-      </T>
-      <T className="text-[13px] text-muted">{detail}</T>
-    </View>
-  );
+interface NightItem {
+  metric: NightMetric;
+  name: string;
+  /** Null when the metric had no readings in the window. */
+  report: ReturnType<typeof spellReport> | null;
+  /** The short value on a row when nothing went badly. */
+  summary: string;
+  /** Peak, range and further spells, under the verdict. */
+  detail: string;
 }
 
 function othersText(others: number): string {
@@ -194,151 +174,109 @@ function othersText(others: number): string {
   return others === 1 ? ' · 1 more spell' : ` · ${others} more spells`;
 }
 
-function NoiseCard({ story, points, view, window }: CardProps) {
+/** Each metric's verdict and lines for one night, in the order the tab lists them. */
+function nightItems(story: NightStory, window: Span, tempUnit: TempUnit): NightItem[] {
+  const items: NightItem[] = [];
+  const none = (metric: NightMetric, name: string): NightItem => ({ metric, name, report: null, summary: 'No readings', detail: '' });
+  const ok = (r: ReturnType<typeof spellReport>, quiet: string) => (r.severity === Severity.Ok ? quiet : r.text);
+
+  const { noise, co2, temperature, humidity, light } = story;
+  if (noise.peak) {
+    const r = spellReport('noise', noise.spells, window);
+    items.push({ metric: 'noise', name: 'Noise', report: r, summary: ok(r, 'Calm'), detail: `Peak ${formatValue('noise', noise.peak.v)} at ${formatTime(noise.peak.t)}${othersText(r.others)}` });
+  } else items.push(none('noise', 'Noise'));
+
+  if (co2.peak) {
+    const r = spellReport('co2', co2.spells, window);
+    items.push({ metric: 'co2', name: 'Air', report: r, summary: ok(r, 'Fresh'), detail: `Peak ${formatValue('co2', co2.peak.v)} at ${formatTime(co2.peak.t)}${othersText(r.others)}` });
+  } else items.push(none('co2', 'Air'));
+
+  if (temperature) {
+    const r = spellReport('temperature', temperature.spells, window);
+    const range = `${formatTemp(temperature.min, tempUnit, false)} – ${formatTemp(temperature.max, tempUnit, false)}°`;
+    const feels = temperature.feelsMax;
+    const feelsText = feels !== null && feels - temperature.max >= 0.5 ? ` · feels up to ${Math.round(toUnit(feels, tempUnit))}°` : '';
+    items.push({ metric: 'temperature', name: 'Temperature', report: r, summary: ok(r, range), detail: `${range}${feelsText}${othersText(r.others)}` });
+  } else items.push(none('temperature', 'Temperature'));
+
+  if (humidity) {
+    const r = spellReport('humidity', humidity.spells, window);
+    const range = `${Math.round(humidity.min)} – ${Math.round(humidity.max)}%`;
+    items.push({ metric: 'humidity', name: 'Humidity', report: r, summary: ok(r, range), detail: `${range}${othersText(r.others)}` });
+  } else items.push(none('humidity', 'Humidity'));
+
+  if (light) {
+    const r = spellReport('light', light.spells, window);
+    items.push({ metric: 'light', name: 'Light', report: r, summary: ok(r, 'Dark'), detail: `Brightest ${formatValue('light', light.peak.v)} at ${formatTime(light.peak.t)}${othersText(r.others)}` });
+  }
+  return items;
+}
+
+/** A metric that was fine or only a little off: one line, opening to its chart. */
+function NightRow({ item, chart, last }: { item: NightItem; chart: ChartInput; last: boolean }) {
   const t = useTheme();
-  const { average, peak, spells } = story.noise;
-  if (!peak) return <Unavailable label="Noise" />;
-  const report = spellReport('noise', spells, window);
-  const avg = average === null ? '' : `Average ${Math.round(average)} dB(A) · `;
+  const [open, setOpen] = useState(false);
+  const severity = item.report?.severity ?? null;
+  const dot = severity === null ? t.line : severityColor(t, severity);
+  const row = (
+    <View className="flex-row items-center gap-3 py-3.5">
+      <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: dot }} />
+      <T className="text-base">{item.name}</T>
+      <T
+        className={`text-[15px] text-right shrink grow ${severity === Severity.Warn ? 'font-body-medium' : 'text-muted'}`}
+        style={severity === Severity.Warn ? { color: severityColor(t, severity) } : undefined}
+        numberOfLines={2}>
+        {item.summary}
+      </T>
+      {item.report && <T className="text-muted text-lg">{open ? '⌃' : '›'}</T>}
+    </View>
+  );
   return (
-    <Card className="gap-2.5">
-      <CardHead label="Noise" />
-      <Report
-        text={report.text}
-        severity={report.severity}
-        detail={`${avg}peak ${formatValue('noise', peak.v)} at ${formatTime(peak.t)}${othersText(report.others)}`}
-      />
-      <MetricChart
-        metric="noise"
-        points={points}
-        fromS={view.fromS}
-        toS={view.toS}
-        height={130}
-        window={window}
-        showBand={false}
-        lines={[
-          { value: NIGHT_BANDS.noise.okHi, color: t.warn, label: 'noisy' },
-          { value: NIGHT_BANDS.noise.warnHi, color: t.bad, label: 'very noisy' },
-        ]}
-      />
-    </Card>
+    <View className={last ? '' : 'border-b border-line'}>
+      {item.report ? (
+        <Pressable
+          onPress={() => setOpen((o) => !o)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          accessibilityLabel={`${item.name}, ${item.summary}. ${open ? 'Hide' : 'Show'} the chart`}
+          className="active:opacity-60">
+          {row}
+        </Pressable>
+      ) : (
+        row
+      )}
+      {open && (
+        <View className="gap-2 pb-4">
+          <T className="text-sm text-muted">{item.detail}</T>
+          <NightChart metric={item.metric} {...chart} />
+        </View>
+      )}
+    </View>
   );
 }
 
-function Co2Card({ story, points, view, window }: CardProps) {
+/** The night's chart for one metric: no value scale, just the lines that matter, labelled with their numbers. */
+function NightChart({ metric, points, view, window, tempUnit }: ChartInput & { metric: NightMetric }) {
   const t = useTheme();
-  const { peak, spells } = story.co2;
-  if (!peak) return <Unavailable label="CO₂" />;
-  const report = spellReport('co2', spells, window);
-  return (
-    <Card className="gap-2.5">
-      <CardHead label="CO₂" />
-      <Report
-        text={report.text}
-        severity={report.severity}
-        detail={`Peak ${formatValue('co2', peak.v)} at ${formatTime(peak.t)}${othersText(report.others)}`}
-      />
-      <MetricChart
-        metric="co2"
-        points={points}
-        fromS={view.fromS}
-        toS={view.toS}
-        height={130}
-        window={window}
-        showBand={false}
-        lines={[
-          { value: NIGHT_BANDS.co2.okHi, color: t.warn, label: 'stuffy' },
-          { value: NIGHT_BANDS.co2.warnHi, color: t.bad, label: 'very stuffy' },
-        ]}
-      />
-    </Card>
-  );
-}
-
-function TemperatureCard({ story, points, view, window, tempUnit }: CardProps & { tempUnit: TempUnit }) {
-  const { temperature } = story;
-  if (!temperature) return <Unavailable label="Temperature" />;
-  const report = spellReport('temperature', temperature.spells, window);
-  const feels = temperature.feelsMax;
-  const feelsText = feels !== null && feels - temperature.max >= 0.5 ? ` · feels up to ${Math.round(toUnit(feels, tempUnit))}°` : '';
-  return (
-    <Card className="gap-2.5">
-      <CardHead label="Temperature" />
-      <Report
-        text={report.text}
-        severity={report.severity}
-        detail={`${formatTemp(temperature.min, tempUnit, false)} – ${formatTemp(temperature.max, tempUnit, false)}°${feelsText}${othersText(report.others)}`}
-      />
-      <MetricChart
-        metric="temperature"
-        points={points}
-        fromS={view.fromS}
-        toS={view.toS}
-        height={110}
-        window={window}
-        band={[NIGHT_BANDS.temperature.okLo, NIGHT_BANDS.temperature.okHi]}
-        tempUnit={tempUnit}
-      />
-    </Card>
-  );
-}
-
-function HumidityCard({ story, points, view, window }: CardProps) {
-  const { humidity } = story;
-  if (!humidity) return <Unavailable label="Humidity" />;
-  const report = spellReport('humidity', humidity.spells, window);
-  return (
-    <Card className="gap-2.5">
-      <CardHead label="Humidity" />
-      <Report
-        text={report.text}
-        severity={report.severity}
-        detail={`${Math.round(humidity.min)} – ${Math.round(humidity.max)} %${othersText(report.others)}`}
-      />
-      <MetricChart
-        metric="humidity"
-        points={points}
-        fromS={view.fromS}
-        toS={view.toS}
-        height={110}
-        window={window}
-        band={[NIGHT_BANDS.humidity.okLo, NIGHT_BANDS.humidity.okHi]}
-      />
-    </Card>
-  );
-}
-
-function LightCard({ story, points, view, window }: CardProps) {
-  const t = useTheme();
-  const { light } = story;
-  if (!light) return null;
-  const report = spellReport('light', light.spells, window);
-  return (
-    <Card className="gap-2.5">
-      <CardHead label="Light" />
-      <Report
-        text={report.text}
-        severity={report.severity}
-        detail={`Brightest ${formatValue('light', light.peak.v)} at ${formatTime(light.peak.t)}${othersText(report.others)}`}
-      />
-      <MetricChart
-        metric="light"
-        points={points}
-        fromS={view.fromS}
-        toS={view.toS}
-        height={110}
-        window={window}
-        lines={[{ value: NIGHT_BANDS.light.warnHi, color: t.bad, label: 'too bright' }]}
-      />
-    </Card>
-  );
-}
-
-function Unavailable({ label }: { label: string }) {
-  return (
-    <Card className="gap-2">
-      <CardHead label={label} />
-      <T className="text-sm text-muted">No readings during your sleep window.</T>
-    </Card>
-  );
+  const b = NIGHT_BANDS[metric];
+  const common = { metric, points, fromS: view.fromS, toS: view.toS, window, height: 120, quietAxis: true, tempUnit } as const;
+  switch (metric) {
+    case 'noise':
+    case 'co2':
+      return (
+        <MetricChart
+          {...common}
+          showBand={false}
+          lines={[
+            { value: b.okHi, color: t.warn, label: `${b.okHi}` },
+            { value: b.warnHi, color: t.bad, label: `${b.warnHi}` },
+          ]}
+        />
+      );
+    case 'temperature':
+    case 'humidity':
+      return <MetricChart {...common} band={[b.okLo, b.okHi]} />;
+    case 'light':
+      return <MetricChart {...common} lines={[{ value: b.warnHi, color: t.bad, label: `${b.warnHi} lx` }]} />;
+  }
 }

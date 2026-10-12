@@ -500,28 +500,21 @@ export interface UnitSleepWindow {
   followSleep: boolean;
   /** Local offset from UTC, so the unit can tell local time from its UTC clock. */
   utcOffsetMin: number;
-  weekdayBedMin: number;
-  weekdayWakeMin: number;
-  /** Friday and Saturday nights; null when they match the weekdays. */
-  weekendBedMin: number | null;
-  weekendWakeMin: number | null;
+  bedMin: number;
+  wakeMin: number;
 }
 
-const NO_TIME = 0xffff;
+/** Bytes 8–11 are reserved for per-night windows and are always FF FF FF FF. */
+const RESERVED_TIME = 0xffff;
 const DAY_MIN = 24 * 60;
 
 export function decodeSleepWindow(data: Uint8Array): UnitSleepWindow {
   const r = expectLength('sleep window', data, 12);
-  const weekendBed = r.u16(8);
-  const weekendWake = r.u16(10);
-  const weekend = weekendBed !== NO_TIME && weekendWake !== NO_TIME;
   return {
     followSleep: (r.u8(0) & 1) !== 0,
     utcOffsetMin: r.i16(2),
-    weekdayBedMin: r.u16(4),
-    weekdayWakeMin: r.u16(6),
-    weekendBedMin: weekend ? weekendBed : null,
-    weekendWakeMin: weekend ? weekendWake : null,
+    bedMin: r.u16(4),
+    wakeMin: r.u16(6),
   };
 }
 
@@ -533,16 +526,14 @@ export function encodeSleepWindow(w: UnitSleepWindow): Uint8Array {
   if (!Number.isInteger(w.utcOffsetMin) || w.utcOffsetMin < -720 || w.utcOffsetMin > 840) {
     throw new CodecError('UTC offset must be −720…840 minutes');
   }
-  const weekend = w.weekendBedMin !== null && w.weekendWakeMin !== null;
-  const times = [w.weekdayBedMin, w.weekdayWakeMin, ...(weekend ? [w.weekendBedMin!, w.weekendWakeMin!] : [])];
-  if (times.some((t) => !Number.isInteger(t) || t < 0 || t >= DAY_MIN)) {
+  if ([w.bedMin, w.wakeMin].some((t) => !Number.isInteger(t) || t < 0 || t >= DAY_MIN)) {
     throw new CodecError('times must be whole minutes after midnight');
   }
   return new ByteWriter(12)
     .u8(0, w.followSleep ? 1 : 0)
     .i16(2, w.utcOffsetMin)
-    .u16(4, w.weekdayBedMin)
-    .u16(6, w.weekdayWakeMin)
-    .u16(8, weekend ? w.weekendBedMin! : NO_TIME)
-    .u16(10, weekend ? w.weekendWakeMin! : NO_TIME).bytes;
+    .u16(4, w.bedMin)
+    .u16(6, w.wakeMin)
+    .u16(8, RESERVED_TIME)
+    .u16(10, RESERVED_TIME).bytes;
 }

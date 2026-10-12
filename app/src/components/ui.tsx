@@ -1,9 +1,9 @@
 // Shared primitives. Tailwind only sees literal class strings, so variants
 // are spelled out in full maps rather than built by concatenation.
 
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, TextProps, View, ViewProps } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, Text, TextProps, View, ViewProps } from 'react-native';
 import { router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Severity } from '@/protocol/comfort';
 import { useTheme } from '@/theme';
@@ -35,7 +35,7 @@ export function Screen({
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-bg">
       <ScrollView
-        contentContainerClassName="px-4 pb-10 gap-3"
+        contentContainerClassName="px-4 pb-10 gap-4"
         contentInsetAdjustmentBehavior="automatic"
         refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.textMuted} /> : undefined}>
         {children}
@@ -55,6 +55,34 @@ export function Title({ children, detail }: { children: React.ReactNode; detail?
   );
 }
 
+/**
+ * A modal screen. iOS presents it as a sheet below the status bar; Android
+ * presents it full screen, so there the content clears the status bar itself.
+ */
+export function Sheet({ children, className = '', tone = 'bg' }: { children: React.ReactNode; className?: string; tone?: 'bg' | 'surface' }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={{ paddingTop: Platform.OS === 'android' ? insets.top : 0 }} className={`flex-1 ${tone === 'surface' ? 'bg-surface' : 'bg-bg'} ${className}`}>
+      {children}
+    </View>
+  );
+}
+
+/** A modal's title row: an optional eyebrow, the title, and one text action on the right. */
+export function SheetHeader({ title, eyebrow, action, onAction }: { title: string; eyebrow?: string; action: string; onAction: () => void }) {
+  return (
+    <View className="gap-1">
+      {eyebrow && <T className="font-body-semi text-muted text-xs uppercase tracking-widest">{eyebrow}</T>}
+      <View className="flex-row justify-between items-center gap-4">
+        <T className="font-title text-2xl leading-8 shrink">{title}</T>
+        <Pressable onPress={onAction} accessibilityRole="button" hitSlop={12}>
+          <T className="text-primary font-body-semi">{action}</T>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export function Card({ className = '', ...props }: ViewProps & { className?: string }) {
   return <View className={`bg-surface rounded-card p-4 ${className}`} {...props} />;
 }
@@ -63,12 +91,14 @@ export function SectionLabel({ children }: { children: React.ReactNode }) {
   return <T className="font-body-semi text-muted text-xs uppercase tracking-widest mt-3 px-1">{children}</T>;
 }
 
-type ButtonKind = 'primary' | 'secondary' | 'danger';
+/** `quiet` is a text-only button for the lesser of two choices. */
+type ButtonKind = 'primary' | 'secondary' | 'danger' | 'quiet';
 
 const BUTTON: Record<ButtonKind, { box: string; text: string }> = {
   primary: { box: 'bg-primary', text: 'text-on-primary' },
   secondary: { box: 'bg-raised', text: 'text-ink' },
   danger: { box: 'bg-bad/15', text: 'text-bad' },
+  quiet: { box: '', text: 'text-primary' },
 };
 
 export function Button({
@@ -94,7 +124,7 @@ export function Button({
       disabled={disabled || busy}
       className={`${style.box} h-12 rounded-full flex-row items-center justify-center gap-2 px-5 active:opacity-80 ${disabled ? 'opacity-40' : ''}`}>
       {busy && <ActivityIndicator color={kind === 'primary' ? t.onPrimary : t.text} />}
-      <T className={`font-body-semi text-[15px] ${style.text}`}>{title}</T>
+      <T className={`font-body-semi text-base ${style.text}`}>{title}</T>
     </Pressable>
   );
 }
@@ -157,14 +187,9 @@ export function Row({
 /** For a sheet opened with a link it cannot show, such as an unknown metric. */
 export function NotFound({ message = 'This page doesn’t exist. The link may be from a newer version of the app.' }: { message?: string }) {
   return (
-    <View className="flex-1 bg-bg px-5 pt-6 pb-10 gap-4">
-      <View className="flex-row justify-between items-center gap-4">
-        <T className="font-title text-2xl shrink">Not found</T>
-        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} accessibilityRole="button" hitSlop={12}>
-          <T className="text-primary font-body-semi">Close</T>
-        </Pressable>
-      </View>
+    <Sheet className="px-4 pt-6 pb-10 gap-4">
+      <SheetHeader title="Not found" action="Close" onAction={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
       <T className="text-muted leading-6">{message}</T>
-    </View>
+    </Sheet>
   );
 }

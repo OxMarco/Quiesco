@@ -1,7 +1,7 @@
 // The log download, made visible: a turning icon and a bar while records
-// arrive, a short "up to date" afterwards, and a way to start one by hand.
-// The phone syncs on its own at every connect (session.open); this card only
-// shows that and offers the same sync on request.
+// arrive, a short "up to date" afterwards, and a retry if it failed. The phone
+// syncs on its own at every connect (session.open) and on pull to refresh; at
+// rest the card is not shown.
 
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -14,14 +14,13 @@ import { useStore } from '@/ble/store';
 import type * as db from '@/data/db';
 import { isDemo } from '@/data/sample';
 import { useTheme } from '@/theme';
-import { ago } from '@/ui/format';
 
 import { Card, T } from './ui';
 
 /** How long "Up to date" stays before the card settles back to its idle line. */
 const DONE_MS = 4000;
 
-export function SyncCard({ sync, connected, lastSyncMs, now }: { sync: SyncProgress | null; connected: boolean; lastSyncMs: number | null; now: number }) {
+export function SyncCard({ sync, connected }: { sync: SyncProgress | null; connected: boolean }) {
   const active = sync?.state === 'waiting' || sync?.state === 'streaming' || sync?.state === 'saving';
   const justDone = useJustDone(sync);
 
@@ -51,27 +50,16 @@ export function SyncCard({ sync, connected, lastSyncMs, now }: { sync: SyncProgr
       </Card>
     );
   }
-  if (!connected) return null;
-  return (
-    <Card className="flex-row items-center gap-3 py-3">
-      <SyncIcon spinning={false} tone="muted" />
-      <T className="flex-1 text-[13px] text-muted">History synced {ago(lastSyncMs, now)}</T>
-      <SyncButton title="Sync now" />
-    </Card>
-  );
+  // Idle, it says nothing: pull to refresh syncs, and Settings shows when it last did.
+  return null;
 }
 
 /** The same card for screens that don't already follow the link. */
 export function UnitSyncCard({ unit }: { unit: db.Unit | null }) {
   const sync = useStore(link, (s) => s.sync);
   const connected = useStore(link, (s) => s.phase === 'ready' && s.serial === unit?.serial);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
   if (!unit || isDemo(unit)) return null;
-  return <SyncCard sync={sync} connected={connected} lastSyncMs={unit.lastSyncMs} now={now} />;
+  return <SyncCard sync={sync} connected={connected} />;
 }
 
 function Downloading({ sync }: { sync: SyncProgress }) {

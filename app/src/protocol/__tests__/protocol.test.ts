@@ -197,21 +197,17 @@ describe('characteristic codecs', () => {
     expect(w).toEqual({
       followSleep: true,
       utcOffsetMin: 120,
-      weekdayBedMin: 23 * 60 + 30,
-      weekdayWakeMin: 7 * 60,
-      weekendBedMin: null,
-      weekendWakeMin: null,
+      bedMin: 23 * 60 + 30,
+      wakeMin: 7 * 60,
     });
     expect(toHex(encodeSleepWindow(w))).toBe(G.sleepWindow);
-    // Negative offsets and a weekend pair round-trip too.
-    const west = { ...w, followSleep: false, utcOffsetMin: -300, weekendBedMin: 60, weekendWakeMin: 9 * 60 };
+    // Negative offsets round-trip too, and the reserved bytes 8–11 are always FF.
+    const west = { ...w, followSleep: false, utcOffsetMin: -300, bedMin: 60, wakeMin: 9 * 60 };
     expect(decodeSleepWindow(encodeSleepWindow(west))).toEqual(west);
-    expect(toHex(encodeSleepWindow(west)).slice(0, 11)).toBe('00 00 d4 fe');
-    // A half-set weekend is sent as none.
-    expect(decodeSleepWindow(encodeSleepWindow({ ...w, weekendBedMin: 60 })).weekendBedMin).toBeNull();
+    expect(toHex(encodeSleepWindow(west))).toBe('00 00 d4 fe 3c 00 1c 02 ff ff ff ff');
     expect(() => encodeSleepWindow({ ...w, utcOffsetMin: 841 })).toThrow();
     expect(() => encodeSleepWindow({ ...w, utcOffsetMin: -721 })).toThrow();
-    expect(() => encodeSleepWindow({ ...w, weekdayBedMin: 1440 })).toThrow();
+    expect(() => encodeSleepWindow({ ...w, bedMin: 1440 })).toThrow();
   });
 
   test('calibration state and diagnostics', () => {

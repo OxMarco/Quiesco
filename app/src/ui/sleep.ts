@@ -10,17 +10,15 @@ export interface SleepTimes {
   wakeMin: number;
 }
 
+/** One window for every night. Per-night windows may come later (unit bytes 8–11 are kept for them). */
 export interface SleepWindow {
-  weekday: SleepTimes;
-  /** Friday and Saturday nights, when they differ. */
-  weekend: SleepTimes | null;
+  times: SleepTimes;
   /** False until the user has saved a window; the default is only a guess. */
   set: boolean;
 }
 
 export const DEFAULT_SLEEP_WINDOW: SleepWindow = {
-  weekday: { bedMin: 23 * 60 + 30, wakeMin: 7 * 60 },
-  weekend: null,
+  times: { bedMin: 23 * 60 + 30, wakeMin: 7 * 60 },
   set: false,
 };
 
@@ -60,19 +58,9 @@ export function nightOf(ms: number): string {
   return nightKey(new Date(ms - 12 * 3600_000));
 }
 
-export function isWeekendNight(night: string): boolean {
-  const [y, m, d] = nightDate(night);
-  const day = new Date(y, m, d).getDay();
-  return day === 5 || day === 6;
-}
-
-export function timesForNight(night: string, w: SleepWindow): SleepTimes {
-  return w.weekend && isWeekendNight(night) ? w.weekend : w.weekday;
-}
-
 /** Unix seconds. A bedtime before noon falls in the small hours after the evening. */
 export function windowForNight(night: string, w: SleepWindow): { fromS: number; toS: number } {
-  const t = timesForNight(night, w);
+  const t = w.times;
   const [y, m, d] = nightDate(night);
   const day = t.bedMin < 12 * 60 ? d + 1 : d;
   // Date folds overflowing minutes into hours and days, in local time.
@@ -144,14 +132,13 @@ const DARK_HOLD_S = 30 * 60;
 const MIN_NIGHTS = 4;
 
 /**
- * When the lights usually go out on weekday nights, rounded to the step, or
+ * When the lights usually go out, rounded to the step, or
  * null when there are too few nights to say. Looks up to 3 h either side of
  * the current bedtime for a lit room turning dark and staying dark for 30 min.
  */
 export function typicalLightsOut(points: StoredPoint[], nights: string[], w: SleepWindow): number | null {
   const found: number[] = [];
   for (const night of nights) {
-    if (w.weekend && isWeekendNight(night)) continue;
     const { fromS } = windowForNight(night, w);
     const lit = points.filter((p) => p.lux !== null && p.t >= fromS - 3 * 3600 && p.t <= fromS + 3 * 3600);
     for (let i = 1; i < lit.length; i++) {
@@ -166,5 +153,5 @@ export function typicalLightsOut(points: StoredPoint[], nights: string[], w: Sle
   if (found.length < MIN_NIGHTS) return null;
   found.sort((a, b) => a - b);
   const median = found[Math.floor(found.length / 2)];
-  return wrapMinutes(Math.round((w.weekday.bedMin + median) / STEP_MIN) * STEP_MIN);
+  return wrapMinutes(Math.round((w.times.bedMin + median) / STEP_MIN) * STEP_MIN);
 }

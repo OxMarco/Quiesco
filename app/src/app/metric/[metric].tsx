@@ -1,18 +1,18 @@
 // One metric up close: the last hours over its comfort band, which way it is
-// moving, and the evidence behind the range.
+// moving, and a way into the evidence behind the range.
 
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { useSession } from '@/ble/session';
-import { EvidenceTag } from '@/components/evidence';
+import { openEvidence } from '@/components/evidence';
 import { Face } from '@/components/face';
 import { MetricChart } from '@/components/metric-chart';
-import { NotFound, SEVERITY_CLASS, T } from '@/components/ui';
+import { NotFound, SEVERITY_CLASS, Sheet, T } from '@/components/ui';
 import type * as db from '@/data/db';
 import type { MetricKey } from '@/protocol/codec';
-import { metricValue, Severity } from '@/protocol/comfort';
+import { metricValue } from '@/protocol/comfort';
 import { severityColor, useTheme } from '@/theme';
 import {
   bandSentence,
@@ -22,14 +22,13 @@ import {
   hourDelta,
   type JudgedMetric,
   judgeFor,
-  referenceLabel,
+  stateWord,
   trendSentence,
   upperLimit,
 } from '@/ui/advice';
-import { REFERENCE_LABEL, REFERENCES } from '@/ui/references';
-import { ago } from '@/ui/format';
+import { REFERENCES } from '@/ui/references';
 import { formatValue, METRICS } from '@/ui/metrics';
-import { formatTime, type JudgeMode, judgeMode, sleepPhase, VERDICT_LEAD_MIN } from '@/ui/sleep';
+import { formatTime, judgeMode, sleepPhase, VERDICT_LEAD_MIN } from '@/ui/sleep';
 import { RECENT_S, useReading } from '@/ui/use-reading';
 
 export default function MetricScreen() {
@@ -39,26 +38,6 @@ export default function MetricScreen() {
   // Forgotten while the sheet was open, or opened by a link with no unit.
   if (!unit) return <NotFound message="There is no unit on this phone." />;
   return <MetricPage unit={unit} metric={metric as MetricKey} />;
-}
-
-/** The state word under the value: the verdict where there is one, a plain description otherwise. */
-function stateWord(metric: MetricKey, value: number | null, severity: Severity | null, mode: JudgeMode): string {
-  if (value === null) return 'no reading';
-  if (metric === 'light') return value < 3 ? 'dark' : value < 50 ? 'dim' : 'lit';
-  if (severity === null) return mode === 'day' ? 'not judged by day' : 'not judged';
-  if (severity === Severity.Ok) return metric === 'noise' ? 'quiet' : metric === 'co2' ? 'fresh' : 'comfortable';
-  const limit = upperLimit(metric, mode);
-  const above = limit !== null && value > limit;
-  switch (metric) {
-    case 'co2':
-      return severity === Severity.Bad ? 'open a window' : 'stuffy';
-    case 'temperature':
-      return above ? (severity === Severity.Bad ? 'too hot' : 'warm') : severity === Severity.Bad ? 'too cold' : 'cool';
-    case 'humidity':
-      return above ? (severity === Severity.Bad ? 'too humid' : 'damp') : severity === Severity.Bad ? 'too dry' : 'dry';
-    case 'noise':
-      return severity === Severity.Bad ? (mode === 'day' ? 'very loud' : 'too loud') : 'loud';
-  }
 }
 
 function MetricPage({ unit, metric }: { unit: db.Unit; metric: MetricKey }) {
@@ -95,9 +74,10 @@ function MetricPage({ unit, metric }: { unit: db.Unit; metric: MetricKey }) {
   const evidence = metric === 'light' ? null : EVIDENCE[metric as JudgedMetric];
 
   return (
-    <ScrollView className="flex-1 bg-bg" contentContainerClassName="px-5 pt-6 pb-12 gap-4">
+    <Sheet>
+    <ScrollView contentContainerClassName="px-4 pt-6 pb-12 gap-4">
       <View className="flex-row justify-between items-center gap-4">
-        <T className="font-title text-2xl shrink">{metric === 'co2' ? 'CO₂ · Air freshness' : meta.label}</T>
+        <T className="font-title text-2xl shrink">{metric === 'co2' ? 'Air freshness' : meta.label}</T>
         <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={12}>
           <T className="text-primary font-body-semi">Close</T>
         </Pressable>
@@ -113,14 +93,11 @@ function MetricPage({ unit, metric }: { unit: db.Unit; metric: MetricKey }) {
         </T>
         <View className="flex-row items-center gap-1.5 pb-2.5">
           {severity !== null && <Face size={22} severity={severity} bare ink={severityColor(t, severity)} />}
-          <T className={`font-body-semi text-[13px] ${severity === null ? 'text-muted' : SEVERITY_CLASS[severity].text}`}>{word}</T>
+          <T className={`font-body-semi text-[15px] ${severity === null ? 'text-muted' : SEVERITY_CLASS[severity].text}`}>{word.charAt(0).toUpperCase() + word.slice(1)}</T>
         </View>
       </View>
 
-      <View className="bg-surface rounded-card p-4 gap-3">
-        <T className="font-body-semi text-xs uppercase tracking-widest text-muted">
-          {endS === nowS ? 'Last 3 hours' : `3 hours to ${formatTime(endS)}`}
-        </T>
+      <View className="bg-surface rounded-card px-3 pt-4 pb-2">
         {hasPoints ? (
           <MetricChart
             metric={metric}
@@ -151,53 +128,35 @@ function MetricPage({ unit, metric }: { unit: db.Unit; metric: MetricKey }) {
             tempUnit={tempUnit}
           />
         ) : (
-          <T className="text-sm leading-5 text-muted">
+          <T className="text-sm leading-5 text-muted px-1 pb-2">
             Nothing from the unit’s log in the last 3 hours. Pull down on the Room tab to sync it.
           </T>
         )}
+      </View>
 
-        <View className="gap-0.5">
-          {trend && <T className="font-body-semi text-sm">{trend}</T>}
-          {!trend && hasPoints && delta !== null && <T className="font-body-semi text-sm">Steady over the last hour.</T>}
-          <T className="text-[13px] leading-[18px] text-muted">
-            {/* By day noise is judged for hearing, which is not one of the references. */}
-            {!(metric === 'noise' && mode === 'day') && <T className="font-body-semi text-ink">{referenceLabel(metric)}: </T>}
-            {band}
-            {since !== null && since > fromS ? ` The room passed it at about ${formatTime(since)}.` : ''}
-          </T>
-        </View>
-        <T className="text-xs text-muted">
-          {live ? 'Live' : 'Last synced reading'} · measured {ago(measuredAt, now)} · history synced {ago(unit.lastSyncMs, now)}
+      <View className="gap-1 px-1">
+        {trend && <T className="font-body-semi text-base">{trend}</T>}
+        {!trend && hasPoints && delta !== null && <T className="font-body-semi text-base">Steady over the last hour.</T>}
+        <T className="text-[15px] leading-[22px] text-muted">
+          {band}
+          {since !== null && since > fromS ? ` The room passed it at about ${formatTime(since)}.` : ''}
         </T>
       </View>
 
       {evidence ? (
-        <View className="bg-surface rounded-card p-4 gap-2.5">
-          <View className="flex-row items-center gap-2">
-            <EvidenceTag metric={metric as JudgedMetric} />
-            <T className="text-[12px] text-muted">{REFERENCE_LABEL[evidence.kind]}</T>
-          </View>
-          <T className="text-[14px] leading-[20px]">{evidence.body}</T>
-          <T className="text-[13px] leading-[18px] text-muted">{evidence.reference}</T>
-          {metric === 'noise' && mode === 'day' && (
-            <T className="text-[13px] leading-[18px] text-muted">
-              By day Quiesco compares noise with hearing guidance instead: the EPA’s 70 dB(A) 24-hour average and NIOSH’s 85 dB(A)
-              8-hour working limit. Its readings are short samples from an uncalibrated microphone, so take them as a rough guide.
-            </T>
-          )}
-          <T className="text-[11px] leading-[15px] text-muted">Sources: {evidence.sources}</T>
-        </View>
+        <Pressable
+          onPress={() => openEvidence(metric as JudgedMetric)}
+          accessibilityRole="button"
+          className="bg-surface rounded-card px-4 py-4 flex-row items-center justify-between mt-2 active:opacity-70">
+          <T className="font-body-medium text-base">Why this range?</T>
+          <T className="text-muted text-lg">›</T>
+        </Pressable>
       ) : (
-        <View className="bg-surface rounded-card p-4 gap-2">
-          <T className="text-[12px] text-muted">{REFERENCE_LABEL[REFERENCES.light.kind]}</T>
-          <T className="text-[14px] leading-[20px]">
-            Light at night tells your body it is still day and delays sleep. Keep the bedroom at or below {REFERENCES.light.okHi} lux while
-            you sleep, and under {REFERENCES.light.warnHi} lux if you need to see.
-          </T>
-          <T className="text-[13px] leading-[18px] text-muted">For reference: moonlight is under 1 lux, a dim night light 5 – 10 lux.</T>
-          <T className="text-[11px] leading-[15px] text-muted">Sources: Brown et al., PLOS Biology (2022).</T>
-        </View>
+        <T className="text-[13px] leading-[18px] text-muted px-1">
+          Moonlight is under 1 lux; a dim night light 5 – 10 lux. Light at night delays sleep (Brown et al., PLOS Biology, 2022).
+        </T>
       )}
     </ScrollView>
+    </Sheet>
   );
 }

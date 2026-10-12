@@ -103,6 +103,9 @@ export function nudge(v: Verdict): string | null {
   }
 }
 
+/** Below this the panel shows its battery screen (kLowBatteryVolts, UiModel.h). */
+export const LOW_BATTERY_V = 3.5;
+
 /** 1S LiPo resting-voltage curve, as the firmware (UiModel.cpp). */
 const BATTERY_CURVE: [number, number][] = [
   [3.3, 0],

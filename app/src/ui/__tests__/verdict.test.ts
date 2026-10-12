@@ -6,7 +6,7 @@ import { formatDuration, judgeMode, type SleepWindow } from '@/ui/sleep';
 
 const at = (y: number, m: number, d: number, h: number, min = 0) => new Date(y, m - 1, d, h, min).getTime();
 
-const w: SleepWindow = { weekday: { bedMin: 23 * 60 + 15, wakeMin: 7 * 60 }, weekend: null, set: true };
+const w: SleepWindow = { times: { bedMin: 23 * 60 + 15, wakeMin: 7 * 60 }, set: true };
 
 const reading = (patch: Partial<Measurement> = {}): Measurement => ({
   temperatureC: 27,

@@ -1,6 +1,8 @@
 // One live connection to a Quiesco unit: the connect sequence (PROTOCOL.md §2),
 // app-layer auth (§3), confirmed writes (§5) and log download (§7).
 
+import { Platform } from 'react-native';
+
 import * as db from '@/data/db';
 import {
   CalibrationOffsets,
@@ -58,6 +60,12 @@ import * as ble from './transport';
 
 /** How to update a unit's firmware (copy a .uf2 onto its USB drive). */
 export const FIRMWARE_GUIDE_URL = 'https://github.com/OxMarco/Quiesco/blob/master/AGENT.md';
+/** The app's store listing, for the "update the app" states. */
+export const APP_STORE_URL = Platform.select({
+  android: 'https://play.google.com/store/apps/details?id=rest.quiesco.app',
+  // Replace with the listing (https://apps.apple.com/app/id<number>) once it exists.
+  default: 'https://apps.apple.com/search?term=quiesco',
+}) as string;
 
 export type Phase =
   | 'idle'
@@ -244,7 +252,7 @@ async function runConnect(peripheralId: string, gen: number): Promise<void> {
       link.set({
         phase: tooOld ? 'firmwareTooOld' : 'appTooOld',
         error: tooOld
-          ? `This unit’s firmware is too old for this app. Update the unit’s firmware over USB (see the guide on GitHub: ${FIRMWARE_GUIDE_URL}).`
+          ? 'This unit’s firmware is too old for this app. Update it over USB with the guide on GitHub.'
           : 'This unit’s firmware is newer than this app. Update the app, then try again.',
       });
       await ble.disconnect(peripheralId);

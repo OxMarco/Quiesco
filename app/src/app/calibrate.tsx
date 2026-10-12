@@ -1,12 +1,12 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 
 import * as linkApi from '@/ble/link';
 import { link } from '@/ble/link';
 import { useStore } from '@/ble/store';
 import { Stepper } from '@/components/controls';
-import { Button, Card, T } from '@/components/ui';
+import { Button, Card, Sheet, SheetHeader, T } from '@/components/ui';
 import { FrcState } from '@/protocol/codec';
 import { useTheme } from '@/theme';
 
@@ -35,13 +35,8 @@ export default function CalibrateScreen() {
   const lost = started && !connected && frc !== FrcState.Done && frc !== FrcState.Failed;
 
   return (
-    <View className="flex-1 bg-bg px-5 pt-6 pb-10 gap-5">
-      <View className="flex-row justify-between items-center">
-        <T className="font-wordmark text-3xl">Recalibrate CO₂</T>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={12}>
-          <T className="text-primary font-body-semi">{started ? 'Done' : 'Cancel'}</T>
-        </Pressable>
-      </View>
+    <Sheet className="px-4 pt-6 pb-10 gap-5">
+      <SheetHeader title="Recalibrate CO₂" action={started ? 'Done' : 'Cancel'} onAction={() => router.back()} />
 
       {!started ? (
         <>
@@ -85,7 +80,7 @@ export default function CalibrateScreen() {
           </T>
         </Card>
       )}
-    </View>
+    </Sheet>
   );
 }
 

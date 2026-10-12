@@ -1,6 +1,8 @@
 // App-level glue: remember the unit, reconnect on launch, sync after connect,
 // and tell screens when stored data changed.
 
+import * as Application from 'expo-application';
+import * as StoreReview from 'expo-store-review';
 import { AppState, Appearance } from 'react-native';
 
 import * as db from '@/data/db';
@@ -22,6 +24,7 @@ import { localeTempUnit, type TempUnit } from '@/ui/units';
 import * as keys from './keys';
 import * as linkApi from './link';
 import { logEraseUpTo } from './log-erase';
+import { shouldAskForReview } from './review-prompt';
 import { Store, useStore } from './store';
 import * as ble from './transport';
 
@@ -119,7 +122,25 @@ export async function syncNow() {
     session.set((s) => ({ dataVersion: s.dataVersion + 1 }));
   }
   await eraseLogIfDue().catch((e) => trace('log erase failed', e));
+  await askForReviewIfDue().catch((e) => trace('review prompt failed', e));
   return count;
+}
+
+const LAST_REVIEW_ASK_KEY = 'lastReviewAskMs';
+
+/** After a complete sync, now and then, the system's rating prompt. */
+async function askForReviewIfDue() {
+  const l = linkApi.link.get();
+  if (!l.serial || AppState.currentState !== 'active') return;
+  const lastAskedMs = await db.getSetting<number>(LAST_REVIEW_ASK_KEY);
+  const nights = (await db.nightsWithData(l.serial, 60)).length;
+  const installed = await Application.getInstallationTimeAsync().catch(() => null);
+  const installedMs = installed ? installed.getTime() : null;
+  if (!shouldAskForReview({ syncDone: l.sync?.state === 'done', nights, installedMs, lastAskedMs, nowMs: Date.now() })) return;
+  // False on TestFlight and the web.
+  if (!(await StoreReview.isAvailableAsync())) return;
+  await db.setSetting(LAST_REVIEW_ASK_KEY, Date.now());
+  await StoreReview.requestReview();
 }
 
 const LAST_LOG_ERASE_KEY = 'lastLogEraseMs';
@@ -179,10 +200,8 @@ async function pushSleepWindow() {
   const want: UnitSleepWindow = {
     followSleep: panelFollowsSleep,
     utcOffsetMin: -new Date().getTimezoneOffset(),
-    weekdayBedMin: sleepWindow.weekday.bedMin,
-    weekdayWakeMin: sleepWindow.weekday.wakeMin,
-    weekendBedMin: sleepWindow.weekend?.bedMin ?? null,
-    weekendWakeMin: sleepWindow.weekend?.wakeMin ?? null,
+    bedMin: sleepWindow.times.bedMin,
+    wakeMin: sleepWindow.times.wakeMin,
   };
   if (l.sleepWindow && sameSleepWindow(l.sleepWindow, want)) return;
   await linkApi.setUnitSleepWindow(want);
@@ -223,8 +242,10 @@ let booted = false;
 export async function boot() {
   if (booted) return;
   booted = true;
-  const saved = await db.getSetting<SleepWindow>(SLEEP_WINDOW_KEY);
-  if (saved) session.set({ sleepWindow: saved });
+  // Saved before weekend times were dropped, the times were under `weekday`.
+  const saved = await db.getSetting<SleepWindow & { weekday?: SleepWindow['times'] }>(SLEEP_WINDOW_KEY);
+  const times = saved?.times ?? saved?.weekday;
+  if (saved && times) session.set({ sleepWindow: { times, set: saved.set } });
   const unit = await db.getSetting<TempUnit>(TEMP_UNIT_KEY);
   if (unit === 'C' || unit === 'F') session.set({ tempUnit: unit, tempUnitSet: true });
   const follows = await db.getSetting<boolean>(PANEL_FOLLOWS_SLEEP_KEY);

@@ -189,17 +189,37 @@ export function bandSentence(metric: MetricKey, mode: JudgeMode, unit: TempUnit)
   const r = REFERENCES[metric];
   switch (metric) {
     case 'co2':
-      return `Fresh air is under ${r.okHi} ppm; above ${r.warnHi} ppm the room needs airing.`;
+      return `Fresh is under ${r.okHi} ppm; above ${r.warnHi} ppm, open a window.`;
     case 'temperature':
       return `Best for sleep is ${Math.round(toUnit(r.okLo, unit))} – ${Math.round(toUnit(r.okHi, unit))} ${tempSymbol(unit)}.`;
     case 'humidity':
       return `Best for sleep is ${r.okLo} – ${r.okHi} %.`;
     case 'noise':
       return mode === 'sleep'
-        ? `At night, single sounds under ${r.okHi} dB(A) and an average under ${NOISE_NIGHT_AVG_DB} dB(A) (WHO).`
+        ? `Quiet for sleep is under ${r.okHi} dB(A), and ${NOISE_NIGHT_AVG_DB} dB(A) on average (WHO).`
         : `By day, hearing guidance suggests an average under ${DAY_NOISE.warnHi} dB(A) over 24 hours.`;
     case 'light':
       return `At most ${r.okHi} lux while you sleep; above ${r.warnHi} lux is too bright.`;
+  }
+}
+
+/** The state word under a value: the verdict where there is one, a plain description otherwise. */
+export function stateWord(metric: MetricKey, value: number | null, severity: Severity | null, mode: JudgeMode): string {
+  if (value === null) return 'no reading';
+  if (metric === 'light') return value < 3 ? 'dark' : value < 50 ? 'dim' : 'lit';
+  if (severity === null) return mode === 'day' ? 'not judged by day' : 'not judged';
+  if (severity === Severity.Ok) return metric === 'noise' ? 'quiet' : metric === 'co2' ? 'fresh' : 'comfortable';
+  const limit = upperLimit(metric, mode);
+  const above = limit !== null && value > limit;
+  switch (metric) {
+    case 'co2':
+      return severity === Severity.Bad ? 'open a window' : 'stuffy';
+    case 'temperature':
+      return above ? (severity === Severity.Bad ? 'too hot' : 'warm') : severity === Severity.Bad ? 'too cold' : 'cool';
+    case 'humidity':
+      return above ? (severity === Severity.Bad ? 'too humid' : 'damp') : severity === Severity.Bad ? 'too dry' : 'dry';
+    case 'noise':
+      return severity === Severity.Bad ? (mode === 'day' ? 'very loud' : 'too loud') : 'loud';
   }
 }
 

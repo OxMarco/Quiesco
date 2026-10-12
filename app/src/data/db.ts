@@ -270,10 +270,16 @@ export async function timeSpan(serial: string): Promise<{ first: number; last: n
 }
 
 /** The newest dated record, shown when the unit is out of range. */
-export async function latestPoint(serial: string): Promise<StoredPoint | null> {
+/** The newest reading, with what only the Room tab shows: pressure and battery. */
+export interface LatestPoint extends StoredPoint {
+  pressure: number | null;
+  battery: number | null;
+}
+
+export async function latestPoint(serial: string): Promise<LatestPoint | null> {
   const db = await getDb();
-  return db.getFirstAsync<StoredPoint>(
-    `SELECT epoch_s AS t, temperature, humidity, co2, lux, noise FROM records
+  return db.getFirstAsync<LatestPoint>(
+    `SELECT epoch_s AS t, temperature, humidity, co2, lux, noise, pressure, battery FROM records
      WHERE serial = ? AND epoch_s IS NOT NULL ORDER BY epoch_s DESC LIMIT 1`,
     serial,
   );

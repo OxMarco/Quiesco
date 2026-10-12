@@ -2,12 +2,12 @@
 // over those hours. Asked once after adding a unit, changed any time from the
 // Room screen or the Settings tab. One window for every night of the week.
 
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { setSleepWindow, useSession } from '@/ble/session';
-import { Button, Card, T } from '@/components/ui';
+import { Button, Card, Sheet, SheetHeader, T } from '@/components/ui';
 import * as db from '@/data/db';
 import {
   durationMin,
@@ -24,6 +24,8 @@ import {
 } from '@/ui/sleep';
 
 export default function SleepWindowScreen() {
+  // `setup=1` when this follows pairing the first unit: step two of the first run.
+  const { setup } = useLocalSearchParams<{ setup?: string }>();
   const saved = useSession((s) => s.sleepWindow);
   const unit = useSession((s) => s.units[0] ?? null);
   const [draft, setDraft] = useState<SleepWindow>(saved);
@@ -31,37 +33,31 @@ export default function SleepWindowScreen() {
   const [error, setError] = useState<string | null>(null);
   const lightsOut = useLightsOut(unit?.serial ?? null, saved);
 
-  const valid = validTimes(draft.weekday);
+  const valid = validTimes(draft.times);
   const suggest =
-    lightsOut !== null && circularGap(lightsOut, draft.weekday.bedMin) >= STEP_MIN ? lightsOut : null;
+    lightsOut !== null && circularGap(lightsOut, draft.times.bedMin) >= STEP_MIN ? lightsOut : null;
 
   const save = () => {
     setBusy(true);
     setError(null);
-    setSleepWindow({ ...draft, weekend: null, set: true })
+    setSleepWindow({ ...draft, set: true })
       .then(() => router.back())
       .catch((e) => setError(`Couldn’t save the sleep window: ${e instanceof Error ? e.message : String(e)}`))
       .finally(() => setBusy(false));
   };
 
   return (
-    <View className="flex-1 bg-bg">
-      <ScrollView contentContainerClassName="px-5 pt-6 pb-6 gap-4">
-        <View className="flex-row justify-between items-center">
-          <T className="font-wordmark text-3xl">Sleep window</T>
-          <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={12}>
-            <T className="text-primary font-body-semi">Cancel</T>
-          </Pressable>
-        </View>
+    <Sheet>
+      <ScrollView contentContainerClassName="px-4 pt-6 pb-6 gap-4">
+        <SheetHeader
+          eyebrow={setup === '1' ? 'Step 2 of 2' : undefined}
+          title="When do you usually sleep?"
+          action="Cancel"
+          onAction={() => router.back()}
+        />
+        <T className="text-muted text-[15px] leading-[22px]">Quiesco judges the room only while you sleep.</T>
 
-        <View className="gap-2">
-          <T className="font-title text-2xl leading-8">When do you usually sleep?</T>
-          <T className="text-muted text-[15px] leading-[22px]">
-            Quiesco only judges the room while you’re asleep, so the TV at 22:00 doesn’t count against your night.
-          </T>
-        </View>
-
-        <TimesEditor times={draft.weekday} onChange={(weekday) => setDraft({ ...draft, weekday })} />
+        <TimesEditor times={draft.times} onChange={(update) => setDraft((d) => ({ ...d, times: update(d.times) }))} />
 
         {suggest !== null && (
           <Card className="bg-primary/10 gap-2">
@@ -73,7 +69,7 @@ export default function SleepWindowScreen() {
               <Button
                 title={`Use ${formatClock(suggest)}`}
                 kind="secondary"
-                onPress={() => setDraft({ ...draft, weekday: { ...draft.weekday, bedMin: suggest } })}
+                onPress={() => setDraft((d) => ({ ...d, times: { ...d.times, bedMin: suggest } }))}
               />
             </View>
           </Card>
@@ -81,7 +77,7 @@ export default function SleepWindowScreen() {
 
       </ScrollView>
 
-      <View className="px-5 pb-10 pt-2 gap-2">
+      <View className="px-4 pb-10 pt-2 gap-2">
         {!valid && (
           <T className="text-bad text-sm text-center">
             A sleep window runs {MIN_SLEEP_MIN / 60} to {MAX_SLEEP_MIN / 60} hours.
@@ -90,23 +86,27 @@ export default function SleepWindowScreen() {
         {error && <T className="text-bad text-sm text-center">{error}</T>}
         <Button title="Save" busy={busy} disabled={!valid} onPress={save} />
       </View>
-    </View>
+    </Sheet>
   );
 }
 
-function TimesEditor({ times, onChange }: { times: SleepTimes; onChange: (t: SleepTimes) => void }) {
+type Update = (t: SleepTimes) => SleepTimes;
+
+// Edits are updater functions so a held button keeps stepping from the latest
+// value instead of the one captured when the press began.
+function TimesEditor({ times, onChange }: { times: SleepTimes; onChange: (update: Update) => void }) {
   return (
     <View className="gap-3">
       <View className="flex-row gap-3">
-        <TimeCard label="Bedtime" min={times.bedMin} onChange={(bedMin) => onChange({ ...times, bedMin })} />
-        <TimeCard label="Wake up" min={times.wakeMin} onChange={(wakeMin) => onChange({ ...times, wakeMin })} />
+        <TimeCard label="Bedtime" min={times.bedMin} onStep={(d) => onChange((t) => ({ ...t, bedMin: wrapMinutes(t.bedMin + d) }))} />
+        <TimeCard label="Wake up" min={times.wakeMin} onStep={(d) => onChange((t) => ({ ...t, wakeMin: wrapMinutes(t.wakeMin + d) }))} />
       </View>
       <Timeline times={times} />
     </View>
   );
 }
 
-function TimeCard({ label, min, onChange }: { label: string; min: number; onChange: (min: number) => void }) {
+function TimeCard({ label, min, onStep }: { label: string; min: number; onStep: (deltaMin: number) => void }) {
   return (
     <Card className="flex-1 p-3.5 gap-2">
       <T className="text-[13px] text-muted">{label}</T>
@@ -114,19 +114,38 @@ function TimeCard({ label, min, onChange }: { label: string; min: number; onChan
         {formatClock(min)}
       </T>
       <View className="flex-row gap-2">
-        <StepButton label="−" a11y={`${label} earlier`} onPress={() => onChange(wrapMinutes(min - STEP_MIN))} />
-        <StepButton label="+" a11y={`${label} later`} onPress={() => onChange(wrapMinutes(min + STEP_MIN))} />
+        <StepButton label="−" a11y={`${label} earlier`} onPress={() => onStep(-STEP_MIN)} />
+        <StepButton label="+" a11y={`${label} later`} onPress={() => onStep(STEP_MIN)} />
       </View>
     </Card>
   );
 }
 
+const REPEAT_DELAY_MS = 350;
+const REPEAT_EVERY_MS = 110;
+
+/** One step per tap; hold to keep stepping, so a two-hour move is a moment, not eight taps. */
 function StepButton({ label, a11y, onPress }: { label: string; a11y: string; onPress: () => void }) {
+  // `onPress` only hands an updater to setState, so the closure from the press
+  // that started the hold stays correct for every repeat.
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stop = () => {
+    if (timer.current) clearInterval(timer.current);
+    timer.current = null;
+  };
+  useEffect(() => stop, []);
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={() => {
+        onPress();
+        timer.current = setInterval(onPress, REPEAT_EVERY_MS);
+      }}
+      delayLongPress={REPEAT_DELAY_MS}
+      onPressOut={stop}
       accessibilityRole="button"
       accessibilityLabel={a11y}
+      accessibilityHint="Hold to keep changing"
       className="flex-1 h-11 rounded-full bg-raised items-center justify-center active:opacity-60">
       <T className="text-lg leading-6">{label}</T>
     </Pressable>
@@ -173,7 +192,10 @@ function Timeline({ times }: { times: SleepTimes }) {
           </T>
         ))}
       </View>
-      <T className="text-[13px] text-muted">{validTimes(times) ? formatDuration(durationMin(times)) : '–'}</T>
+      <View className="flex-row items-baseline justify-between pt-1">
+        <T className="text-[13px] text-muted">Asleep</T>
+        <T className="font-body-semi text-[15px]">{validTimes(times) ? formatDuration(durationMin(times)) : '–'}</T>
+      </View>
     </View>
   );
 }

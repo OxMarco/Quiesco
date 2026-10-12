@@ -25,7 +25,7 @@ const point = (t: number, patch: Partial<StoredPoint> = {}): StoredPoint => ({
 });
 
 describe('sleep window', () => {
-  const w: SleepWindow = { weekday: { bedMin: 23 * 60 + 30, wakeMin: 7 * 60 }, weekend: null, set: true };
+  const w: SleepWindow = { times: { bedMin: 23 * 60 + 30, wakeMin: 7 * 60 }, set: true };
 
   test('an evening bedtime runs into the next morning', () => {
     // 2026-09-23 is a Wednesday.
@@ -33,20 +33,18 @@ describe('sleep window', () => {
   });
 
   test('a bedtime after midnight belongs to the evening before', () => {
-    const late: SleepWindow = { ...w, weekday: { bedMin: 60, wakeMin: 9 * 60 } };
+    const late: SleepWindow = { ...w, times: { bedMin: 60, wakeMin: 9 * 60 } };
     expect(windowForNight('2026-09-23', late)).toEqual({ fromS: at(2026, 9, 24, 1), toS: at(2026, 9, 24, 9) });
     expect(nightOf(at(2026, 9, 24, 1) * 1000)).toBe('2026-09-23');
   });
 
-  test('Friday and Saturday use the weekend times', () => {
-    const weekend: SleepWindow = { ...w, weekend: { bedMin: 0, wakeMin: 9 * 60 } };
-    expect(windowForNight('2026-09-25', weekend).fromS).toBe(at(2026, 9, 26, 0)); // Friday
-    expect(windowForNight('2026-09-26', weekend).fromS).toBe(at(2026, 9, 27, 0)); // Saturday
-    expect(windowForNight('2026-09-27', weekend).fromS).toBe(at(2026, 9, 27, 23, 30)); // Sunday
+  test('every night uses the same times', () => {
+    expect(windowForNight('2026-09-25', w).fromS).toBe(at(2026, 9, 25, 23, 30)); // Friday
+    expect(windowForNight('2026-09-26', w).fromS).toBe(at(2026, 9, 26, 23, 30)); // Saturday
   });
 
   test('windows must last 3 to 14 hours', () => {
-    expect(validTimes(DEFAULT_SLEEP_WINDOW.weekday)).toBe(true);
+    expect(validTimes(DEFAULT_SLEEP_WINDOW.times)).toBe(true);
     expect(validTimes({ bedMin: 23 * 60, wakeMin: 23 * 60 + 30 })).toBe(false);
     expect(validTimes({ bedMin: 21 * 60, wakeMin: 11 * 60 })).toBe(true);
     expect(validTimes({ bedMin: 21 * 60, wakeMin: 11 * 60 + 15 })).toBe(false);

@@ -48,6 +48,8 @@ interface Props {
   band?: [number, number];
   /** Axis labels for temperature; the data stays in °C. */
   tempUnit?: TempUnit;
+  /** No value scale: only the reference lines, labelled, say where the line sits. Full screen keeps the scale. */
+  quietAxis?: boolean;
 }
 
 // A gap longer than this breaks the line instead of bridging it.
@@ -102,7 +104,7 @@ function FullScreenChart({ onClose, ...props }: Props & { onClose: () => void })
         </Pressable>
       </View>
       <View className="flex-1 justify-center px-3">
-        <ChartBody {...props} height={Math.round(height * 0.6)} interactive />
+        <ChartBody {...props} height={Math.round(height * 0.6)} quietAxis={false} interactive />
       </View>
     </SafeAreaView>
   );
@@ -130,6 +132,7 @@ function ChartBody({
   showBand = true,
   band = METRICS[metric].band ?? undefined,
   tempUnit = 'C',
+  quietAxis = false,
   interactive = false,
 }: Props & { interactive?: boolean }) {
   const t = useTheme();
@@ -181,6 +184,7 @@ function ChartBody({
   const hours = (toS - fromS) / 3600;
   const xTicks = hourTicks(fromS, toS, hours <= 8 ? 2 : width < 340 ? 4 : 3);
   const axisFont = spark ? null : font;
+  const valueFont = quietAxis ? null : axisFont;
   const shade = withAlpha(t.text, t.dark ? 0.1 : 0.06);
 
   const pressLine = useDerivedValue(() => vec(press.x.position.value, 0));
@@ -306,7 +310,7 @@ function ChartBody({
         xKey="t"
         yKeys={['v']}
         domain={{ x: [fromS, toS], y: yDomain }}
-        padding={spark ? { left: 0, right: 5, top: 5, bottom: 5 } : { left: 34, right: 10, top: 8, bottom: 2 }}
+        padding={spark ? { left: 0, right: 5, top: 5, bottom: 5 } : { left: quietAxis ? 4 : 34, right: 10, top: 8, bottom: 2 }}
         chartPressState={interactive ? press : undefined}
         // Read values the moment the finger lands, not after a hold.
         gestureLongPressDelay={0}
@@ -321,14 +325,14 @@ function ChartBody({
         // drop any tick on the bottom edge, which is where the scale starts.
         yAxis={[{ font: null, tickValues: yTicks, lineWidth: 0 }]}
         renderOutside={({ yScale, chartBounds }) =>
-          axisFont &&
+          valueFont &&
           yTicks.map((v) => (
             <SkText
               key={`y${v}`}
-              x={chartBounds.left - 6 - axisFont.measureText(yLabel(v)).width}
+              x={chartBounds.left - 6 - valueFont.measureText(yLabel(v)).width}
               y={yScale(v) + 3.5}
               text={yLabel(v)}
-              font={axisFont}
+              font={valueFont}
               color={t.textMuted}
             />
           ))

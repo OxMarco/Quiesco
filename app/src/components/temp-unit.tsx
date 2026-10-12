@@ -1,4 +1,4 @@
-// °C / °F, asked during onboarding and changeable on the Unit tab. The unit's
+// °C / °F: it follows the locale and is changed in Settings. The unit's
 // screen follows it (see setTempUnit).
 
 import { setTempUnit } from '@/ble/session';
