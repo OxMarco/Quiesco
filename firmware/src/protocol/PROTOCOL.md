@@ -690,8 +690,9 @@ for expiration.
 
 ### 6.17 Sleep window `0012`
 
-Capability bit 14. The user's sleep window, so the panel can judge the room
-the way the app does instead of on the sleep bands at every hour.
+Capability bit 14. The sleep window the app keeps for this unit (each unit
+has its own, for the room it is in), so the panel can judge the room the way
+the app does instead of on the sleep bands at every hour.
 
 | Offset | Type | Field |
 |---|---|---|

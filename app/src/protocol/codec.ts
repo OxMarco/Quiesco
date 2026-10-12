@@ -268,7 +268,7 @@ export const DEVICE_NAME_MAX_BYTES = 16;
 export function deviceNameProblem(name: string): string | null {
   const bytes = utf8Encode(name);
   if (bytes.length === 0) return 'Enter a name.';
-  if (bytes.length > DEVICE_NAME_MAX_BYTES) return 'Use at most 16 bytes (fewer with accents or emoji).';
+  if (bytes.length > DEVICE_NAME_MAX_BYTES) return 'Use at most 16 characters (fewer with accents or emoji).';
   if (bytes.some((b) => b < 0x20 || b === 0x7f)) return 'Remove line breaks and control characters.';
   return null;
 }

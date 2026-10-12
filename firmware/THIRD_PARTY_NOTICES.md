@@ -78,9 +78,11 @@ For reference, what each licence would ask of a binary-only release:
 2. **LGPL-2.1 relinking** for ArduinoBLE and the core: resolved by the source
    release.
 3. **Core licence texts.** The installed Seeeduino mbed 2.9.3 package ships
-   no licence files, so `collect-licences.sh` cannot gather them. Take the
-   LGPL-2.1 text and Mbed OS's `LICENSE.md` (with its per-component
-   licences) from the upstream repositories at the matching version, and add
-   them to the release package.
-4. **Where the notices are shown.** Product to decide: the app's licence
-   screen, the manual, or both.
+   no licence files, so `licences/` holds the LGPL-2.1, Apache-2.0 and
+   Nordic 5-Clause texts and `collect-licences.sh` copies them into the
+   release package.
+4. **Where the notices are shown**: in the app, **Settings → About →
+   Open-source licences**, with every firmware component above and every app
+   dependency. Before a release, refresh the list: `make licences` here, then
+   `npm run licences` in `app/` (`app/scripts/gen-licences.mjs`), and commit
+   `app/src/data/licences.json`.

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 
-import { useSession } from '@/ble/session';
+import { useSession, useShownPrefs, useShownUnit } from '@/ble/session';
 import { MetricChart } from '@/components/metric-chart';
 import { UnitSyncCard } from '@/components/sync';
+import { UnitChip } from '@/components/unit-title';
 import { Button, Card, Screen, T, Title } from '@/components/ui';
 import * as db from '@/data/db';
 import { Severity } from '@/protocol/comfort';
@@ -16,9 +17,9 @@ import { formatTemp, type TempUnit, toUnit } from '@/ui/units';
 type Span = { fromS: number; toS: number };
 
 export default function NightsScreen() {
-  const unit = useSession((s) => s.units[0] ?? null);
+  const unit = useShownUnit();
   const dataVersion = useSession((s) => s.dataVersion);
-  const sleepWindow = useSession((s) => s.sleepWindow);
+  const { sleepWindow } = useShownPrefs();
   const tempUnit = useSession((s) => s.tempUnit);
   const t = useTheme();
   const [nights, setNights] = useState<string[] | null>(null);
@@ -48,7 +49,7 @@ export default function NightsScreen() {
   if (error) {
     return (
       <Screen>
-        <Title>Nights</Title>
+        <Title detail={<UnitChip unit={unit} />}>Nights</Title>
         <Card className="gap-3">
           <T className="font-body-semi text-base">Couldn’t load your nights</T>
           <T className="text-muted text-sm leading-5">{error}</T>
@@ -68,7 +69,7 @@ export default function NightsScreen() {
   if (!unit || (nights !== null && nights.length === 0)) {
     return (
       <Screen>
-        <Title>Nights</Title>
+        <Title detail={<UnitChip unit={unit} />}>Nights</Title>
         <UnitSyncCard unit={unit} />
         <Card>
           <T className="text-muted leading-6">
@@ -93,7 +94,7 @@ export default function NightsScreen() {
 
   return (
     <Screen>
-      <Title>Nights</Title>
+      <Title detail={<UnitChip unit={unit} />}>Nights</Title>
       <UnitSyncCard unit={unit} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 py-1">
         {(nights ?? []).map((n) => (
@@ -145,9 +146,10 @@ function errorText(e: unknown): string {
 
 function NightsLoading() {
   const t = useTheme();
+  const unit = useShownUnit();
   return (
     <Screen>
-      <Title>Nights</Title>
+      <Title detail={<UnitChip unit={unit} />}>Nights</Title>
       <View className="py-16 items-center">
         <ActivityIndicator color={t.textMuted} accessibilityLabel="Loading nights" />
       </View>

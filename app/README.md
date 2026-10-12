@@ -2,7 +2,8 @@
 
 The iOS and Android companion for the Quiesco sensor. It connects to a unit over
 Bluetooth, shows the live reading, downloads the unit's log and charts each
-night. Readings stay on the phone: there is no account and no server.
+night. It holds any number of units, shows one at a time, and syncs the others
+in range quietly when it opens. Readings stay on the phone: there is no account and no server.
 
 Built with Expo (SDK 57, Expo Router), NativeWind for styling,
 `react-native-ble-manager` for Bluetooth and `expo-sqlite` for storage.
@@ -62,12 +63,23 @@ npm test                          # protocol, sync and UI tests (jest)
 npx tsc --noEmit && npx expo lint
 ```
 
+### Before a release: licences
+
+Settings → About → Open-source licences lists every app dependency and every
+firmware component with its licence, from `src/data/licences.json`. Refresh it
+whenever dependencies change, and before every release:
+
+```sh
+(cd ../firmware && make licences)  # the firmware's licence texts
+npm run licences                   # writes src/data/licences.json
+```
+
 ### No hardware yet?
 
 A simulator has no Bluetooth. The welcome screen offers **Try it with demo
 data**, which adds a demo unit with three made-up nights so the screens can be
 checked without hardware. It works in release builds too, and the demo can be
-removed in **Settings → Remove demo data**.
+removed from its page in **Settings** (**Remove demo data**).
 
 ## Layout
 
@@ -77,7 +89,7 @@ removed in **Settings → Remove demo data**.
 | `src/protocol/__tests__/` | Golden vectors, checked against the examples in `firmware/src/protocol/PROTOCOL.md` |
 | `src/ble/` | `transport.ts` wraps the Bluetooth library; `link.ts` runs the connect sequence, enrolment and authentication, confirmed writes and log download; `session.ts` reconnects and syncs |
 | `src/data/` | SQLite store keyed by the unit's serial; the demo unit and its sample nights |
-| `src/app/` | Screens (Expo Router): Room, Nights and Settings tabs; Connect, Calibrate, Sleep window, metric detail and 'why' screens |
+| `src/app/` | Screens (Expo Router): Room, Nights and Settings tabs; one page per unit (`units/[serial]`); the unit switcher, Connect, Name it, Calibrate, Sleep window, metric detail and 'why' screens |
 | `src/components/`, `src/ui/` | Shared components, metric formatting, night summaries |
 | `src/theme/` | The palette, the single source for NativeWind variables and SVG colours |
 | `brand/` | Logo sources and the identity explorations |

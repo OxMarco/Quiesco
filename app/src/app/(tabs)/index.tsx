@@ -4,11 +4,12 @@ import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, View } from '
 import Svg, { Path } from 'react-native-svg';
 
 import { APP_STORE_URL, FIRMWARE_GUIDE_URL, type LinkState } from '@/ble/link';
-import { reconnect, reloadUnits, session, setTempUnit, syncNow, useSession } from '@/ble/session';
+import { reconnect, reloadUnits, session, setTempUnit, syncNow, useSession, useShownPrefs, useShownUnit } from '@/ble/session';
 import { BatteryIcon } from '@/components/battery';
 import { openEvidence } from '@/components/evidence';
 import { AppMark, Face } from '@/components/face';
 import { SyncCard } from '@/components/sync';
+import { UnitTitle } from '@/components/unit-title';
 import { Button, Card, Pill, Screen, SEVERITY_CLASS, T, Title } from '@/components/ui';
 import type * as db from '@/data/db';
 import { isDemo, loadSampleData } from '@/data/sample';
@@ -24,7 +25,7 @@ import { useReading } from '@/ui/use-reading';
 
 export default function RoomScreen() {
   const loaded = useSession((s) => s.loaded);
-  const unit = useSession((s) => s.units[0] ?? null);
+  const unit = useShownUnit();
   if (!loaded) return <Loading />;
   if (!unit) return <Welcome />;
   return <Room unit={unit} />;
@@ -112,7 +113,7 @@ function Welcome() {
 
 function Room({ unit }: { unit: db.Unit }) {
   const [now, setNow] = useState(() => Date.now());
-  const sleepWindow = useSession((s) => s.sleepWindow);
+  const { sleepWindow } = useShownPrefs();
   const { state, connected, live, reading, measuredAt, recent, chargingV, lowBattery } = useReading(unit);
   const demo = isDemo(unit);
 
@@ -134,7 +135,8 @@ function Room({ unit }: { unit: db.Unit }) {
 
   return (
     <Screen onRefresh={refresh} refreshing={refreshing}>
-      <Title
+      <UnitTitle
+        unit={unit}
         detail={
           <View className="flex-row items-center gap-2">
             {chargingV ? <BatteryIcon volts={chargingV} charging width={26} /> : null}
@@ -143,10 +145,11 @@ function Room({ unit }: { unit: db.Unit }) {
         }
       >
         Quiesco
-      </Title>
-      <SleepStrip now={now} />
-      {!demo && <VersionCard state={state} />}
-      {!demo && <SyncCard sync={state.sync} connected={connected} />}
+      </UnitTitle>
+      <SleepStrip now={now} serial={unit.serial} />
+      {!demo && state.serial === unit.serial && <VersionCard state={state} />}
+      {/* Only this unit's download: the link may be visiting another one. */}
+      {!demo && <SyncCard sync={state.serial === unit.serial ? state.sync : null} connected={connected} />}
       {!demo && lowBattery !== null && <BatteryNotice volts={lowBattery} />}
 
       {reading ? (
@@ -235,7 +238,7 @@ function DemoPill() {
   return (
     <Pressable
       onPress={() =>
-        Alert.alert('Demo data', 'These readings are made up. To add your Quiesco, remove the demo in Settings.', [{ text: 'OK' }])
+        Alert.alert('Demo data', 'These readings are made up. Add your Quiesco in Settings, and remove the demo there when you’re done.', [{ text: 'OK' }])
       }
       accessibilityRole="button"
       accessibilityLabel="Demo data. What this means"
@@ -247,7 +250,10 @@ function DemoPill() {
 }
 
 function LinkPill({ state, connected }: { state: LinkState; connected: boolean }) {
+  // The phone is visiting another unit for a quiet sync; it comes back by itself.
+  const background = useSession((s) => (s.background ? (s.units.find((u) => u.serial === s.background)?.name ?? 'a unit') : null));
   if (connected) return <Pill tone="ok">Connected</Pill>;
+  if (background) return <Pill tone="off">Syncing {background}…</Pill>;
   if (state.phase === 'connecting' || state.phase === 'pairing') return <Pill tone="off">Connecting…</Pill>;
   // A version mismatch won't clear on retry: say which side needs updating (VersionCard explains).
   if (state.phase === 'firmwareTooOld') return <Pill tone="warn">Unit needs update</Pill>;
@@ -263,9 +269,9 @@ function LinkPill({ state, connected }: { state: LinkState; connected: boolean }
  * Tonight's sleep window, and a way into its setting. Its wording changes at
  * the same moment the verdicts do, so the screen says why it started judging.
  */
-function SleepStrip({ now }: { now: number }) {
+function SleepStrip({ now, serial }: { now: number; serial: string }) {
   const t = useTheme();
-  const w = useSession((s) => s.sleepWindow);
+  const w = useShownPrefs().sleepWindow;
   const phase = sleepPhase(now, w);
   const range = `${formatTime(phase.fromS)} – ${formatTime(phase.toS)}`;
   let text: string;
@@ -275,7 +281,7 @@ function SleepStrip({ now }: { now: number }) {
   else text = `Bed ${range}`;
   return (
     <Pressable
-      onPress={() => router.push('/sleep-window')}
+      onPress={() => router.push({ pathname: '/sleep-window', params: { serial } })}
       accessibilityRole="button"
       accessibilityLabel={`${text}. Change sleep window`}
       hitSlop={8}

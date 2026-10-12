@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
-import { useSession } from '@/ble/session';
+import { useSession, useShownPrefs, useShownUnit } from '@/ble/session';
 import { openEvidence } from '@/components/evidence';
 import { Face } from '@/components/face';
 import { MetricChart } from '@/components/metric-chart';
@@ -33,7 +33,7 @@ import { RECENT_S, useReading } from '@/ui/use-reading';
 
 export default function MetricScreen() {
   const { metric } = useLocalSearchParams<{ metric: string }>();
-  const unit = useSession((s) => s.units[0] ?? null);
+  const unit = useShownUnit();
   if (!(metric in METRICS)) return <NotFound />;
   // Forgotten while the sheet was open, or opened by a link with no unit.
   if (!unit) return <NotFound message="There is no unit on this phone." />;
@@ -43,7 +43,7 @@ export default function MetricScreen() {
 function MetricPage({ unit, metric }: { unit: db.Unit; metric: MetricKey }) {
   const t = useTheme();
   const tempUnit = useSession((s) => s.tempUnit);
-  const sleepWindow = useSession((s) => s.sleepWindow);
+  const { sleepWindow } = useShownPrefs();
   const { reading, measuredAt, recent, live } = useReading(unit);
   // Frozen at open: the page is short-lived, and a ticking clock would redraw the chart.
   const [now] = useState(() => Date.now());

@@ -56,7 +56,8 @@ export function SyncCard({ sync, connected }: { sync: SyncProgress | null; conne
 
 /** The same card for screens that don't already follow the link. */
 export function UnitSyncCard({ unit }: { unit: db.Unit | null }) {
-  const sync = useStore(link, (s) => s.sync);
+  // Only this unit's download: the link may be visiting another one.
+  const sync = useStore(link, (s) => (s.serial === unit?.serial ? s.sync : null));
   const connected = useStore(link, (s) => s.phase === 'ready' && s.serial === unit?.serial);
   if (!unit || isDemo(unit)) return null;
   return <SyncCard sync={sync} connected={connected} />;

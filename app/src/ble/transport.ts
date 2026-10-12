@@ -73,8 +73,11 @@ function toAdvert(p: Peripheral): Advert {
   return { id: p.id, name: p.advertising?.localName ?? p.name ?? 'Quiesco', rssi: p.rssi };
 }
 
-/** Scan for units by service UUID (§2), never by name. Returns a stop function. */
-export async function scan(onFound: (advert: Advert) => void, seconds = 15): Promise<() => void> {
+/**
+ * Scan for units by service UUID (§2), never by name. Returns a stop function;
+ * stop(false) only stops listening, for when another scan has taken the radio.
+ */
+export async function scan(onFound: (advert: Advert) => void, seconds = 15): Promise<(stopRadio?: boolean) => void> {
   await ensureStarted();
   const sub = BleManager.onDiscoverPeripheral((p) => {
     trace('found', toAdvert(p));
@@ -86,9 +89,9 @@ export async function scan(onFound: (advert: Advert) => void, seconds = 15): Pro
     sub.remove();
     throw e;
   }
-  return () => {
+  return (stopRadio = true) => {
     sub.remove();
-    BleManager.stopScan().catch(() => {});
+    if (stopRadio) BleManager.stopScan().catch(() => {});
   };
 }
 

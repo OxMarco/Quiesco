@@ -4,7 +4,7 @@ import { ActivityIndicator, Linking, Pressable, View } from 'react-native';
 
 import { APP_STORE_URL, describeError, FIRMWARE_GUIDE_URL, link } from '@/ble/link';
 import { scanner, startScan, stopScan } from '@/ble/scanner';
-import { open, session, useSession } from '@/ble/session';
+import { open, selectUnit, session, stopBackgroundSync, useSession } from '@/ble/session';
 import { useStore } from '@/ble/store';
 import * as ble from '@/ble/transport';
 import { Face } from '@/components/face';
@@ -17,8 +17,11 @@ export default function ConnectScreen() {
   const phase = useStore(link, (s) => s.phase);
   const error = useStore(link, (s) => s.error);
   const radio = useSession((s) => s.radio);
-  // The first unit on this phone is step one of two; the sleep window follows.
+  // Adding a unit is step one of three: its name and its sleep window follow.
   const firstRun = useSession((s) => s.units.length === 0);
+  const units = useSession((s) => s.units);
+  // Units on the phone when the sheet opened: finding one again only reconnects it.
+  const [known] = useState(() => new Set(session.get().units.map((u) => u.serial)));
   const found = useStore(scanner, (s) => s.found);
   const scanning = useStore(scanner, (s) => s.scanning);
   const permission = useStore(scanner, (s) => s.permitted);
@@ -27,6 +30,8 @@ export default function ConnectScreen() {
   const [openError, setOpenError] = useState<string | null>(null);
 
   useEffect(() => {
+    // The radio is needed here: no quiet sync of other units meanwhile.
+    stopBackgroundSync();
     if (radio === 'on' || radio === 'unknown') startScan();
     return stopScan;
   }, [radio]);
@@ -43,22 +48,24 @@ export default function ConnectScreen() {
   };
 
   useEffect(() => {
-    if (chosen && phase === 'ready' && !openError) {
-      // First unit on this phone: ask for the sleep window before anything else.
-      const next = () =>
-        session.get().sleepWindow.set
-          ? router.back()
-          : router.replace({ pathname: '/sleep-window', params: { setup: '1' } });
+    const serial = link.get().serial;
+    if (chosen && phase === 'ready' && !openError && serial) {
+      // A new unit is shown from now on, then named and given its sleep window.
+      const next = () => {
+        selectUnit(serial).catch(() => {});
+        if (known.has(serial)) router.back();
+        else router.replace({ pathname: '/name-unit', params: { serial } });
+      };
       const timer = setTimeout(next, 900);
       return () => clearTimeout(timer);
     }
-  }, [chosen, phase, openError]);
+  }, [chosen, phase, openError, known]);
 
   return (
     <Sheet className="px-4 pt-6 pb-10 gap-5">
       <SheetHeader
-        title="Add your Quiesco"
-        eyebrow={firstRun ? 'Step 1 of 2' : undefined}
+        title={firstRun ? 'Add your Quiesco' : 'Add another Quiesco'}
+        eyebrow="Step 1 of 3"
         action="Close"
         onAction={() => router.back()}
       />
@@ -95,7 +102,10 @@ export default function ConnectScreen() {
           ) : (
             <>
               <View className="gap-2">
-                {found.map((a) => (
+                {found.map((a) => {
+                  const added = units.find((u) => u.peripheralId === a.id);
+                  if (added) return <AddedUnit key={a.id} name={added.name} />;
+                  return (
                   <Pressable key={a.id} onPress={() => choose(a)} accessibilityRole="button" className="active:opacity-70">
                     <Card className="flex-row items-center gap-4">
                       <Face size={40} />
@@ -106,7 +116,8 @@ export default function ConnectScreen() {
                       <T className="text-primary font-body-semi">Connect</T>
                     </Card>
                   </Pressable>
-                ))}
+                  );
+                })}
               </View>
               {scanning ? (
                 <View className="flex-row items-center gap-3 px-1">
@@ -121,6 +132,19 @@ export default function ConnectScreen() {
         </>
       )}
     </Sheet>
+  );
+}
+
+/** A unit already on this phone: shown so the list makes sense, not offered again. */
+function AddedUnit({ name }: { name: string }) {
+  return (
+    <Card className="flex-row items-center gap-4 opacity-60" accessible accessibilityLabel={`${name}, already on this phone`}>
+      <Face size={40} />
+      <View className="flex-1">
+        <T className="font-body-semi text-base">{name}</T>
+        <T className="text-[13px] text-muted">Already on this phone</T>
+      </View>
+    </Card>
   );
 }
 

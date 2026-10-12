@@ -49,7 +49,9 @@ export function useReading(unit: db.Unit) {
   // As the panel's battery screen (UiModel.cpp): below 3.5 V and not charging.
   // Out of range it is the last reading the phone has.
   const batteryV = reading?.batteryV ?? null;
-  const lowBattery = !charging && !state.info?.noBattery && batteryV !== null && batteryV < LOW_BATTERY_V ? batteryV : null;
+  // The link's info may be another unit's: only trust it for this one.
+  const noBattery = connected && !!state.info?.noBattery;
+  const lowBattery = !charging && !noBattery && batteryV !== null && batteryV < LOW_BATTERY_V ? batteryV : null;
 
   return { state, connected, live: live !== null, reading, measuredAt, recent, chargingV, lowBattery };
 }

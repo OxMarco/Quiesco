@@ -1,5 +1,6 @@
-// App-level glue: remember the unit, reconnect on launch, sync after connect,
-// and tell screens when stored data changed.
+// App-level glue: remember the units and which one is shown, reconnect on
+// launch, sync after connect (the others quietly), and tell screens when
+// stored data changed.
 
 import * as Application from 'expo-application';
 import * as StoreReview from 'expo-store-review';
@@ -18,7 +19,7 @@ import {
   TemperatureUnit,
   type UnitSleepWindow,
 } from '@/protocol/codec';
-import { DEFAULT_SLEEP_WINDOW, type SleepWindow } from '@/ui/sleep';
+import type { SleepWindow } from '@/ui/sleep';
 import { localeTempUnit, type TempUnit } from '@/ui/units';
 
 import * as keys from './keys';
@@ -27,13 +28,22 @@ import { logEraseUpTo } from './log-erase';
 import { shouldAskForReview } from './review-prompt';
 import { Store, useStore } from './store';
 import * as ble from './transport';
+import {
+  backgroundSyncTargets,
+  DEFAULT_UNIT_PREFS,
+  type LegacyPrefs,
+  newUnitPrefs,
+  pickUnit,
+  prefsFromLegacy,
+  type UnitPrefs,
+} from './units';
 
 /** Day and night follow the phone unless the user picks one. */
 export type ThemePref = 'auto' | 'light' | 'dark';
 
 /**
- * What the unit last reported about its own settings, kept so the Unit tab
- * can show them greyed out while the unit is out of range.
+ * What a unit last reported about its own settings, kept so its settings
+ * screen can show them greyed out while it is out of range.
  */
 export interface UnitCache {
   config: CoreConfig | null;
@@ -44,46 +54,75 @@ export interface UnitCache {
 interface SessionState {
   loaded: boolean;
   units: db.Unit[];
-  /** The first unit's last known settings, or null before its first connection. */
-  unitCache: UnitCache | null;
+  /** The serial of the unit every tab shows; see shownUnit(). */
+  selected: string | null;
+  /** Each unit's phone-side settings, by serial; see prefsFor(). */
+  prefs: Record<string, UnitPrefs>;
+  /** Each unit's last known settings, by serial; missing before its first connection. */
+  caches: Record<string, UnitCache>;
+  /** The unit being synced quietly in the background, while the shown one waits. */
+  background: string | null;
   theme: ThemePref;
   /** Bumped after every saved sync, so history screens reload. */
   dataVersion: number;
   radio: ble.RadioState;
-  sleepWindow: SleepWindow;
   tempUnit: TempUnit;
   /** False until the user has picked °C or °F; tempUnit is then the locale's guess. */
   tempUnitSet: boolean;
-  /** The unit's panel judges by time of day like the app (capability sleepWindow). */
-  panelFollowsSleep: boolean;
-  /** Erase the unit's log once it is all on this phone (capability logEraseCommand). */
-  eraseAfterSync: boolean;
 }
 
 export const session = new Store<SessionState>({
   loaded: false,
   units: [],
-  unitCache: null,
+  selected: null,
+  prefs: {},
+  caches: {},
+  background: null,
   theme: 'auto',
   dataVersion: 0,
   radio: 'unknown',
-  sleepWindow: DEFAULT_SLEEP_WINDOW,
   tempUnit: localeTempUnit(),
   tempUnitSet: false,
-  panelFollowsSleep: true,
-  eraseAfterSync: false,
 });
 
 export function useSession<S>(select: (s: SessionState) => S): S {
   return useStore(session, select);
 }
 
+/** The unit every tab shows: the chosen one, or the first added. */
+export function shownUnit(s: SessionState): db.Unit | null {
+  return pickUnit(s.units, s.selected);
+}
+
+export function useShownUnit(): db.Unit | null {
+  return useSession(shownUnit);
+}
+
+/** A unit's phone-side settings; the defaults until it has its own. */
+export function prefsFor(s: SessionState, serial: string | null | undefined): UnitPrefs {
+  return (serial && s.prefs[serial]) || DEFAULT_UNIT_PREFS;
+}
+
+/** The shown unit's settings: its sleep window is the one every screen judges by. */
+export function useShownPrefs(): UnitPrefs {
+  return useSession((s) => prefsFor(s, shownUnit(s)?.serial));
+}
+
 const cacheKey = (serial: string) => `unitCache:${serial}`;
+const prefsKey = (serial: string) => `unitPrefs:${serial}`;
+const SELECTED_KEY = 'selectedUnit';
 
 export async function reloadUnits() {
   const units = await db.listUnits();
-  const unitCache = units[0] ? await db.getSetting<UnitCache>(cacheKey(units[0].serial)) : null;
-  session.set({ units, unitCache, loaded: true });
+  const caches: Record<string, UnitCache> = {};
+  const prefs: Record<string, UnitPrefs> = {};
+  for (const u of units) {
+    const cache = await db.getSetting<UnitCache>(cacheKey(u.serial));
+    if (cache) caches[u.serial] = cache;
+    const saved = await db.getSetting<UnitPrefs>(prefsKey(u.serial));
+    if (saved) prefs[u.serial] = saved;
+  }
+  session.set({ units, caches, prefs, loaded: true });
 }
 
 /** Keep the cache current while connected; writes only when something changed. */
@@ -93,19 +132,51 @@ function watchUnitSettings() {
     const l = linkApi.link.get();
     if (l.phase !== 'ready' || !l.serial || !l.config) return;
     const cache: UnitCache = { config: l.config, offsets: l.offsets, calibration: l.calibration };
-    const json = JSON.stringify(cache);
+    const json = JSON.stringify({ serial: l.serial, cache });
     if (json === last) return;
     last = json;
-    session.set({ unitCache: cache });
-    db.setSetting(cacheKey(l.serial), cache).catch(() => {});
+    const serial = l.serial;
+    session.set((s) => ({ caches: { ...s.caches, [serial]: cache } }));
+    db.setSetting(cacheKey(serial), cache).catch(() => {});
   });
+}
+
+async function savePrefs(serial: string, next: UnitPrefs) {
+  await db.setSetting(prefsKey(serial), next);
+  session.set((s) => ({ prefs: { ...s.prefs, [serial]: next } }));
+}
+
+// The phone-wide settings saved before units had their own; the first unit
+// added after an upgrade inherits them.
+let legacyPrefs: UnitPrefs | null = null;
+const LEGACY_KEYS = ['sleepWindow', 'panelFollowsSleep', 'eraseAfterSync'] as const;
+
+/** A unit seen for the first time takes the shown unit's settings (or the old phone-wide ones). */
+async function ensurePrefs(serial: string) {
+  const s = session.get();
+  if (s.prefs[serial]) return;
+  const shown = shownUnit(s);
+  const template = shown && shown.serial !== serial && s.prefs[shown.serial] ? s.prefs[shown.serial] : legacyPrefs;
+  await savePrefs(serial, newUnitPrefs(template));
+}
+
+/** Show this unit on every tab, and connect to it unless it already is. */
+export async function selectUnit(serial: string) {
+  session.set({ selected: serial });
+  await db.setSetting(SELECTED_KEY, serial);
+  const unit = shownUnit(session.get());
+  const l = linkApi.link.get();
+  if (!unit || isDemo(unit) || (l.serial === serial && l.phase === 'ready')) return;
+  await reconnect();
 }
 
 /** Connect, then pull the log so the history is current. */
 export async function open(peripheralId: string) {
   await linkApi.connect(peripheralId);
-  if (linkApi.link.get().phase !== 'ready') return;
+  const serial = linkApi.link.get().serial;
+  if (linkApi.link.get().phase !== 'ready' || !serial) return;
   await reloadUnits();
+  await ensurePrefs(serial);
   await pushTempUnit().catch(() => {});
   // Every connect, so the unit's UTC offset follows the phone across time zones.
   await pushSleepWindow().catch((e) => trace('sleep window push failed', e));
@@ -122,7 +193,8 @@ export async function syncNow() {
     session.set((s) => ({ dataVersion: s.dataVersion + 1 }));
   }
   await eraseLogIfDue().catch((e) => trace('log erase failed', e));
-  await askForReviewIfDue().catch((e) => trace('review prompt failed', e));
+  // Never over a quiet background sync: the user is looking at another unit.
+  if (!session.get().background) await askForReviewIfDue().catch((e) => trace('review prompt failed', e));
   return count;
 }
 
@@ -144,59 +216,54 @@ async function askForReviewIfDue() {
 }
 
 const LAST_LOG_ERASE_KEY = 'lastLogEraseMs';
+const lastEraseKey = (serial: string) => `${LAST_LOG_ERASE_KEY}:${serial}`;
 
 /** After a complete sync, have the unit erase what the phone now holds. */
 async function eraseLogIfDue() {
   const l = linkApi.link.get();
-  if (!session.get().eraseAfterSync || l.phase !== 'ready' || !l.serial || !l.info || !l.status) return;
+  if (l.phase !== 'ready' || !l.serial || !l.info || !l.status) return;
+  if (!prefsFor(session.get(), l.serial).eraseAfterSync) return;
   const unit = await db.getUnit(l.serial);
+  // Before units had their own, the last erase was saved for the phone.
+  const lastEraseMs = (await db.getSetting<number>(lastEraseKey(l.serial))) ?? (await db.getSetting<number>(LAST_LOG_ERASE_KEY));
   const upTo = logEraseUpTo({
     enabled: true,
     capable: hasCapability(l.info, Capability.logEraseCommand),
     syncDone: l.sync?.state === 'done',
     cursor: unit?.cursor ?? 0,
     newestSequence: l.status.newestSequence,
-    lastEraseMs: await db.getSetting<number>(LAST_LOG_ERASE_KEY),
+    lastEraseMs,
     nowMs: Date.now(),
   });
   if (upTo === null) return;
   trace('log erase', upTo);
   await linkApi.eraseLogUpTo(upTo);
-  await db.setSetting(LAST_LOG_ERASE_KEY, Date.now());
+  await db.setSetting(lastEraseKey(l.serial), Date.now());
 }
 
-const ERASE_AFTER_SYNC_KEY = 'eraseAfterSync';
-
-/** Phone-side only: takes effect after the next complete sync. */
-export async function setEraseAfterSync(on: boolean) {
-  await db.setSetting(ERASE_AFTER_SYNC_KEY, on);
-  session.set({ eraseAfterSync: on });
+/** Phone-side only: takes effect after the unit's next complete sync. */
+export async function setEraseAfterSync(serial: string, on: boolean) {
+  await savePrefs(serial, { ...prefsFor(session.get(), serial), eraseAfterSync: on });
 }
 
-const SLEEP_WINDOW_KEY = 'sleepWindow';
-
-export async function setSleepWindow(w: SleepWindow) {
-  await db.setSetting(SLEEP_WINDOW_KEY, w);
-  session.set({ sleepWindow: w });
+export async function setSleepWindow(serial: string, w: SleepWindow) {
+  await savePrefs(serial, { ...prefsFor(session.get(), serial), sleepWindow: w });
   // In the background: saving on the phone is what the user asked for, and
   // the next connect pushes it again anyway.
   pushSleepWindow().catch((e) => trace('sleep window push failed', e));
 }
 
-const PANEL_FOLLOWS_SLEEP_KEY = 'panelFollowsSleep';
-
 /** Saved on the phone, then written to the unit if it is connected; otherwise on the next connect. */
-export async function setPanelFollowsSleep(on: boolean) {
-  await db.setSetting(PANEL_FOLLOWS_SLEEP_KEY, on);
-  session.set({ panelFollowsSleep: on });
+export async function setPanelFollowsSleep(serial: string, on: boolean) {
+  await savePrefs(serial, { ...prefsFor(session.get(), serial), panelFollowsSleep: on });
   await pushSleepWindow();
 }
 
-/** The unit's panel uses the phone's sleep window, in the phone's time zone. */
+/** The connected unit's panel uses its own sleep window, in the phone's time zone. */
 async function pushSleepWindow() {
   const l = linkApi.link.get();
-  if (l.phase !== 'ready' || !l.info || !hasCapability(l.info, Capability.sleepWindow)) return;
-  const { sleepWindow, panelFollowsSleep } = session.get();
+  if (l.phase !== 'ready' || !l.serial || !l.info || !hasCapability(l.info, Capability.sleepWindow)) return;
+  const { sleepWindow, panelFollowsSleep } = prefsFor(session.get(), l.serial);
   const want: UnitSleepWindow = {
     followSleep: panelFollowsSleep,
     utcOffsetMin: -new Date().getTimezoneOffset(),
@@ -242,22 +309,17 @@ let booted = false;
 export async function boot() {
   if (booted) return;
   booted = true;
-  // Saved before weekend times were dropped, the times were under `weekday`.
-  const saved = await db.getSetting<SleepWindow & { weekday?: SleepWindow['times'] }>(SLEEP_WINDOW_KEY);
-  const times = saved?.times ?? saved?.weekday;
-  if (saved && times) session.set({ sleepWindow: { times, set: saved.set } });
   const unit = await db.getSetting<TempUnit>(TEMP_UNIT_KEY);
   if (unit === 'C' || unit === 'F') session.set({ tempUnit: unit, tempUnitSet: true });
-  const follows = await db.getSetting<boolean>(PANEL_FOLLOWS_SLEEP_KEY);
-  if (typeof follows === 'boolean') session.set({ panelFollowsSleep: follows });
-  const erase = await db.getSetting<boolean>(ERASE_AFTER_SYNC_KEY);
-  if (typeof erase === 'boolean') session.set({ eraseAfterSync: erase });
   const theme = await db.getSetting<ThemePref>(THEME_KEY);
   if (theme === 'auto' || theme === 'light' || theme === 'dark') {
     applyTheme(theme);
     session.set({ theme });
   }
+  const selected = await db.getSetting<string>(SELECTED_KEY);
+  if (typeof selected === 'string') session.set({ selected });
   await reloadUnits();
+  await migrateLegacyPrefs();
   watchUnitSettings();
   ble.onRadioState((radio) => {
     session.set({ radio });
@@ -272,8 +334,30 @@ export async function boot() {
   if (radio === 'on') quietReconnect();
 }
 
+/**
+ * Before units had their own settings, the sleep window, the panel choice and
+ * the log erase were the phone's. Units already on the phone keep them; the
+ * next unit added inherits them if none is there yet.
+ */
+async function migrateLegacyPrefs() {
+  const [sleepWindow, panelFollowsSleep, eraseAfterSync] = await Promise.all(LEGACY_KEYS.map((k) => db.getSetting<unknown>(k)));
+  const legacy = prefsFromLegacy({ sleepWindow: sleepWindow as LegacyPrefs['sleepWindow'], panelFollowsSleep, eraseAfterSync });
+  if (!legacy) return;
+  const { units, prefs } = session.get();
+  if (units.length === 0) {
+    legacyPrefs = legacy;
+    return;
+  }
+  for (const u of units) if (!prefs[u.serial]) await savePrefs(u.serial, legacy);
+  for (const k of LEGACY_KEYS) await db.setSetting(k, null);
+}
+
 function quietReconnect() {
-  reconnect().catch((e) => trace('reconnect failed', e));
+  // Not while other units sync in the background: that ends on the shown unit anyway.
+  if (session.get().background) return;
+  reconnect()
+    .then(() => syncOthersIfDue())
+    .catch((e) => trace('reconnect failed', e));
 }
 
 // Phases where nothing is under way, so a reconnect may start one. needsUsb
@@ -282,13 +366,16 @@ function quietReconnect() {
 const SETTLED: linkApi.Phase[] = ['idle', 'error', 'needsUsb', 'firmwareTooOld', 'appTooOld'];
 let reconnecting: Promise<void> | null = null;
 
-/** Quietly reconnect to the saved unit when nothing else is going on. */
+/** Connect to the shown unit when nothing else is going on; ends a background sync first. */
 export function reconnect(): Promise<void> {
   // Claimed synchronously, so radio, foreground and boot can all ask at once.
   reconnecting ??= (async () => {
-    const unit = session.get().units[0];
+    stopBackgroundSync();
+    const unit = shownUnit(session.get());
     // The demo unit has no radio behind it.
-    if (!unit || isDemo(unit) || !SETTLED.includes(linkApi.link.get().phase)) return;
+    if (!unit || isDemo(unit)) return;
+    const l = linkApi.link.get();
+    if (l.serial === unit.serial && !SETTLED.includes(l.phase)) return;
     if (!(await ble.requestPermissions())) return;
     await open(unit.peripheralId);
   })().finally(() => {
@@ -297,12 +384,82 @@ export function reconnect(): Promise<void> {
   return reconnecting;
 }
 
-/** Forget the unit on this phone: its readings and the saved link. */
+// ------------------------------------------------- other units, quietly
+
+const IN_RANGE_SCAN_S = 5;
+let backgroundGeneration = 0;
+
+/** Stop syncing other units; the one under way is dropped by the next connect. */
+export function stopBackgroundSync() {
+  backgroundGeneration++;
+  if (session.get().background) session.set({ background: null });
+}
+
+/** Which of these peripherals advertise nearby, from a short scan. */
+async function inRange(ids: string[], live: () => boolean): Promise<Set<string>> {
+  const seen = new Set<string>();
+  const want = new Set(ids);
+  const stop = await ble.scan((a) => {
+    if (want.has(a.id)) seen.add(a.id);
+  }, IN_RANGE_SCAN_S);
+  await new Promise((resolve) => setTimeout(resolve, IN_RANGE_SCAN_S * 1000));
+  // Stopped meanwhile, the radio may be scanning for the Add screen: leave it.
+  stop(live());
+  return seen;
+}
+
+/**
+ * The phone holds one connection at a time. After the shown unit has synced,
+ * visit each other unit in range that has not synced for a while, then come
+ * back to the shown one, so switching finds every unit's nights ready.
+ */
+async function syncOthersIfDue() {
+  const gen = ++backgroundGeneration;
+  const live = () => gen === backgroundGeneration;
+  const s = session.get();
+  const shown = shownUnit(s);
+  const others = s.units.filter((u) => u.serial !== shown?.serial && !isDemo(u));
+  if (others.length === 0) return;
+  // A unit without a key on this phone would ask for a setup code: never in the background.
+  const candidates = [];
+  for (const u of others) candidates.push({ ...u, quiet: (await keys.loadKey(u.serial)) !== null });
+  // Scan only when some unit is due, so coming back to the app is free most times.
+  const due = backgroundSyncTargets(candidates, shown?.serial ?? null, new Set(others.map((u) => u.peripheralId)), Date.now());
+  if (due.length === 0 || !live()) return;
+  const nearby = await inRange(due.map((u) => u.peripheralId), live).catch(() => new Set<string>());
+  const targets = backgroundSyncTargets(due, shown?.serial ?? null, nearby, Date.now());
+  if (targets.length === 0 || !live()) return;
+  trace('background sync', targets.map((u) => u.serial));
+  try {
+    for (const u of targets) {
+      if (!live()) return;
+      session.set({ background: u.serial });
+      await open(u.peripheralId).catch((e) => trace('background sync failed', u.serial, e));
+    }
+  } finally {
+    if (live()) {
+      session.set({ background: null });
+      const back = shownUnit(session.get());
+      if (back && !isDemo(back)) await open(back.peripheralId).catch((e) => trace('reconnect failed', e));
+    }
+  }
+}
+
+/** Forget a unit on this phone: its readings, its settings and the saved link. */
 export async function forget(serial: string) {
-  await linkApi.disconnect();
+  stopBackgroundSync();
+  if (linkApi.link.get().serial === serial) await linkApi.disconnect();
   await keys.deleteKey(serial);
   await db.forgetUnit(serial);
   await db.setSetting(cacheKey(serial), null);
+  await db.setSetting(prefsKey(serial), null);
+  await db.setSetting(lastEraseKey(serial), null);
   await reloadUnits();
-  session.set((s) => ({ dataVersion: s.dataVersion + 1 }));
+  session.set((s) => ({
+    dataVersion: s.dataVersion + 1,
+    // The next unit along takes its place on every tab.
+    selected: s.selected === serial ? (s.units[0]?.serial ?? null) : s.selected,
+  }));
+  await db.setSetting(SELECTED_KEY, session.get().selected);
+  quietReconnect();
 }

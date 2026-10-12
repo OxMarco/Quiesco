@@ -1,12 +1,13 @@
-// The sleep window: when the user usually sleeps, so a night is judged only
-// over those hours. Asked once after adding a unit, changed any time from the
-// Room screen or the Settings tab. One window for every night of the week.
+// The sleep window: when the room's sleeper usually sleeps, so a night is
+// judged only over those hours. Each unit has its own. Asked after adding a
+// unit, changed any time from the Room screen or the unit's settings. One
+// window for every night of the week.
 
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
-import { setSleepWindow, useSession } from '@/ble/session';
+import { prefsFor, setSleepWindow, shownUnit, useSession } from '@/ble/session';
 import { Button, Card, Sheet, SheetHeader, T } from '@/components/ui';
 import * as db from '@/data/db';
 import {
@@ -24,10 +25,12 @@ import {
 } from '@/ui/sleep';
 
 export default function SleepWindowScreen() {
-  // `setup=1` when this follows pairing the first unit: step two of the first run.
-  const { setup } = useLocalSearchParams<{ setup?: string }>();
-  const saved = useSession((s) => s.sleepWindow);
-  const unit = useSession((s) => s.units[0] ?? null);
+  // `setup=1` when this follows adding a unit: the last step. `serial` names
+  // the unit; without it, the one on screen.
+  const { setup, serial } = useLocalSearchParams<{ setup?: string; serial?: string }>();
+  const unit = useSession((s) => s.units.find((u) => u.serial === serial) ?? shownUnit(s));
+  const saved = useSession((s) => prefsFor(s, unit?.serial).sleepWindow);
+  const several = useSession((s) => s.units.length > 1);
   const [draft, setDraft] = useState<SleepWindow>(saved);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,9 +41,10 @@ export default function SleepWindowScreen() {
     lightsOut !== null && circularGap(lightsOut, draft.times.bedMin) >= STEP_MIN ? lightsOut : null;
 
   const save = () => {
+    if (!unit) return;
     setBusy(true);
     setError(null);
-    setSleepWindow({ ...draft, set: true })
+    setSleepWindow(unit.serial, { ...draft, set: true })
       .then(() => router.back())
       .catch((e) => setError(`Couldn’t save the sleep window: ${e instanceof Error ? e.message : String(e)}`))
       .finally(() => setBusy(false));
@@ -50,7 +54,7 @@ export default function SleepWindowScreen() {
     <Sheet>
       <ScrollView contentContainerClassName="px-4 pt-6 pb-6 gap-4">
         <SheetHeader
-          eyebrow={setup === '1' ? 'Step 2 of 2' : undefined}
+          eyebrow={setup === '1' ? 'Step 3 of 3' : several && unit ? unit.name : undefined}
           title="When do you usually sleep?"
           action="Cancel"
           onAction={() => router.back()}
@@ -84,7 +88,7 @@ export default function SleepWindowScreen() {
           </T>
         )}
         {error && <T className="text-bad text-sm text-center">{error}</T>}
-        <Button title="Save" busy={busy} disabled={!valid} onPress={save} />
+        <Button title="Save" busy={busy} disabled={!valid || !unit} onPress={save} />
       </View>
     </Sheet>
   );

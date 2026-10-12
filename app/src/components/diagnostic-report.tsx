@@ -8,7 +8,7 @@ import { Linking, Modal, Platform, Pressable, ScrollView, Share, View } from 're
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { link } from '@/ble/link';
-import { session } from '@/ble/session';
+import { session, shownUnit } from '@/ble/session';
 import { buildReport, SUPPORT_EMAIL } from '@/debug/report';
 import { themeVars, useTheme } from '@/theme';
 
@@ -22,7 +22,7 @@ const MAILTO_MAX = 6000;
 export function DiagnosticReportRow({ last }: { last?: boolean }) {
   const t = useTheme();
   const [report, setReport] = useState<string | null>(null);
-  const open = () => setReport(buildReport(link.get(), session.get().units[0] ?? null));
+  const open = () => setReport(buildReport(link.get(), shownUnit(session.get())));
   const close = () => setReport(null);
   return (
     <>

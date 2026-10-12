@@ -64,6 +64,10 @@ export default function RootLayout() {
             <Stack.Screen name="sleep-window" options={{ presentation: 'modal', headerShown: false }} />
             <Stack.Screen name="why/[metric]" options={{ presentation: 'modal', headerShown: false }} />
             <Stack.Screen name="metric/[metric]" options={{ presentation: 'modal', headerShown: false }} />
+            <Stack.Screen name="switch-unit" options={{ presentation: 'modal', headerShown: false }} />
+            <Stack.Screen name="name-unit" options={{ presentation: 'modal', headerShown: false, gestureEnabled: false }} />
+            <Stack.Screen name="units/[serial]" options={{ headerShown: false }} />
+            <Stack.Screen name="licences" options={{ headerShown: false }} />
           </Stack>
           <SetupKeyPrompt />
         </View>

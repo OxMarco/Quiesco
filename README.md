@@ -112,7 +112,8 @@ reported as unavailable, and the cycle carries on without it.
 
 The app enrols with a unit while it is on USB power, using a six-digit code
 shown on the panel. After that it sets the clock, downloads the log, charts
-each night and lets you pick the screen or calibrate the sensors.
+each night and lets you pick the screen or calibrate the sensors. One phone
+can hold several units, each with its own name and sleep window.
 
 ## 📐 Specs
 
@@ -173,7 +174,7 @@ cd Quiesco
 ## ⬆ Upgrade firmware
 
 No software needed, on macOS, Windows or Linux. Plug the unit into a
-computer, tap **Settings → Update firmware** in the app, and a drive called
+computer, tap **Settings → your unit → Update firmware** in the app, and a drive called
 `XIAO-BOOT` appears. Copy `quiesco-X.Y.Z.uf2` onto it, and the unit restarts
 with the new firmware. Settings, enrolled phones, calibration and history
 are kept.
@@ -209,7 +210,7 @@ Going deeper:
 - [ ] BLE tested on air: iPhone and Mac done (2026-10-07), Android still to test
 - [x] Firmware updates over USB, started from the app: copy one file, no software ([`AGENT.md`](AGENT.md))
 - [ ] Measured power budget and battery life
-- [ ] App: more than one unit per phone (today it shows only the first unit added)
+- [x] App: more than one unit per phone, each with its own name and sleep window
 - [ ] App on the App Store and Google Play
 - [ ] Units for sale — *coming soon*
 
