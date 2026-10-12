@@ -882,16 +882,15 @@ TEST_CASE("BLE codec control") {
   LittleEndian::putU16(control + 2, 0xFAC6);  // wrong confirmation
   CHECK(!BleCodec::decodeDeviceControl(control, 4, request));
   LittleEndian::putU16(control + 2, BleCodec::kFactoryResetConfirm);
-  control[0] = BleCodec::kControlEnterUpdate;
+  control[0] = 3;  // reserved: no longer an update
+  CHECK(!BleCodec::decodeDeviceControl(control, 4, request));
+  control[0] = BleCodec::kControlEnterUsbUpdate;
   CHECK(BleCodec::decodeDeviceControl(control, 4, request));
-  CHECK_EQ(BleCodec::kControlEnterUpdate, request.opcode);
+  CHECK_EQ(BleCodec::kControlEnterUsbUpdate, request.opcode);
   CHECK(!BleCodec::decodeDeviceControl(control, 8, request));  // update is 4
   control[1] = 1;  // update has no flags
   CHECK(!BleCodec::decodeDeviceControl(control, 4, request));
   control[1] = 0;
-  control[0] = BleCodec::kControlEnterUsbUpdate;
-  CHECK(BleCodec::decodeDeviceControl(control, 4, request));
-  CHECK_EQ(BleCodec::kControlEnterUsbUpdate, request.opcode);
   control[0] = 5;  // no such opcode
   CHECK(!BleCodec::decodeDeviceControl(control, 4, request));
   CHECK(!BleCodec::decodeDeviceControl(control, 8, request));

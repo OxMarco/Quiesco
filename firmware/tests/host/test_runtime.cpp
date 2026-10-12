@@ -22,7 +22,6 @@ BLEClass BLE;
 HCIClass HCI;
 TwoWire Wire;
 bool sensorReady = true;
-int otaEntries = 0;
 int usbUpdateEntries = 0;
 bool onUsb = false;
 float batteryVolts = 3.8f;
@@ -379,45 +378,22 @@ TEST_CASE("a sync with no measurement due streams at once") {
   }
   FakeBle::disconnect();
 }
-TEST_CASE("app enters the OTA bootloader") {
-  FlashSim::reset(); ticks = 0; otaEntries = 0;
+TEST_CASE("app ignores the reserved device control opcode 3") {
+  FlashSim::reset(); ticks = 0; usbUpdateEntries = 0; onUsb = true;
   W25Q64Flash flash; flash.begin(); ConfigStore store;
   CHECK_MESSAGE(store.save(flash, defaultConfig()), "seed config");
   CHECK_MESSAGE(store.saveBonds(flash, knownBonds()), "seed phone key");
   App app; app.begin(); step(app, 1001); run(app, 40);  // first cycle done
-  const uint8_t update[4] = {3, 0, 0xC7, 0xFA};
-
-  // Unauthenticated, malformed or on a low battery: nothing happens.
-  FakeBle::connect(22); step(app);
-  FakeBle::write(kReset, update, sizeof update); run(app, 60);
-  CHECK_MESSAGE(otaEntries == 0, "unauthenticated update ignored");
-  prove(); step(app);
-  const uint8_t flagged[4] = {3, 1, 0xC7, 0xFA};
-  const uint8_t unconfirmed[4] = {3, 0, 0xC7, 0xFB};
-  const uint8_t longer[8] = {3, 0, 0xC7, 0xFA};
-  FakeBle::write(kReset, flagged, sizeof flagged); run(app, 20);
-  FakeBle::write(kReset, unconfirmed, sizeof unconfirmed); run(app, 20);
-  FakeBle::write(kReset, longer, sizeof longer); run(app, 60);
-  CHECK_MESSAGE(otaEntries == 0, "malformed update ignored");
-  batteryVolts = 3.5f;
-  step(app, 300000);
-  for (int i = 0; i < 300; ++i) step(app, 100);  // a measurement reads it
-  FakeBle::write(kReset, update, sizeof update); run(app, 100);
-  CHECK_MESSAGE(otaEntries == 0, "update refused on a low battery");
-  batteryVolts = 3.8f;
-  step(app, 300000);
-  for (int i = 0; i < 300; ++i) step(app, 100);
-
-  // Accepted: the link drops, then the reset follows once idle.
-  FakeBle::write(kReset, update, sizeof update);
-  step(app);
-  CHECK_MESSAGE(!bool(FakeBle::peer()), "phone disconnected before the reset");
-  CHECK_MESSAGE(otaEntries == 0, "reset waits for the disconnect to go out");
-  step(app, 400);
-  CHECK_MESSAGE(otaEntries == 1, "bootloader entered");
+  FakeBle::connect(22); step(app); prove(); step(app);
+  const uint8_t reserved[4] = {3, 0, 0xC7, 0xFA};
+  FakeBle::write(kReset, reserved, sizeof reserved); run(app, 100);
+  CHECK_MESSAGE(bool(FakeBle::peer()), "link kept");
+  CHECK_MESSAGE(usbUpdateEntries == 0, "no bootloader entered");
+  FakeBle::disconnect();
+  onUsb = false;
 }
 TEST_CASE("app enters the USB update drive") {
-  FlashSim::reset(); ticks = 0; otaEntries = 0; usbUpdateEntries = 0; onUsb = false;
+  FlashSim::reset(); ticks = 0; usbUpdateEntries = 0; onUsb = false;
   W25Q64Flash flash; flash.begin(); ConfigStore store;
   CHECK_MESSAGE(store.save(flash, defaultConfig()), "seed config");
   CHECK_MESSAGE(store.saveBonds(flash, knownBonds()), "seed phone key");
@@ -431,7 +407,7 @@ TEST_CASE("app enters the USB update drive") {
   step(app);
   CHECK_MESSAGE(!bool(FakeBle::peer()), "phone disconnected before the reset");
   step(app, 400);
-  CHECK_MESSAGE((usbUpdateEntries == 1 && otaEntries == 0), "UF2 bootloader entered");
+  CHECK_MESSAGE(usbUpdateEntries == 1, "UF2 bootloader entered");
   onUsb = false;
 }
 TEST_CASE("app sleep window") {
@@ -536,7 +512,6 @@ bool EpaperDisplay::timedOut() const { return false; }
 namespace Renderer { bool render(EpaperDisplay&, const UiModel&) { return true; } }
 void HardwareWatchdog::begin() { active_ = true; }
 void HardwareWatchdog::kick() {}
-void BootloaderEntry::enterOtaUpdate() { ++otaEntries; }
 void BootloaderEntry::enterUsbUpdate() { ++usbUpdateEntries; }
 namespace DeviceId { uint64_t read() { return 123; } }
 namespace ResetReason { uint32_t take() { return 0; } const char* describe(uint32_t) { return "test"; } }

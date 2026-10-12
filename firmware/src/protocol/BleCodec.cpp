@@ -277,7 +277,7 @@ bool decodeDeviceControl(const uint8_t* data, uint16_t length,
     request.upToSequence = le::getU32(data + 4);
     return true;
   }
-  if ((data[0] == kControlEnterUpdate || data[0] == kControlEnterUsbUpdate) &&
+  if (data[0] == kControlEnterUsbUpdate &&
       length == kDeviceControlBytes && data[1] == 0) {
     request.opcode = data[0];
     request.eraseLog = false;

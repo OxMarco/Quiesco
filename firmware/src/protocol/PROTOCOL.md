@@ -514,8 +514,8 @@ the unit is on USB power. Example:
 04 00 c7 fa
 ```
 
-Opcode 3 (enter BLE update mode, capability bit 15) is reserved: shipped
-firmware ignores it (§9.3).
+Opcode 3 is reserved and rejected like any unknown opcode. Firmware is
+updated over USB only (§9.2); there is no over-the-air update.
 
 ### 6.12 Device info `000C`
 
@@ -549,15 +549,15 @@ Capability flags:
 | 12 | temperature unit in core config (§6.2) |
 | 13 | log erase command (`000D` opcode 2, §9.1) |
 | 14 | sleep window (`0012`): the panel can judge by time of day like the app |
-| 15 | reserved: BLE firmware update (`000D` opcode 3), never set by shipped firmware (§9.3) |
+| 15 | reserved, never set |
 | 16 | firmware update over USB (`000D` opcode 4, §9.2) |
 
 The SCD41 serial becomes available after the first measurement cycle, about
 1 s after boot, as does the boot counter; re-read if either is zero.
 Device info is readable without authentication, so an app can check
 compatibility and guide enrolment before it has access to anything else.
-Example: protocol 6, capabilities 0x17FFF (bits 0–14 and 16; shipped
-firmware never sets bit 15), firmware 1.2.3 release build,
+Example: protocol 6, capabilities 0x17FFF (bits 0–14 and 16; bit 15
+is reserved), firmware 1.2.3 release build,
 enrolment open, no phone enrolled yet, SCD41 serial 0xA1B2C3D4E5F6, boot 7:
 
 ```text
@@ -1023,18 +1023,6 @@ repository has the steps).
    waits until it is plugged in again). Copying the same firmware back is a
    safe way out. If USB never comes up within 3 s, the bootloader starts the
    firmware again at once.
-
-### 9.3 Firmware update over BLE (not enabled)
-
-Opcode 3 would restart the unit into the bootloader's BLE update mode
-(`AdaDFU`, Nordic legacy DFU). It is compiled out of shipped firmware
-(`QUIESCO_BLE_OTA` in `diagnostics/BuildConfig.h`), because the XIAO's
-bootloader (0.9.2-29, S140 7.3.0) accepts the update but never finishes
-erasing the old image: the unit then waits in update mode until it gets a
-USB flash. Tested from a Mac on 2026-10-07, connected and disconnected during
-the erase; `scripts/ble-test.py update` reproduces it on a build with the flag
-set. A bootloader that erases page by page while receiving (such as the
-OTAFIX fork) would be the way to enable it.
 
 ## 10. Changing this protocol
 

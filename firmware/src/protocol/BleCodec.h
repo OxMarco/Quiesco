@@ -45,9 +45,7 @@ enum Capability : uint32_t {
   kCapTemperatureUnit = 1u << 12,  // core config byte 14
   kCapEraseLogCommand = 1u << 13,  // device control opcode 2
   kCapSleepWindow = 1u << 14,  // 0012: panel judges by time of day
-  // Device control opcode 3: BLE OTA update. Only with QUIESCO_BLE_OTA
-  // (diagnostics/BuildConfig.h); off in every shipped build.
-  kCapFirmwareUpdate = 1u << 15,
+  // Bit 15 is reserved: never set (it once advertised an over-the-air update).
   kCapUsbUpdate = 1u << 16,  // device control opcode 4: XIAO-BOOT drive
 };
 constexpr uint32_t kCapabilities =
@@ -55,11 +53,7 @@ constexpr uint32_t kCapabilities =
     kCapDeviceRename | kCapLogSync | kCapFactoryReset | kCapLogErase |
     kCapBootCounter | kCapCalibrationState | kCapDiagnostics | kCapAppAuth |
     kCapChargingState | kCapTemperatureUnit | kCapEraseLogCommand |
-    kCapSleepWindow | kCapUsbUpdate |
-#if QUIESCO_BLE_OTA
-    kCapFirmwareUpdate |
-#endif
-    0;
+    kCapSleepWindow | kCapUsbUpdate;
 
 constexpr uint16_t kDeviceInfoBytes = 20;
 constexpr uint16_t kCoreConfigBytes = 16;
@@ -101,7 +95,7 @@ enum CalibrationOpcode : uint8_t { kCalOpForcedRecalibration = 1 };
 enum DeviceControlOpcode : uint8_t {
   kControlFactoryReset = 1,
   kControlEraseLog = 2,
-  kControlEnterUpdate = 3,  // reboot into the bootloader's BLE OTA mode
+  // 3 is reserved and rejected like any unknown opcode.
   kControlEnterUsbUpdate = 4,  // reboot into the XIAO-BOOT drive (USB only)
 };
 enum FactoryResetFlags : uint8_t { kResetEraseLog = 1u << 0 };

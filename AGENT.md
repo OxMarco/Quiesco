@@ -104,10 +104,8 @@ build (`--debug`) or a bench build (`--no-battery`).
 
 ## For agents: rules
 
-- Use only the steps above. Do not use `scripts/ble-test.py update` (BLE
-  over-the-air update): it is disabled in shipped firmware because the
-  bootloader never finishes the erase, which leaves the unit needing USB
-  (`PROTOCOL.md` §9.3).
+- Use only the steps above. There is no over-the-air update: firmware is
+  updated over USB only.
 - Never send a factory reset or a log erase as part of an update. Neither
   is needed: an update keeps settings, phones and history.
 - A developer with the repository can also flash over USB with

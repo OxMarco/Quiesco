@@ -347,7 +347,7 @@ export const Capability = {
   temperatureUnit: 1 << 12,
   logEraseCommand: 1 << 13,
   sleepWindow: 1 << 14,
-  firmwareUpdate: 1 << 15,
+  // Bit 15 is reserved (PROTOCOL.md §6.12).
   usbUpdate: 1 << 16,
 } as const;
 

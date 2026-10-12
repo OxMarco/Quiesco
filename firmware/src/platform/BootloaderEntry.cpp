@@ -5,8 +5,7 @@
 
 namespace {
 
-// DFU_MAGIC_OTA_RESET and DFU_MAGIC_UF2_RESET in the bootloader's main.c.
-constexpr uint32_t kOtaResetMagic = 0xA8;
+// DFU_MAGIC_UF2_RESET in the bootloader's main.c.
 constexpr uint32_t kUf2ResetMagic = 0x57;
 
 void resetInto(uint32_t magic) {
@@ -16,7 +15,5 @@ void resetInto(uint32_t magic) {
 }
 
 }  // namespace
-
-void BootloaderEntry::enterOtaUpdate() { resetInto(kOtaResetMagic); }
 
 void BootloaderEntry::enterUsbUpdate() { resetInto(kUf2ResetMagic); }
