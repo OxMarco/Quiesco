@@ -95,8 +95,9 @@ For Quiesco v1 we confirm that:
   2.9.3) does not change the transmit power, channel map, PHY or any other
   radio parameter, so the BLE stack defaults apply. The nRF52840 hardware tops
   out at +8 dBm, which is within the 8.27 dBm maximum in the module's RED
-  certificate. The firmware has no RF test mode and no way to raise the
-  output power.
+  certificate. The production firmware has no RF test mode and no way to
+  raise the output power. A separate test firmware for the lab only is
+  described in [section 5](#5-rf-test-firmware).
 - **No other transmitters.** Quiesco has no other radio, so the module is not
   co-located with any other transmitter.
 
@@ -147,6 +148,41 @@ The full board design is in this repository:
 - Enclosure: [`hardware/case/`](../hardware/case/)
 - Board description: [`hardware/README.md`](../hardware/README.md) and
   [`firmware/HARDWARE.md`](../firmware/HARDWARE.md)
+
+## 5. RF test firmware
+
+The production firmware only advertises and connects, so it never holds the
+radio on one channel. For the radiated tests, the samples can run a separate
+test firmware, [`firmware/smoke/rftest`](../firmware/smoke/rftest/rftest.ino).
+It is never shipped to customers.
+
+It drives the radio directly and is controlled over the USB-C port (USB
+serial, 115200 baud, any terminal). After choosing a mode, unplug the cable:
+the unit keeps transmitting on its own battery for most of a day.
+
+| Key | Mode |
+|---|---|
+| `1` / `2` / `3` | modulated TX at 2402 / 2440 / 2480 MHz: BLE 1 Mbit/s packets, 255-byte PRBS9 payload, back to back (almost 100% duty cycle) |
+| `4` / `5` / `6` | unmodulated carrier at 2402 / 2440 / 2480 MHz |
+| `0` | radio off |
+| `p` | TX power +8 dBm (default, the hardware maximum) or 0 dBm |
+| `a` | host activity on or off: e-ink full refresh every 10 s, with SPI flash reads and I²C traffic in between |
+| `u` | restart as the `XIAO-BOOT` USB drive, to load another firmware |
+| `?` | help and current status |
+
+At power-up it starts in modulated TX at 2440 MHz, +8 dBm, host activity
+off.
+
+Use the test firmware with host activity on (`a`) for the check of radiated
+emissions with the module transmitting (FCC KDB 996369 D04). Use the
+production firmware for the EMC tests in normal operation (EN 301 489,
+FCC Part 15B), since it runs every sensor, the microphone and the display on
+their real schedule.
+
+We send the samples already loaded and labelled, one with each firmware. To
+switch a sample from the test firmware to another one, press `u`: the unit
+restarts as a USB drive called `XIAO-BOOT`, and copying a `.uf2` file onto it
+loads that firmware.
 
 ---
 

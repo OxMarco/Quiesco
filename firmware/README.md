@@ -110,7 +110,7 @@ factory procedure in [§9](HARDWARE.md#9-factory-procedure).
 | `make test` | host unit tests in plain C++, no board needed |
 | `make check` | source policy: SPDX headers, no raw pin numbers outside `BoardPins.h` |
 | `make verify` | `check` + `test`; run it before opening a PR |
-| `make smoke` | builds the test sketches `smoke/sensors` and `smoke/ble` |
+| `make smoke` | builds the test sketches `smoke/sensors`, `smoke/ble` and `smoke/rftest` |
 | `make licences` | checks installed versions and gathers every licence into `.build/licences/` |
 
 A unit built for the bench without a battery: `scripts/build.sh --no-battery`.
@@ -158,7 +158,7 @@ src/
   ui/                 comfort evaluation, screen model, renderer, fonts
   diagnostics/        build config, firmware version, debug log, trace
   third_party/        vendored FlashDB 2.2.0
-smoke/                hardware test sketches (sensors, BLE)
+smoke/                hardware test sketches (sensors, BLE, RF test for the lab)
 tests/host/           host unit tests and fakes
 scripts/              build, test, policy, dependency, console and font tools
 ```

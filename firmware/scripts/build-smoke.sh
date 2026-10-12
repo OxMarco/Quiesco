@@ -15,3 +15,9 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   --warnings all \
   --build-path "$root/.build/smoke-sensors" \
   "$root/smoke/sensors"
+
+"$root/scripts/arduino-cli.sh" compile \
+  --fqbn "Seeeduino:mbed:xiaonRF52840Plus" \
+  --warnings all \
+  --build-path "$root/.build/smoke-rftest" \
+  "$root/smoke/rftest"

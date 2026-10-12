@@ -39,7 +39,7 @@ it is reported as unavailable, and the cycle continues.
 | `make test` | host unit tests (plain C++, no board needed; needs `brew install mbedtls@3`) |
 | `make check` | source policy: no raw pin numbers or banned macros outside `BoardPins.h` |
 | `make verify` | `check` + `test` |
-| `make smoke` | builds the hardware test sketches: `smoke/sensors` and `smoke/ble` |
+| `make smoke` | builds the hardware test sketches: `smoke/sensors`, `smoke/ble` and `smoke/rftest` |
 | `make licences` | checks installed versions against `dependencies.lock` and gathers every licence text into `.build/licences/` (see `THIRD_PARTY_NOTICES.md`) |
 
 Upload a build with:
@@ -214,6 +214,7 @@ src/
   third_party/flashdb vendored FlashDB 2.2.0
 smoke/sensors/        unit and factory test sketch (HARDWARE.md §8-9)
 smoke/ble/            BLE on-air test sketch
+smoke/rftest/         fixed-channel RF test firmware for the test lab (compliance/README.md §5)
 tests/host/           host unit tests and fakes
 scripts/              build, test, policy, dependency and font tooling
 ```
