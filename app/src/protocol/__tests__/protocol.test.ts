@@ -378,7 +378,7 @@ describe('log download', () => {
 
 describe('comfort policy matches the panel', () => {
   const base = {
-    temperatureC: 22,
+    temperatureC: 18,
     humidityPct: 45,
     pressurePa: null,
     co2Ppm: 600,
@@ -396,7 +396,7 @@ describe('comfort policy matches the panel', () => {
   });
 
   test('the worst metric wins; CO2 wins ties', () => {
-    const v = verdict({ ...base, co2Ppm: 900, noiseDb: 60 });
+    const v = verdict({ ...base, co2Ppm: 900, noiseDb: 50 });
     expect(v.metric).toBe('co2');
     expect(nudge(v)).toBe('Getting stuffy');
     const w = verdict({ ...base, co2Ppm: 900, temperatureC: 29 });

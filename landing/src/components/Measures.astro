@@ -28,19 +28,19 @@ const cards: Card[] = [
   {
     name: 'CO₂', part: 'Sensirion SCD41', icon: '<path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/>',
     lo: 400, hi: 2000, okLo: 400, okHi: 800, calm: 590, off: 1340,
-    range: '&lt; 800', unit: 'ppm', ticks: ['400', '2,000'],
+    range: '≤ 800', unit: 'ppm', ticks: ['400', '2,000'],
     fix: 'Open a window or leave the door ajar',
     why: "Sleep studies see worse sleep from a night average of 1,000 ppm. The range follows ventilation research and Health Canada's residential limit.",
   },
   {
-    name: 'Temperature', part: 'Sensirion SCD41', icon: '<path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z"/>',
+    name: 'Temperature', part: 'Bosch BME280', icon: '<path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z"/>',
     lo: 10, hi: 35, okLo: 16, okHi: 20, calm: 17.5, off: 28,
     range: `${t(16)}–${t(20)}`, unit: `${deg('°C')} at night`, ticks: [t(10), t(35)],
     fix: 'Turn the heating down or use a lighter duvet',
     why: `Sleep efficiency falls above ${t(25)} ${deg('°C')}. Comfort varies from person to person.`,
   },
   {
-    name: 'Humidity', part: 'Sensirion SCD41', icon: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
+    name: 'Humidity', part: 'Bosch BME280', icon: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
     lo: 0, hi: 100, okLo: 40, okHi: 60, calm: 50, off: 82,
     range: '40–60', unit: '%', ticks: ['0', '100'],
     fix: 'Use a humidifier or ventilate',
@@ -58,9 +58,9 @@ const cards: Card[] = [
   {
     name: 'Noise', part: 'SPH0641 microphone', icon: '<path d="M4 10v4h4l5 4V6L8 10H4zM16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11"/>',
     lo: 30, hi: 100, okLo: 30, okHi: 45, calm: 37, off: 64,
-    range: '&lt; 45', unit: 'dB peaks', ticks: ['30', '100'],
+    range: '≤ 45', unit: 'dB(A)', ticks: ['30', '100'],
     fix: 'Earplugs, or close the window',
-    why: "Single sounds over 45 dB wake the brain even when you don't notice. From the WHO night noise guidelines; the night average should stay near 30 dB.",
+    why: "Sounds over 45 dB wake the brain even when you don't notice. From the WHO night noise guidelines; the night average should stay near 30 dB.",
   },
 ];
 

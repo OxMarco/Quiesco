@@ -79,9 +79,8 @@ export interface Issue {
 
 /**
  * Every judged metric that is off, worst first, ties in the panel's order.
- * Judged by the app's references, which are stricter at night than the
- * panel's all-day bands, so the first issue is not always the one the e-ink
- * face shows.
+ * Judged by the app's references, which also judge light at night, so the
+ * first issue is not always the one the e-ink face shows.
  */
 export function issuesOf(m: Measurement, mode: JudgeMode = 'sleep'): Issue[] {
   const out: Issue[] = [];

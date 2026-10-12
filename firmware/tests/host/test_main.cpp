@@ -127,7 +127,7 @@ TEST_CASE("fault counters recover and saturate") {
 
 Reading comfortableReading() {
   Reading reading;
-  reading.temperatureC = 23.0f;
+  reading.temperatureC = 18.0f;
   reading.humidityPct = 45.0f;
   reading.co2Ppm = 640.0f;
   reading.lux = 210.0f;
@@ -141,18 +141,22 @@ Reading comfortableReading() {
 TEST_CASE("comfort bands") {
   CHECK(Severity::kOk == bandSeverity(UiMetric::kCo2, 800.0f));
   CHECK(Severity::kWarn == bandSeverity(UiMetric::kCo2, 801.0f));
-  CHECK(Severity::kWarn == bandSeverity(UiMetric::kCo2, 1200.0f));
-  CHECK(Severity::kBad == bandSeverity(UiMetric::kCo2, 1201.0f));
+  CHECK(Severity::kWarn == bandSeverity(UiMetric::kCo2, 1000.0f));
+  CHECK(Severity::kBad == bandSeverity(UiMetric::kCo2, 1001.0f));
 
-  CHECK(Severity::kBad == bandSeverity(UiMetric::kTemperature, 17.0f));
-  CHECK(Severity::kWarn == bandSeverity(UiMetric::kTemperature, 19.0f));
-  CHECK(Severity::kOk == bandSeverity(UiMetric::kTemperature, 23.0f));
-  CHECK(Severity::kWarn == bandSeverity(UiMetric::kTemperature, 27.0f));
-  CHECK(Severity::kBad == bandSeverity(UiMetric::kTemperature, 29.0f));
+  CHECK(Severity::kBad == bandSeverity(UiMetric::kTemperature, 13.0f));
+  CHECK(Severity::kWarn == bandSeverity(UiMetric::kTemperature, 15.0f));
+  CHECK(Severity::kOk == bandSeverity(UiMetric::kTemperature, 18.0f));
+  CHECK(Severity::kWarn == bandSeverity(UiMetric::kTemperature, 22.0f));
+  CHECK(Severity::kBad == bandSeverity(UiMetric::kTemperature, 25.0f));
 
-  CHECK(Severity::kOk == bandSeverity(UiMetric::kNoise, 55.0f));
-  CHECK(Severity::kWarn == bandSeverity(UiMetric::kNoise, 56.0f));
-  CHECK(Severity::kBad == bandSeverity(UiMetric::kNoise, 71.0f));
+  CHECK(Severity::kWarn == bandSeverity(UiMetric::kHumidity, 35.0f));
+  CHECK(Severity::kOk == bandSeverity(UiMetric::kHumidity, 50.0f));
+  CHECK(Severity::kBad == bandSeverity(UiMetric::kHumidity, 71.0f));
+
+  CHECK(Severity::kOk == bandSeverity(UiMetric::kNoise, 45.0f));
+  CHECK(Severity::kWarn == bandSeverity(UiMetric::kNoise, 46.0f));
+  CHECK(Severity::kBad == bandSeverity(UiMetric::kNoise, 56.0f));
 
   // Light never leaves comfort: it must not drive the face.
   CHECK(Severity::kOk == bandSeverity(UiMetric::kLight, 100000.0f));
@@ -172,7 +176,7 @@ TEST_CASE("worst metric selection and priority") {
 
   // Equal severity: CO2 outranks noise (enum order is the tie-break).
   reading.co2Ppm = 900.0f;
-  reading.noiseDb = 60.0f;
+  reading.noiseDb = 50.0f;
   model = buildUiModel(reading, DISPLAY_SCREEN_FACE, TEMPERATURE_UNIT_CELSIUS, false);
   CHECK(model.faceSeverity == Severity::kWarn);
   CHECK(model.worstMetric == UiMetric::kCo2);
@@ -209,7 +213,7 @@ TEST_CASE("screen selection and battery override") {
 // judged on the rounded °C value, and switching units forces a redraw.
 TEST_CASE("fahrenheit display") {
   Reading reading = comfortableReading();
-  reading.temperatureC = 29.4f;  // 85 °F, above the 28 °C bad limit
+  reading.temperatureC = 29.4f;  // 85 °F, above the 24 °C bad limit
   const uint8_t t = static_cast<uint8_t>(UiMetric::kTemperature);
   const UiModel c = buildUiModel(reading, DISPLAY_SCREEN_FACE,
                                  TEMPERATURE_UNIT_CELSIUS, false);
@@ -341,7 +345,7 @@ TEST_CASE("day mode face and comparison") {
   Reading reading = comfortableReading();
   reading.temperatureC = 29.0f;  // bad on the sleep band
   reading.humidityPct = 80.0f;   // bad on the sleep band
-  reading.noiseDb = 60.0f;       // warn at night, fine by day
+  reading.noiseDb = 60.0f;       // bad at night, fine by day
   UiModel night = buildUiModel(reading, DISPLAY_SCREEN_FACE,
                                TEMPERATURE_UNIT_CELSIUS, false, JudgeMode::kSleep);
   CHECK(night.faceSeverity == Severity::kBad);

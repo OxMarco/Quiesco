@@ -2,8 +2,9 @@
 // pages and on the Nights tab alike. Each is either a reference for the night
 // (what sleep research counts as good for a bedroom while you sleep) or a
 // general reference (a standard or guideline that is not about sleep alone).
-// The panel's all-day comfort bands (protocol/comfort.ts) mirror the firmware
-// and stay separate.
+// The panel's bands (protocol/comfort.ts, mirroring the firmware) are the same
+// numbers for CO₂, temperature, humidity and noise; only light differs, since
+// the panel never judges it.
 //
 // - Temperature (night): 16 – 20 °C is the range sleep bodies recommend (Sleep
 //   Foundation, Cleveland Clinic); sleep efficiency falls above 25 °C
@@ -14,8 +15,7 @@
 // - Light (night): at most 1 lux while asleep, 10 lux only if you must see
 //   (Brown et al., PLOS Biology 2022).
 // - Noise (general): single sounds under 45 dB indoors, an average under
-//   30 dB (WHO night noise guidelines); over 55 dB is the panel's own "a bit
-//   loud".
+//   30 dB (WHO night noise guidelines); over 55 dB is bad.
 // - CO₂ (general): stuffy over 800 ppm, bad over 1,000. Sleep studies see no
 //   effect under about 800 and worse sleep from a night average of 1,000
 //   (Akimoto et al. 2025, ASHRAE 1837-RP; Kang et al., Build. Environ. 2024);

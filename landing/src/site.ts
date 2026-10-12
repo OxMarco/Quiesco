@@ -4,8 +4,8 @@ export const LINKS = {
   github: 'https://github.com/OxMarco/Quiesco',
   // The build guide is the README section on GitHub; there is no separate docs site.
   buildYourOwn: 'https://github.com/OxMarco/Quiesco#-build-your-own',
-  // Where "Get yours" leads. Until the campaign page exists, the X profile carries launch news.
-  // TODO: replace with the campaign URL.
+  // Where "Get yours" leads. Until Crowd Supply's pre-launch page exists, the X profile carries
+  // launch news. TODO: point it at the Crowd Supply pre-launch page, then at the campaign.
   campaign: 'https://twitter.com/QuiescoRest',
   privacy: '/privacy',
   support: 'mailto:info@impossiblelabs.xyz',

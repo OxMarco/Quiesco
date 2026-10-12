@@ -19,10 +19,10 @@ interface Band {
 const NO_LOW = -1e9;
 
 export const BANDS: Record<MetricKey, Band> = {
-  co2: { warnLo: NO_LOW, okLo: NO_LOW, okHi: 800, warnHi: 1200 },
-  temperature: { warnLo: 18, okLo: 20, okHi: 26, warnHi: 28 },
-  humidity: { warnLo: 25, okLo: 30, okHi: 60, warnHi: 70 },
-  noise: { warnLo: NO_LOW, okLo: NO_LOW, okHi: 55, warnHi: 70 },
+  co2: { warnLo: NO_LOW, okLo: NO_LOW, okHi: 800, warnHi: 1000 },
+  temperature: { warnLo: 14, okLo: 16, okHi: 20, warnHi: 24 },
+  humidity: { warnLo: 30, okLo: 40, okHi: 60, warnHi: 70 },
+  noise: { warnLo: NO_LOW, okLo: NO_LOW, okHi: 45, warnHi: 55 },
   light: { warnLo: NO_LOW, okLo: NO_LOW, okHi: 1e9, warnHi: 1e9 },
 };
 

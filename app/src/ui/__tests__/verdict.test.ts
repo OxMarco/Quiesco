@@ -1,7 +1,8 @@
 import type { StoredPoint } from '@/data/db';
 import type { Measurement } from '@/protocol/codec';
-import { Severity } from '@/protocol/comfort';
+import { BANDS, JUDGED, Severity } from '@/protocol/comfort';
 import { crossedAbove, hourDelta, issueHeadline, issuesOf, judgeFor, trendSentence } from '@/ui/advice';
+import { REFERENCES } from '@/ui/references';
 import { formatDuration, judgeMode, type SleepWindow } from '@/ui/sleep';
 
 const at = (y: number, m: number, d: number, h: number, min = 0) => new Date(y, m - 1, d, h, min).getTime();
@@ -80,4 +81,10 @@ test('durations under an hour drop the hours', () => {
   expect(formatDuration(35)).toBe('35 min');
   expect(formatDuration(60)).toBe('1 h');
   expect(formatDuration(95)).toBe('1 h 35 min');
+});
+
+test('the panel judges by the same bands as the app references', () => {
+  const edges = (b: { warnLo: number; okLo: number; okHi: number; warnHi: number }) =>
+    [b.warnLo, b.okLo, b.okHi, b.warnHi].map((v) => (Number.isFinite(v) && v > -1e8 ? v : null));
+  for (const metric of JUDGED) expect(edges(BANDS[metric])).toEqual(edges(REFERENCES[metric]));
 });

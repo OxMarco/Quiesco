@@ -77,10 +77,10 @@ your favourite editor.
 
 | Reading | Sensor | Comfortable | Warn | Bad |
 |---|---|---|---|---|
-| CO₂ | Sensirion **SCD41** (photoacoustic NDIR) | ≤ 800 ppm | 800–1200 ppm | > 1200 ppm |
-| Temperature | Bosch **BME280** | 20–26 °C | 18–20 · 26–28 °C | < 18 · > 28 °C |
-| Humidity | Bosch **BME280** | 30–60 % | 25–30 · 60–70 % | < 25 · > 70 % |
-| Noise | Knowles **SPH0641LU4H-1** PDM mic, dB(A) Leq over ~7 s | ≤ 55 dB | 55–70 dB | > 70 dB |
+| CO₂ | Sensirion **SCD41** (photoacoustic NDIR) | ≤ 800 ppm | 800–1000 ppm | > 1000 ppm |
+| Temperature | Bosch **BME280** | 16–20 °C | 14–16 · 20–24 °C | < 14 · > 24 °C |
+| Humidity | Bosch **BME280** | 40–60 % | 30–40 · 60–70 % | < 30 · > 70 % |
+| Noise | Knowles **SPH0641LU4H-1** PDM mic, dB(A) Leq over ~7 s | ≤ 45 dB | 45–55 dB | > 55 dB |
 | Light | Vishay **VEML7700** | informational | | |
 | Pressure | Bosch **BME280** | informational; also compensates CO₂ | | |
 

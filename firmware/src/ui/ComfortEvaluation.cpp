@@ -7,10 +7,10 @@ constexpr float kNoLowEdge = -1.0e9f;
 constexpr float kNoHighEdge = 1.0e9f;
 
 constexpr MetricBand kBands[kUiMetricCount] = {
-    {kNoLowEdge, kNoLowEdge, 800.0f, 1200.0f},  // CO2 ppm
-    {18.0f, 20.0f, 26.0f, 28.0f},               // temperature C
-    {25.0f, 30.0f, 60.0f, 70.0f},               // humidity %
-    {kNoLowEdge, kNoLowEdge, 55.0f, 70.0f},     // noise dB
+    {kNoLowEdge, kNoLowEdge, 800.0f, 1000.0f},  // CO2 ppm
+    {14.0f, 16.0f, 20.0f, 24.0f},               // temperature C
+    {30.0f, 40.0f, 60.0f, 70.0f},               // humidity %
+    {kNoLowEdge, kNoLowEdge, 45.0f, 55.0f},     // noise dB
     {kNoLowEdge, kNoLowEdge, kNoHighEdge, kNoHighEdge},  // light: never judged
 };
 

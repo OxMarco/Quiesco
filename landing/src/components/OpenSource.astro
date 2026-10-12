@@ -12,24 +12,27 @@ const steps = [
 ];
 
 const parts: [string, string][] = [
-  ['SCD41', 'CO₂, temperature, humidity'],
+  ['SCD41', 'CO₂'],
+  ['BME280', 'Temperature, humidity, pressure'],
   ['VEML7700', 'Light'],
   ['SPH0641', 'Noise, A-weighted'],
   ['nRF52840', 'Processor, Bluetooth'],
   ['1.54″', 'E-ink, 152 × 152'],
-  ['LiPo', 'Rechargeable'],
+  ['LiPo', '400 mAh, rechargeable'],
 ];
 
 const specs: [string, string][] = [
   ['Processor', 'nRF52840 (Seeed XIAO nRF52840 Plus)'],
   ['Connection', 'Bluetooth Low Energy'],
-  ['CO₂, temperature, humidity', 'Sensirion SCD41'],
+  ['CO₂', 'Sensirion SCD41'],
+  ['Temperature, humidity, pressure', 'Bosch BME280'],
   ['Light', 'VEML7700'],
   ['Noise', 'SPH0641 MEMS microphone, A-weighted'],
   ['Display', '1.54″ e-ink, 152 × 152'],
   ['Storage', '64 Mb SPI flash'],
-  ['Power', 'Rechargeable LiPo, deep sleep between samples'],
-  ['Sampling', '10 s to 10 min, default 60 s'],
+  ['Power', '400 mAh LiPo, USB-C charging, deep sleep between samples'],
+  ['Sampling', '1, 5, 10 or 30 min, default 5 min'],
+  ['Firmware updates', 'Over USB: drag and drop one file'],
   ['Licence', 'GPLv3'],
 ];
 ---
@@ -92,7 +95,7 @@ const specs: [string, string][] = [
           </table>
         </div>
         <p>
-          Temperature and humidity come from the SCD41 instead of a board sensor that warms itself up. There is no VOC
+          Temperature and humidity come from a BME280 that is powered only while it measures, so it doesn't warm itself up. There is no VOC
           sensor: it draws too much current for a battery device and its number is hard to act on.
         </p>
       </details>

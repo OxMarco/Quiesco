@@ -15,19 +15,19 @@ export interface Scene {
 }
 
 export const SCENES = {
-  stuffy: { label: 'Stuffy air', reading: { co2: 1340, temp: 21.2, hum: 55, noise: 29, lux: 0 } },
+  stuffy: { label: 'Stuffy air', reading: { co2: 1340, temp: 19.2, hum: 55, noise: 29, lux: 0 } },
   heat: { label: 'Heatwave', reading: { co2: 710, temp: 33, hum: 52, noise: 36, lux: 1 } },
-  street: { label: 'Busy street', reading: { co2: 650, temp: 20.8, hum: 44, noise: 64, lux: 3 } },
+  street: { label: 'Busy street', reading: { co2: 650, temp: 18.8, hum: 44, noise: 64, lux: 3 } },
 } satisfies Record<string, { label: string; reading: Scene }>;
 
 export type SceneId = keyof typeof SCENES;
 
 const NO_LOW = -1e9;
 const BANDS: Record<Metric, { warnLo: number; okLo: number; okHi: number; warnHi: number }> = {
-  co2: { warnLo: NO_LOW, okLo: NO_LOW, okHi: 800, warnHi: 1200 },
-  temp: { warnLo: 18, okLo: 20, okHi: 26, warnHi: 28 },
-  hum: { warnLo: 25, okLo: 30, okHi: 60, warnHi: 70 },
-  noise: { warnLo: NO_LOW, okLo: NO_LOW, okHi: 55, warnHi: 70 },
+  co2: { warnLo: NO_LOW, okLo: NO_LOW, okHi: 800, warnHi: 1000 },
+  temp: { warnLo: 14, okLo: 16, okHi: 20, warnHi: 24 },
+  hum: { warnLo: 30, okLo: 40, okHi: 60, warnHi: 70 },
+  noise: { warnLo: NO_LOW, okLo: NO_LOW, okHi: 45, warnHi: 55 },
 };
 
 // [warn above, bad above, warn below, bad below]

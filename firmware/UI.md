@@ -62,16 +62,19 @@ sleep window (§3.1):
 
 | Metric | Comfortable | Warn | Bad | Nudge (warn / bad) |
 |---|---|---|---|---|
-| CO2 | ≤ 800 ppm | 800–1200 ppm | > 1200 ppm | "getting stuffy" / "open a window" |
-| Temperature | 20–26 °C | 18–20 or 26–28 °C | < 18 or > 28 °C | "a bit chilly" · "a bit warm" / "too cold" · "too hot" |
-| Humidity | 30–60 % | 25–30 or 60–70 % | < 25 or > 70 % | "a bit dry" · "a bit damp" / "too dry" · "too humid" |
-| Noise | ≤ 55 dB | 55–70 dB | > 70 dB | "a bit loud" / "too loud" |
+| CO2 | ≤ 800 ppm | 800–1000 ppm | > 1000 ppm | "getting stuffy" / "open a window" |
+| Temperature | 16–20 °C | 14–16 or 20–24 °C | < 14 or > 24 °C | "a bit chilly" · "a bit warm" / "too cold" · "too hot" |
+| Humidity | 40–60 % | 30–40 or 60–70 % | < 30 or > 70 % | "a bit dry" · "a bit damp" / "too dry" · "too humid" |
+| Noise | ≤ 45 dB | 45–55 dB | > 55 dB | "a bit loud" / "too loud" |
 | Light | informational only — never judged, never drives the face | | | |
+
+The numbers are the app's sleep references (`app/src/ui/references.ts`, which
+cites the research behind each), so the panel and the phone judge alike.
 
 Values are **rounded before judging**, so the band a reading falls in always
 matches the number printed next to it. The **worst** valid metric sets the
 verdict; on a tie the order is CO2, temperature, humidity, noise. Noise is
-dB(A), an A-weighted Leq over ~7 s, the unit the 55/70 dB bands are meant
+dB(A), an A-weighted Leq over ~7 s, the unit the 45/55 dB bands are meant
 in.
 
 Invalid metrics never drive a verdict or invert a tile. They render as `n/a`
