@@ -98,7 +98,7 @@ the BOM):
 | Part | Spec | Notes |
 |---|---|---|
 | E-ink panel | GoodDisplay **GDEW0154T8D**, 1.54″, 152 × 152, 24-pin 0.5 mm FPC | plugs into J1 |
-| Battery | **3.7 V 280 mAh** LiPo, 303030 size | earlier docs said 500 mAh; that's wrong |
+| Battery | **3.7 V ~400 mAh** LiPo, **453035** size (4.5 × 30 × 35 mm) | the case pocket is about 38 × 30.5 mm with 8.5 mm above the board; 5 mm cells don't fit. Length includes the protection board |
 | Battery lead | **JST SH 1.0 2-pin**, 10 cm, single-ended | into J2 — **check polarity before plugging in** |
 | Screws | **4 × M3×10** hex socket head | close the case |
 

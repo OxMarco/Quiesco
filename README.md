@@ -127,7 +127,7 @@ each night and lets you pick the screen or calibrate the sensors.
 | **Sensors** | CO₂, temperature, humidity, pressure, light, noise |
 | **Display** | GoodDisplay GDEW0154T8D, 1.54″ 152 × 152 e-ink, holds its image unpowered |
 | **Storage** | Winbond W25Q64 8 MB SPI NOR flash (config + sample log) |
-| **Power** | 3.7 V 280 mAh LiPo, USB-C charging, switched peripheral rail |
+| **Power** | 3.7 V ~400 mAh LiPo (453035), USB-C charging, switched peripheral rail |
 | **Expansion** | JST I²C and UART headers |
 | **Case** | 3D-printable two-part enclosure, four M3 screws |
 
@@ -140,7 +140,7 @@ links to the folder with the details.
 
 - The **PCBA**: the board from [`hardware/`](hardware/), ordered assembled
 - A **GDEW0154T8D** 1.54″ e-ink panel (24-pin FPC)
-- A **3.7 V 280 mAh LiPo** (303030) with a **JST SH 1.0 2-pin** lead
+- A **3.7 V ~400 mAh LiPo** (453035: 4.5 × 30 × 35 mm) with a **JST SH 1.0 2-pin** lead
 - A **3D-printed case** and **4 × M3×10 socket-head screws**
 - A USB-C cable, a Mac or Linux machine, and a phone with Bluetooth
 
@@ -209,6 +209,7 @@ Going deeper:
 - [ ] BLE tested on air with iOS and Android
 - [x] Firmware updates over USB, started from the app: copy one file, no software ([`AGENT.md`](AGENT.md))
 - [ ] Measured power budget and battery life
+- [ ] App: more than one unit per phone (today it shows only the first unit added)
 - [ ] App on the App Store and Google Play
 - [ ] Units for sale — *coming soon*
 

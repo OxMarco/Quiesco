@@ -32,7 +32,7 @@ trust the board and fix this file.
 | Q1 | AO3401 (P-channel) | switched peripheral rail | — |
 | Q2, L1, D1–D3 | SI1308EDL, 10 µH, MBR0530 | e-ink gate-voltage boost | — |
 | J1 | 24-pin FPC | e-ink panel | — |
-| J2 | JST SH 2-pin | battery (3.7 V 280 mAh LiPo) | — |
+| J2 | JST SH 2-pin | battery (3.7 V ~400 mAh LiPo, 453035) | — |
 | J3 | JST 4-pin | I2C expansion (+3.3V, SDA, SCL, GND) | I2C |
 | J4 | JST 4-pin | UART expansion (+3.3V, `C_TX`, `C_RX`, GND) | UART |
 
@@ -79,8 +79,9 @@ config-commit cycles read no sensor and use `kBusSettleMs` (50 ms) instead.
 measure the switched rail. The `3.3V` test pad is `+3.3V_PS` and reads 3.3 V
 whatever the rail is doing.
 
-**Battery.** A 3.7 V **280 mAh** LiPo (`3030-3.7V-280mAh`) on J2, charged by
-the XIAO. Earlier documents quoted 500 mAh; that figure is wrong. The charger's
+**Battery.** A 3.7 V **~400 mAh** LiPo in the **453035** size (4.5 × 30 × 35 mm)
+on J2 (pin 1 VBAT, pin 2 GND), charged by the XIAO. The case holds it between
+two ribs in the lid, above the XIAO. The charger's
 `~CHG` status is on P0.17.
 
 ---
@@ -172,7 +173,7 @@ no larger capacitor anywhere on the board. The datasheet asks for a supply
 that handles **175–205 mA peaks** at 3.3 V with **< 30 mV** ripple, ideally a
 dedicated LDO. This cannot stop the sensor answering (idle draw is sub-mA),
 but it is the first suspect for noisy CO2 values or a reset mid-measurement.
-The small 280 mAh cell makes sag worse. Worth fixing in a respin.
+The small cell makes sag worse. Worth fixing in a respin.
 
 ### BME280 — U2
 
