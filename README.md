@@ -13,7 +13,7 @@
 [![App: Expo](https://img.shields.io/badge/app-iOS%20%C2%B7%20Android-2F6468?style=flat-square&logo=expo&logoColor=white)](app/)
 <br>
 [![Website](https://img.shields.io/badge/quiesco.rest-A85A2E?style=flat-square&logo=googlechrome&logoColor=white)](https://quiesco.rest/)
-[![Hackaday](https://img.shields.io/badge/Hackaday-A85A2E?style=flat-square&logo=hackaday&logoColor=white)](https://hackaday.io/pages/1897237)
+[![Hackaday](https://img.shields.io/badge/Hackaday-A85A2E?style=flat-square&logo=hackaday&logoColor=white)](https://hackaday.io/OxMarco)
 [![Mastodon](https://img.shields.io/badge/@oxmarco@fosstodon.org-A85A2E?style=flat-square&logo=mastodon&logoColor=white)](https://fosstodon.org/@oxmarco)
 
 **[Build your own](#-build-your-own)** · **[Hardware](hardware/)** · **[Firmware](firmware/)** · **[App](app/)**
