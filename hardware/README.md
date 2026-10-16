@@ -69,6 +69,8 @@ hardware/
 └── case/                            enclosure
     ├── case.STL                     ready to slice
     ├── L-1K1W1007851A_CASE.STEP     enclosure, editable
+    ├── case_v2.STL                  v2 (in test), ready to slice
+    ├── L-1K1W1007851A_CASE_v2.STEP  v2 (in test), editable
     ├── L-1K1W1007851A_ASM.STEP      full assembly with the PCBA
     └── … assembly instructions.docx
 └── renders/                         exploded-view animation
@@ -110,6 +112,21 @@ The enclosure is a two-part shell, about **53 × 53 × 15 mm**.
 - **Print** `case/case.STL` as-is.
 - **Modify** `case/L-1K1W1007851A_CASE.STEP` in your CAD tool, and use
   `L-1K1W1007851A_ASM.STEP` to check clearances against the populated board.
+
+**v2, in test.** `case_v2.STL` and `L-1K1W1007851A_CASE_v2.STEP` rework the
+vents and the light sensor opening. The display window and the board fit are
+unchanged:
+
+| Feature | v1 | v2 |
+|---|---|---|
+| Side vent | 6 slots, 1.5 mm wide, 1 mm fins | 5 slots, 1.8 mm wide, 1.6 mm fins, 45° pointed end (prints back-down without bridging) |
+| Second vent | none | same 5 slots on the opposite wall, for cross-flow |
+| Light sensor | 10.4 × 6.6 × 0.8 mm pocket for a clear insert | open 7.8 × 4.0 mm hole through the wall |
+| Bezel outline | 50.3 mm, 0.1 mm clearance per side | 50.0 mm, 0.25 mm clearance per side |
+
+Both versions have walls down to about 0.5 mm at the bezel corners and one
+inner corner of the shell, below most print services' minimum. They print,
+but they can crack. Use v1 until v2 has been tested.
 
 If you change the window, re-measure how much of the panel it hides: the
 screens leave a 7 px top inset for the v1 case (see

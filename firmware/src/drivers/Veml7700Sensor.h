@@ -12,7 +12,7 @@ struct Reading;
 // above 10 000 counts a 25 ms re-read with the non-linearity correction.
 // Counts become lux with the current datasheet's 0.0042 lx/count at gain 2 /
 // 800 ms (rev 1.8, 2024), not the 0.0036 older revisions and the Adafruit
-// library use. The case window's transmission is not included: absolute lux
+// library use. The case opening's transmission is not included: absolute lux
 // needs a calibration against a lux meter.
 class Veml7700Sensor {
  public:

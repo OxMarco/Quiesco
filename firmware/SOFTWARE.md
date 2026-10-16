@@ -322,7 +322,7 @@ a coarse read at gain 1/8 and 100 ms, one sensitive re-read at gain 2 and
 with Vishay's non-linearity correction. Counts are converted with the current
 datasheet's 0.0042 lx/count (gain 2, 800 ms); the Adafruit library still uses
 the older 0.0036, which read 14 % low. Each read waits 2.5× the integration
-time. Absolute lux also depends on the case window and needs a calibration.
+time. Absolute lux also depends on the case opening and needs a calibration.
 
 ### Battery and charging
 
