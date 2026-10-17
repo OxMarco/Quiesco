@@ -4,6 +4,9 @@
 #include <stdint.h>
 
 struct Config;
+namespace ResetHistory {
+struct Record;
+}
 struct FaultStatus;
 struct Reading;
 struct SampleRecord;
@@ -33,6 +36,8 @@ struct Info {
   uint8_t bondCount;
   bool usbPowered;
   uint64_t uptimeMs;
+  uint16_t heapKiB;
+  const ResetHistory::Record* lastReset;  // bootCount 0 and cause 0: none
 };
 void info(const Info& info, const Config& config);
 

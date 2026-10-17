@@ -109,6 +109,7 @@ factory procedure in [§9](HARDWARE.md#9-factory-procedure).
 | `make build-debug` | adds a boot line and one status line per cycle on USB serial |
 | `make build-trace` | debug build plus driver-level trace lines, also kept in a flash ring |
 | `make test` | host unit tests in plain C++, no board needed |
+| `make sanitize` | the same tests under AddressSanitizer and UBSan |
 | `make check` | source policy: SPDX headers, no raw pin numbers outside `BoardPins.h` |
 | `make verify` | `check` + `test`; run it before opening a PR |
 | `make smoke` | builds the test sketches `smoke/sensors`, `smoke/ble` and `smoke/rftest` |

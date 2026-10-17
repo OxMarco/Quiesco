@@ -58,6 +58,25 @@ describe('sleep window', () => {
     expect(after).toMatchObject({ kind: 'before', fromS: at(2026, 9, 24, 23, 30) });
   });
 
+  test('phase: a window that runs past noon stays "during" until wake', () => {
+    const late: SleepWindow = { times: { bedMin: 4 * 60, wakeMin: 12 * 60 + 30 }, set: true };
+    expect(sleepPhase(at(2026, 9, 24, 12, 15) * 1000, late)).toMatchObject({
+      kind: 'during',
+      fromS: at(2026, 9, 24, 4),
+      toS: at(2026, 9, 24, 12, 30),
+    });
+    expect(sleepPhase(at(2026, 9, 24, 12, 30) * 1000, late).kind).toBe('before');
+    const shift: SleepWindow = { times: { bedMin: 8 * 60, wakeMin: 16 * 60 }, set: true };
+    expect(sleepPhase(at(2026, 9, 24, 13) * 1000, shift).kind).toBe('during');
+    expect(sleepPhase(at(2026, 9, 24, 16) * 1000, shift).kind).toBe('before');
+    const longest: SleepWindow = { times: { bedMin: 23 * 60, wakeMin: 13 * 60 }, set: true };
+    expect(sleepPhase(at(2026, 9, 24, 12, 30) * 1000, longest)).toMatchObject({
+      kind: 'during',
+      fromS: at(2026, 9, 23, 23),
+    });
+    expect(sleepPhase(at(2026, 9, 24, 13) * 1000, longest).kind).toBe('before');
+  });
+
   test('lights-out suggestion is the median of weekday nights', () => {
     const nights = ['2026-09-20', '2026-09-21', '2026-09-22', '2026-09-23'];
     const points: StoredPoint[] = [];

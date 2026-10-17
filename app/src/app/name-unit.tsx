@@ -2,7 +2,7 @@
 // over Bluetooth, so it is the same in the app and in any Bluetooth list.
 
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ScrollView, TextInput, View } from 'react-native';
 
 import { describeError, link, setName } from '@/ble/link';
@@ -16,9 +16,14 @@ export default function NameUnitScreen() {
   const t = useTheme();
   const { serial } = useLocalSearchParams<{ serial: string }>();
   const unit = useSession((s) => s.units.find((u) => u.serial === serial) ?? null);
-  const others = useSession((s) => s.units.filter((u) => u.serial !== serial).map((u) => u.name));
+  // Select the stored array and derive from it: a selector that builds a new
+  // array every call never compares equal, and re-renders without end.
+  const units = useSession((s) => s.units);
+  const others = useMemo(() => units.filter((u) => u.serial !== serial).map((u) => u.name), [units, serial]);
   const connected = useStore(link, (s) => s.phase === 'ready' && s.serial === serial);
-  const [draft, setDraft] = useState(unit?.name ?? '');
+  // null until the user types: the unit's name shows even if it loads after this opens.
+  const [edited, setDraft] = useState<string | null>(null);
+  const draft = edited ?? unit?.name ?? '';
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,10 +70,10 @@ export default function NameUnitScreen() {
             {problem ?? error ?? taken ?? `Up to ${DEVICE_NAME_MAX_BYTES} characters. You can change it later.`}
           </T>
         </View>
-      </ScrollView>
-      <View className="px-4 pb-10 pt-2">
+        {/* Right under the field, not at the bottom: the field focuses at once
+            and the keyboard would cover a bottom button. */}
         <Button title="Next" busy={busy} disabled={!!problem} onPress={save} />
-      </View>
+      </ScrollView>
     </Sheet>
   );
 }

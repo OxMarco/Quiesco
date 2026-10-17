@@ -83,11 +83,12 @@ bool recover() {
     set(kScl, false);
     set(kSda, false);
     delayMicroseconds(kHalfPeriodUs);
-    sclHigh();
+    // SDA can read high while a device holds SCL low; that bus is not free.
+    const bool sclReleased = sclHigh();
     delayMicroseconds(kHalfPeriodUs);
     set(kSda, true);
     delayMicroseconds(kHalfPeriodUs);
-    freed = read(kSda);
+    freed = sclReleased && read(kSda);
   }
   release(kSda);
   release(kScl);

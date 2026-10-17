@@ -62,7 +62,7 @@ export interface BackgroundCandidate {
   serial: string;
   peripheralId: string;
   lastSyncMs: number | null;
-  /** The demo unit, or a unit this phone holds no key for: nothing to talk to quietly. */
+  /** False for a unit this phone holds no key for: nothing to talk to quietly. */
   quiet: boolean;
 }
 

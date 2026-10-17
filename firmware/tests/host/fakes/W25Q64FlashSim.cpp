@@ -22,8 +22,11 @@ std::vector<uint8_t>& storage() {
 int failPrograms = 0;
 int programCountdown = 0;
 int readCountdown = 0;
+int sampleEraseCountdown = 0;
 uint64_t reads = 0, bytesRead = 0;
 uint32_t sampleErases = 0;
+bool chipAnswers = true;
+uint32_t beginCalls = 0;
 
 }  // namespace
 
@@ -32,29 +35,35 @@ namespace FlashSim {
 void reset() {
   memset(storage().data(), 0xFF, storage().size());
   failPrograms = 0;
-  programCountdown = readCountdown = 0;
+  programCountdown = readCountdown = sampleEraseCountdown = 0;
   reads = bytesRead = 0;
   sampleErases = 0;
+  chipAnswers = true;
+  beginCalls = 0;
 }
 
 uint32_t sampleSectorErases() { return sampleErases; }
 
 void failProgramAt(int call) { programCountdown = call; }
 void failReadAt(int call) { readCountdown = call; }
+void failSampleEraseAt(int call) { sampleEraseCountdown = call; }
 void resetReadCounts() { reads = bytesRead = 0; }
 uint64_t readCalls() { return reads; }
 uint64_t readBytes() { return bytesRead; }
 
 void failNextPrograms(int count) { failPrograms = count; }
+void setChipAnswers(bool answers) { chipAnswers = answers; }
+uint32_t begins() { return beginCalls; }
 
 uint8_t* data() { return storage().data(); }
 
 }  // namespace FlashSim
 
 bool W25Q64Flash::begin() {
-  present_ = true;
+  ++beginCalls;
+  present_ = chipAnswers;
   timedOut_ = false;
-  return true;
+  return present_;
 }
 
 void W25Q64Flash::end() {}
@@ -96,7 +105,10 @@ bool W25Q64Flash::eraseSector(uint32_t address) {
     return false;
   }
   if (address >= FlashStorageLayout::kSampleDbOffset &&
-      address < FlashStorageLayout::kSampleDbEnd) ++sampleErases;
+      address < FlashStorageLayout::kSampleDbEnd) {
+    ++sampleErases;
+    if (sampleEraseCountdown > 0 && --sampleEraseCountdown == 0) return false;
+  }
   memset(storage().data() + address, 0xFF, kSectorBytes);
   return true;
 }

@@ -37,6 +37,7 @@ it is reported as unavailable, and the cycle continues.
 | `make build-debug` | the same with `QUIESCO_DEBUG=1`: one status line per cycle on USB serial |
 | `make build-trace` | debug build plus `QUIESCO_TRACE=1`: driver-level lines for diagnosing a faulty unit (see below) |
 | `make test` | host unit tests (plain C++, no board needed; needs Mbed TLS: `brew install mbedtls@3` on macOS, `libmbedtls-dev` with `MBEDTLS_PREFIX=/usr` on Linux) |
+| `make sanitize` | `make test` built with AddressSanitizer and UBSan |
 | `make check` | source policy: no raw pin numbers or banned macros outside `BoardPins.h` |
 | `make verify` | `check` + `test` |
 | `make smoke` | builds the hardware test sketches: `smoke/sensors`, `smoke/ble` and `smoke/rftest` |
@@ -109,8 +110,34 @@ consecutive-failure count, so a single line tells you which part is at fault.
 A debug build also reads single-key commands from USB serial: `i` device and
 config info, `m` measure now, `d` dump the whole on-flash log as CSV, `w` 45 s
 of back-to-back flash writes (config saves and empty log records) for
-power-pull testing by unplugging USB, `?` help. The dump runs as its own rail cycle, a batch of records per step, so BLE
+power-pull testing by unplugging USB, `x` hang (stop feeding the watchdog),
+`f` raise a bus fault, `?` help. The dump runs as its own rail cycle, a batch of records per step, so BLE
 and the watchdog keep running. A release build never opens the port.
+
+### Unexpected resets
+
+Every watchdog feed also writes a breadcrumb to RAM that startup code never
+clears (`platform/RetainedRam`, the linker's `.noinit`): the boot counter,
+uptime, wall clock, firmware state and the heap in use at the last cycle
+start. An Mbed OS fatal error (a HardFault, a failed assertion, an allocation
+failure) also passes through `mbed_error_hook`, which stores the error status
+and the faulting PC; the CPU then halts and the watchdog resets it 30 s
+later. The next boot reads both (`services/ResetHistory`):
+
+- After a watchdog or lockup reset it saves the record with the settings and
+  publishes it on `0013` (PROTOCOL.md §6.18). It stays until the next such
+  reset. Power cuts, the reset button and firmware uploads leave none.
+- It restarts the wall clock from the last feed plus the watchdog timeout,
+  so the records after a hang stay dated without a phone. Measured on a unit:
+  within a second (the bootloader's time is not counted).
+
+The `i` line `info last_reset=…` shows the record; `0x80ff013d` is a
+HardFault, and `arm-none-eabi-addr2line -f -C -e
+.build/quiesco_firmware/firmware.ino.elf <address>` names the line, with the
+same build that was running. `scripts/ble-test.py diagnostics` reads the same
+over BLE, with the clock before anything writes it, and the heap in use
+(`000F`), which shows a leak as a figure that keeps rising.
+`scripts/quiesco-console.py hang` and `fault` exercise both paths.
 
 | Command | What it does |
 |---|---|
@@ -118,6 +145,7 @@ and the watchdog keep running. A release build never opens the port.
 | `scripts/quiesco-console.py stress` | runs `w` and prints its progress; unplug USB during it |
 | `scripts/quiesco-console.py dump log.csv` | saves the log as CSV (invalid readings are empty cells) |
 | `scripts/quiesco-console.py monitor out.txt` | prints and saves every serial line, timestamped |
+| `scripts/quiesco-console.py hang` / `fault` | runs `x` / `f`: a watchdog reset, or a captured fault, for testing the reset record |
 | `scripts/log-report.py log.csv [--reference ref.csv]` | lost records, resets, measurement timing, battery drain and life estimate, sensor ranges and dropouts; with hand-taken reference readings, the mean difference and a suggested offset |
 
 Uploading firmware rewrites only the MCU's internal flash; the external

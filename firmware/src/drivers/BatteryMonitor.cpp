@@ -35,7 +35,10 @@ bool saadcSampleAin7(int16_t& out) {
       (SAADC_CH_CONFIG_RESN_Bypass << SAADC_CH_CONFIG_RESN_Pos) |
       (SAADC_CH_CONFIG_GAIN_Gain1_6 << SAADC_CH_CONFIG_GAIN_Pos) |
       (SAADC_CH_CONFIG_REFSEL_Internal << SAADC_CH_CONFIG_REFSEL_Pos) |
-      (SAADC_CH_CONFIG_TACQ_10us << SAADC_CH_CONFIG_TACQ_Pos) |
+      // The divider's ~340 kOhm source needs 20 us (nRF52840 PS, SAADC
+      // acquisition table); 10 us can settle low and under-read the battery.
+      // 40 us for margin.
+      (SAADC_CH_CONFIG_TACQ_40us << SAADC_CH_CONFIG_TACQ_Pos) |
       (SAADC_CH_CONFIG_MODE_SE << SAADC_CH_CONFIG_MODE_Pos) |
       (SAADC_CH_CONFIG_BURST_Disabled << SAADC_CH_CONFIG_BURST_Pos);
   NRF_SAADC->RESULT.PTR = reinterpret_cast<uint32_t>(&result);

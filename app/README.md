@@ -74,13 +74,6 @@ whenever dependencies change, and before every release:
 npm run licences                   # writes src/data/licences.json
 ```
 
-### No hardware yet?
-
-A simulator has no Bluetooth. The welcome screen offers **Try it with demo
-data**, which adds a demo unit with three made-up nights so the screens can be
-checked without hardware. It works in release builds too, and the demo can be
-removed from its page in **Settings** (**Remove demo data**).
-
 ## Layout
 
 | Path | Contents |
@@ -88,11 +81,61 @@ removed from its page in **Settings** (**Remove demo data**).
 | `src/protocol/` | The BLE protocol in plain TypeScript: codecs, log packets and CRC, the comfort policy. Mirrors `firmware/src/protocol` and `firmware/src/ui/ComfortEvaluation`. |
 | `src/protocol/__tests__/` | Golden vectors, checked against the examples in `firmware/src/protocol/PROTOCOL.md` |
 | `src/ble/` | `transport.ts` wraps the Bluetooth library; `link.ts` runs the connect sequence, enrolment and authentication, confirmed writes and log download; `session.ts` reconnects and syncs |
-| `src/data/` | SQLite store keyed by the unit's serial; the demo unit and its sample nights |
+| `src/data/` | SQLite store keyed by the unit's serial |
+| `src/background/` | The periodic background sync task (expo-background-task) |
+| `src/health/` | Sleep from Apple Health (`sleep.ios.ts`) and Health Connect (`sleep.android.ts`), read only |
+| `src/widgets/` | The widget snapshot, its writers and the Android widget (`RoomWidget.tsx`) |
+| `targets/widget/` | The iOS widget (SwiftUI, WidgetKit), generated into `ios/` by `@bacons/apple-targets` |
+| `index.ts` | App entry: defines the background task and the Android widget handler before the router starts |
 | `src/app/` | Screens (Expo Router): Room, Nights and Settings tabs; one page per unit (`units/[serial]`); the unit switcher, Connect, Name it, Calibrate, Sleep window, metric detail and 'why' screens |
 | `src/components/`, `src/ui/` | Shared components, metric formatting, night summaries |
 | `src/theme/` | The palette, the single source for NativeWind variables and SVG colours |
 | `brand/` | Logo sources and the identity explorations |
+
+## Background sync, sleep times and widgets
+
+**Background sync.** The phone keeps each unit's clock set and its log synced
+without the app being opened:
+
+- A periodic task (expo-background-task) syncs the unit on screen. Android
+  runs it with WorkManager, every 15 minutes at best; iOS with
+  BGTaskScheduler, when the system chooses, often overnight on charge.
+- When the app leaves the screen with the unit out of range, it asks the
+  system to connect when the unit comes back: on iOS a pending connect,
+  which wakes or relaunches the app (`bluetooth-central` and state
+  restoration); on Android an autoconnect, while the app's process lives.
+- After a background sync the link stays up only while the unit is on USB
+  power, so live readings keep the widgets current; on battery it is
+  dropped, because a held connection drains the unit.
+- A background run never asks for anything: a unit without a key on this
+  phone, or Bluetooth without permission, is skipped.
+
+**Sleep times.** With Settings → Sleep times from Apple Health (Health
+Connect on Android) on, each night is judged over the sleep the health store
+recorded, where it has a record, and the sleep window offers the usual times
+over the last three weeks. Read only; nothing is written or sent.
+
+**Widgets.** One snapshot (the unit, its newest reading, the Room tab's
+headline) drives both: the iOS widget reads it from the App Group
+`group.rest.quiesco.app`, the Android widget is drawn from it in JS. The app
+refreshes them on every new reading, at most once a minute.
+
+### Android and iOS
+
+| Feature | iOS | Android |
+|---|---|---|
+| Periodic background sync | BGTaskScheduler (system-chosen, often overnight) | WorkManager (≥ 15 min, later in Doze) |
+| Reconnect when the unit comes back | Pending connect; relaunches the app if it was closed | Autoconnect while the process lives; else the periodic task |
+| Link kept up in the background on USB power | Yes (`bluetooth-central`) | Yes, while the process lives |
+| Sleep times | Apple Health (HealthKit sleep analysis) | Health Connect (sleep sessions) |
+| Home-screen widget | Small and medium | Resizable, narrow and wide layouts |
+| Lock-screen widget | Rectangular and inline | Not available on Android |
+| Widget refresh | App reloads the timeline on new data; hourly entry | App redraws on new data; every 30 min by the system |
+
+Testing: background tasks run only on a device on iOS (not the simulator);
+on Android, background the app and force the job with
+`adb shell cmd jobscheduler run -f rest.quiesco.app <job>`. Neither
+simulator nor emulator has Bluetooth, so syncing needs a phone and a unit.
 
 ## How it follows the protocol
 

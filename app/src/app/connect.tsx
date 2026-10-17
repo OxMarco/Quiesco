@@ -79,7 +79,7 @@ export default function ConnectScreen() {
           onBack={() => { setOpenError(null); setChosen(null); startScan(); }}
         />
       ) : radio === 'unsupported' ? (
-        <Card><T className="leading-6">This device has no Bluetooth, so it can’t talk to a Quiesco unit.</T></Card>
+        <Card><T className="leading-6">This device has no Bluetooth, so it can’t talk to a Quiesco unit</T></Card>
       ) : radio === 'off' ? (
         <Card>
           <T className="leading-6">

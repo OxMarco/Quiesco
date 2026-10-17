@@ -38,6 +38,8 @@ struct Value {
   bool fixed = false;
   bool subscribed = false;
   std::vector<uint8_t> bytes;
+  // Every value written while subscribed: the notifications a phone gets.
+  std::vector<std::vector<uint8_t>> notified;
   BLECharacteristicEventHandler handler = nullptr;
 };
 inline std::map<std::string, std::shared_ptr<Value>>& values() {
@@ -53,6 +55,21 @@ inline std::array<BLEDeviceEventHandler, 2>& handlers() {
   return entries;
 }
 inline BLEDevice& peer() { static BLEDevice device; return device; }
+// ArduinoBLE's GAP advertising flag: set by advertise(), cleared only by
+// stopAdvertise(). A connection pauses advertising, and the stack resumes it
+// on its own after the disconnect, with the data it had (HCI.cpp).
+inline bool& advertising() { static bool flag = false; return flag; }
+inline int& advertiseCalls() { static int calls = 0; return calls; }
+// ArduinoBLE keeps the caller's pointer and reads it at each advertise(); the
+// fake does the same and records what went on air.
+inline const char*& localName() { static const char* name = nullptr; return name; }
+inline std::string& advertisedName() { static std::string name; return name; }
+// Runs once inside the next notifying writeValue, as ArduinoBLE polls HCI
+// there while it waits for controller buffers.
+inline std::function<void()>& duringNotify() {
+  static std::function<void()> hook;
+  return hook;
+}
 inline void connect(int id) {
   peer() = BLEDevice(id);
   if (handlers()[BLEConnected]) handlers()[BLEConnected](peer());
@@ -88,6 +105,12 @@ class BLECharacteristic {
     length = std::min(length, value_->capacity);
     value_->bytes.assign(value, value + length);
     if (value_->fixed) value_->bytes.resize(value_->capacity);
+    if (value_->subscribed) value_->notified.push_back(value_->bytes);
+    if (value_->subscribed && FakeBle::duringNotify()) {
+      auto hook = std::move(FakeBle::duringNotify());
+      FakeBle::duringNotify() = nullptr;
+      hook();
+    }
     return valueLength();
   }
   int writeValue(const uint8_t* value, size_t length) { return writeValue(value, static_cast<int>(length)); }
@@ -121,9 +144,14 @@ class BLEClass {
   }
   bool connected() { poll(); return bool(FakeBle::peer()); }
   bool disconnect() { if (FakeBle::peer()) FakeBle::disconnect(); return true; }
-  int advertise() { return 1; }
-  void stopAdvertise() {}
-  void setLocalName(const char*) {}
+  int advertise() {
+    FakeBle::advertising() = true;
+    ++FakeBle::advertiseCalls();
+    FakeBle::advertisedName() = FakeBle::localName() ? FakeBle::localName() : "";
+    return 1;
+  }
+  void stopAdvertise() { FakeBle::advertising() = false; }
+  bool setLocalName(const char* name) { FakeBle::localName() = name; return true; }
   void setDeviceName(const char*) {}
   void setAdvertisedService(const BLEService&) {}
   void addService(BLEService&) {}

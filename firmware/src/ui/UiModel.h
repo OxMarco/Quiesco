@@ -33,6 +33,7 @@ struct UiModel {
   bool worstAbove = false;
   uint8_t batteryPercent = 0;  // rounded to 5% steps to bound refreshes
   bool charging = false;
+  bool batteryLow = false;   // feeds the next build's hysteresis
   uint32_t pairingCode = 0;  // six digits
 };
 
@@ -41,16 +42,22 @@ struct UiModel {
 bool hasSameRenderedContent(const UiModel& a, const UiModel& b);
 
 // Battery presentation policy. The low threshold is resting voltage; below it
-// the device shows the battery screen instead of the configured one.
+// the device shows the battery screen instead of the configured one, until
+// the cell is back above the recovery threshold. Without the gap, readings
+// that wander around 3.5 V flipped screens, a panel refresh each, just when
+// the cell had least to spare.
 constexpr float kLowBatteryVolts = 3.5f;
+constexpr float kLowBatteryRecoveryVolts = 3.6f;
 uint8_t batteryPercentFromVolts(float volts);
 
 // configuredScreen is Config::displayScreen and temperatureUnit
 // Config::temperatureUnit (both validated); charging comes from the charger
-// status pin, already debounced; mode from SleepSchedule::panelJudgeMode.
+// status pin, already debounced; mode from SleepSchedule::panelJudgeMode;
+// wasBatteryLow is the previous model's batteryLow.
 UiModel buildUiModel(const Reading& reading, uint8_t configuredScreen,
                      uint8_t temperatureUnit, bool charging,
-                     JudgeMode mode = JudgeMode::kSleep);
+                     JudgeMode mode = JudgeMode::kSleep,
+                     bool wasBatteryLow = false);
 
 // Local-only setup code. The phone must prove it before it is given a key.
 UiModel buildPairingModel(uint32_t code);

@@ -10,7 +10,7 @@ import { Linking } from 'react-native';
 
 import * as linkApi from '@/ble/link';
 import { link } from '@/ble/link';
-import { setTempUnit, setTheme, type ThemePref, useSession } from '@/ble/session';
+import { setHealthSleep, setTempUnit, setTheme, type ThemePref, useSession } from '@/ble/session';
 import { useStore } from '@/ble/store';
 import { Segmented } from '@/components/controls';
 import { DiagnosticReportRow } from '@/components/diagnostic-report';
@@ -18,8 +18,8 @@ import { TempUnitPicker } from '@/components/temp-unit';
 import { Field } from '@/components/unit-settings';
 import { Button, Card, Row, Screen, SectionLabel, T, Title } from '@/components/ui';
 import type * as db from '@/data/db';
-import { isDemo } from '@/data/sample';
 import { SUPPORT_EMAIL } from '@/debug/report';
+import { HEALTH_STORE } from '@/health/sleep';
 import { Capability, hasCapability } from '@/protocol/codec';
 import { ago } from '@/ui/format';
 import type { TempUnit } from '@/ui/units';
@@ -36,12 +36,12 @@ export default function SettingsScreen() {
   };
 
   return (
-    <Screen>
+    <Screen tabBar>
       <Title>Settings</Title>
 
       <SectionLabel>App</SectionLabel>
       <AppSettings
-        tempUnitHint={ready && !hasCapability(s.info!, Capability.temperatureUnit) ? 'This unit’s screen always shows °C.' : undefined}
+        tempUnitHint={ready && !hasCapability(s.info!, Capability.temperatureUnit) ? 'This unit’s screen always shows °C' : undefined}
         tempUnitError={tempUnitError}
         onTempUnit={onTempUnit}
       />
@@ -49,7 +49,7 @@ export default function SettingsScreen() {
       <SectionLabel>{units.length > 1 ? 'Your units' : 'Your unit'}</SectionLabel>
       {units.length === 0 ? (
         <Card className="gap-4">
-          <T className="text-muted leading-6">No unit on this phone yet.</T>
+          <T className="text-muted leading-6">No unit on this phone yet</T>
           <Button title="Add your Quiesco" onPress={() => router.push('/connect')} />
         </Card>
       ) : (
@@ -71,9 +71,7 @@ export default function SettingsScreen() {
 function UnitRow({ unit }: { unit: db.Unit }) {
   const connected = useStore(link, (s) => s.phase === 'ready' && s.serial === unit.serial);
   const syncing = useSession((s) => s.background === unit.serial);
-  const status = isDemo(unit)
-    ? 'Demo'
-    : connected
+  const status = connected
       ? 'Connected'
       : syncing
         ? 'Syncing…'
@@ -124,11 +122,36 @@ function AppSettings({
 }) {
   const theme = useSession((s) => s.theme);
   const tempUnit = useSession((s) => s.tempUnit);
+  const healthSleep = useSession((s) => s.healthSleep);
+  const [healthNote, setHealthNote] = useState<string | null>(null);
+  const onHealth = (on: boolean) => {
+    setHealthNote(null);
+    setHealthSleep(on)
+      .then((granted) => {
+        if (on && !granted) setHealthNote(`${HEALTH_STORE} didn’t allow Quiesco to read sleep`);
+      })
+      .catch(() => setHealthNote(`Couldn’t reach ${HEALTH_STORE}`));
+  };
   return (
     <Card className="py-1">
       <Field label="Temperature" hint={tempUnitHint} error={tempUnitError}>
         <TempUnitPicker value={tempUnit} onChange={onTempUnit} />
       </Field>
+      {HEALTH_STORE && (
+        <Field
+          label={`Sleep times from ${HEALTH_STORE}`}
+          hint="Nights are judged by when you actually slept, where it has a record. Read only, and it stays on this phone."
+          error={healthNote}>
+          <Segmented<'on' | 'off'>
+            value={healthSleep ? 'on' : 'off'}
+            onChange={(v) => onHealth(v === 'on')}
+            options={[
+              { value: 'on', label: 'On' },
+              { value: 'off', label: 'Off' },
+            ]}
+          />
+        </Field>
+      )}
       <Field label="Theme" last>
         <Segmented<ThemePref>
           value={theme}

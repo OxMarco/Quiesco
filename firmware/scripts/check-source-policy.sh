@@ -38,6 +38,17 @@ if scan '#include[[:space:]]*[<"](Adafruit_|Sensirion|GxEPD2|ArduinoBLE)' \
   failed=1
 fi
 
+# On this core MbedI2C::begin() allocates a new mbed::I2C and drops the one
+# before it: a second begin per cycle (Adafruit_I2CDevice::begin() and
+# detected() call it) leaked ~200 bytes a measurement until the unit stalled
+# after a day or two. EnvironmentalSampler begins the bus once per cycle and
+# ends it; nothing else may.
+if scan '^[^/]*(Wire\.begin\(|->begin\(|->detected\()' \
+  --exclude=EnvironmentalSampler.cpp; then
+  echo "Only EnvironmentalSampler may begin the I2C bus (one begin per end)."
+  failed=1
+fi
+
 # The firmware is GPL-3.0-only (LICENSE). Vendored code and generated fonts
 # keep their own licences and are exempt.
 missing_spdx="$(grep -rL --include='*.h' --include='*.cpp' --include='*.ino' \

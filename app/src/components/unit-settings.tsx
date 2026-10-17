@@ -23,7 +23,6 @@ import { Segmented, Stepper } from '@/components/controls';
 import { ScreenPicker } from '@/components/screen-picker';
 import { Button, Card, Row, SectionLabel, T } from '@/components/ui';
 import type * as db from '@/data/db';
-import { isDemo } from '@/data/sample';
 import {
   CalibrationOffsets,
   Capability,
@@ -71,7 +70,6 @@ export function UnitSettings({ unit }: { unit: db.Unit }) {
   const config = connected ? s.config : cache?.config ?? null;
   const offsets = connected ? s.offsets : cache?.offsets ?? null;
   const calibration = connected ? s.calibration : cache?.calibration ?? null;
-  const demo = isDemo(unit);
   // Shown only while connected: there is no cached value to grey out.
   const showPanelSleep = can(Capability.sleepWindow);
   const showRefresh = connected && s.config !== null;
@@ -92,179 +90,162 @@ export function UnitSettings({ unit }: { unit: db.Unit }) {
 
   return (
     <>
-      {demo ? (
-        <>
-          <Card className="py-1">
-            <Row label="Name" value={unit.name} />
-            <Row
-              label="Sleep window"
-              value={`${formatClock(sleepWindow.times.bedMin)} – ${formatClock(sleepWindow.times.wakeMin)}`}
-              onPress={() => router.push({ pathname: '/sleep-window', params: { serial: unit.serial } })}
-            />
-            <T className="text-[13px] text-muted leading-[18px] py-3.5">The demo has no unit behind it, so only its sleep window can change.</T>
-          </Card>
-          <View className="h-4" />
-          <DangerZone serial={unit.serial} connected={false} canErase={false} demo />
-        </>
-      ) : (
-        <>
-          {!connected && (
-            <Card className="flex-row items-center gap-3">
-              <T className="text-sm text-muted leading-5 shrink grow">
-                {connecting
-                  ? 'Connecting…'
-                  : shown
-                    ? 'Out of range. Connect to change its settings.'
-                    : 'Connect to change its settings. The app then shows this unit.'}
-              </T>
-              <View className="shrink-0">
-                <Button title="Connect" kind="secondary" busy={connecting} onPress={() => void selectUnit(unit.serial).catch(() => {})} />
-              </View>
-            </Card>
-          )}
-          <Card className="py-1">
-            <NameRow
-              name={(connected ? s.name : null) ?? unit.name}
-              disabled={!can(Capability.rename)}
-              onSave={(name) => run('name', () => linkApi.setName(name).then(reloadUnits))}
-              error={errorAt('name')}
-            />
-            <Row
-              label="Sleep window"
-              value={`${formatClock(sleepWindow.times.bedMin)} – ${formatClock(sleepWindow.times.wakeMin)}`}
-              onPress={() => router.push({ pathname: '/sleep-window', params: { serial: unit.serial } })}
-            />
-            <Field label="Screen" error={errorAt('screen')}>
-              <ScreenPicker
-                disabled={!can(Capability.displayScreen)}
-                value={config?.displayScreen ?? null}
-                onChange={(v) =>
-                  void run('screen', async () => {
-                    await linkApi.setScreen(v);
-                    if (screenTimer.current) clearTimeout(screenTimer.current);
-                    setScreenApplying(true);
-                    screenTimer.current = setTimeout(() => setScreenApplying(false), 3000);
-                  }).catch(() => {})
-                }
-              />
-              {screenApplying && <T className="text-sm text-muted leading-5">The unit’s screen updates in a moment.</T>}
-            </Field>
-            <Field label="Measure every" hint="More often uses more battery." error={errorAt('interval')}>
-              <Segmented<IntervalSeconds>
-                disabled={!connected}
-                value={(config?.intervalSeconds as IntervalSeconds) ?? null}
-                onChange={(v) => void run('interval', () => linkApi.setMeasurementInterval(v)).catch(() => {})}
-                options={INTERVALS_S.map((v) => ({ value: v, label: intervalLabel(v) }))}
-              />
-            </Field>
-            <Field
-              label="Bluetooth"
-              hint="Plugged in saves battery."
-              error={errorAt('bluetooth')}
-              last={!showPanelSleep && !showRefresh && !showEraseLog}>
-              <Segmented<'always' | 'plugged'>
-                disabled={!connected}
-                value={config ? (config.bleAlwaysAvailable ? 'always' : 'plugged') : null}
-                onChange={(v) => void run('bluetooth', () => linkApi.setAlwaysAvailable(v === 'always')).catch(() => {})}
-                options={[
-                  { value: 'always', label: 'Always' },
-                  { value: 'plugged', label: 'Plugged in' },
-                ]}
-              />
-            </Field>
-            {showPanelSleep && (
-              <Field
-                label="Panel follows your sleep window"
-                hint="By day it only flags CO₂ and loud noise."
-                error={errorAt('panelSleep')}
-                last={!showRefresh && !showEraseLog}>
-                <Segmented<'on' | 'off'>
-                  label="Panel follows your sleep window"
-                  value={panelFollowsSleep ? 'on' : 'off'}
-                  onChange={(v) => void run('panelSleep', () => setPanelFollowsSleep(unit.serial, v === 'on')).catch(() => {})}
-                  options={[
-                    { value: 'on', label: 'On' },
-                    { value: 'off', label: 'Off' },
-                  ]}
-                />
-              </Field>
-            )}
-            {showRefresh && s.config && (
-              <Field
-                label="Deep refresh"
-                hint="Screen updates between full refreshes. Fewer clears ghosting; more saves battery."
-                error={errorAt('refresh')}
-                last={!showEraseLog}>
-                <Segmented<number>
-                  label="Deep refresh, every so many screen updates"
-                  value={s.config.fullRefreshEvery}
-                  onChange={(v) => void run('refresh', () => linkApi.setFullRefreshEvery(v)).catch(() => {})}
-                  options={refreshOptions(s.config.fullRefreshEvery)}
-                />
-              </Field>
-            )}
-            {showEraseLog && (
-              <Field
-                label="Erase the unit’s log after syncing"
-                hint="Your history then lives only on this phone."
-                error={errorAt('eraseLog')}
-                last>
-                <Segmented<'on' | 'off'>
-                  label="Erase the unit’s log after syncing"
-                  value={eraseAfterSync ? 'on' : 'off'}
-                  onChange={(v) => toggleEraseLog(v === 'on')}
-                  options={[
-                    { value: 'off', label: 'Off' },
-                    { value: 'on', label: 'On' },
-                  ]}
-                />
-              </Field>
-            )}
-          </Card>
-
-          <SectionLabel>Calibration</SectionLabel>
-          <Card className="py-1">
-            {offsets ? (
-              <OffsetsForm
-                key={`${JSON.stringify(offsets)}${connected}`}
-                offsets={offsets}
-                tempUnit={tempUnit}
-                disabled={!can(Capability.calibrationOffsets)}
-                onSave={(o) => void run('offsets', () => linkApi.setOffsets(o)).catch(() => {})}
-                error={errorAt('offsets')}
-              />
-            ) : (
-              <T className="text-sm text-muted leading-5 py-3.5 border-b border-line">
-                Connect once to see the offsets.
-              </T>
-            )}
-            <Row
-              label="Recalibrate CO₂"
-              value={
-                calibration?.lastFrcReferencePpm
-                  ? `Last ${calibration.lastFrcEpochS ? ago(calibration.lastFrcEpochS * 1000) : 'done'}`
-                  : 'Never'
-              }
-              onPress={can(Capability.frc) ? () => router.push('/calibrate') : undefined}
-              last
-            />
-          </Card>
-
-          <SectionLabel>Unit details</SectionLabel>
-          <Card className="py-1">
-            <Row label="Firmware" value={(connected ? s.firmware : null) ?? unit.firmware ?? '--'} />
-            {can(Capability.usbUpdate) && <UpdateFirmwareRow />}
-            <Row label="Serial" value={unit.serial} />
-            <Row label="Last synced" value={ago(unit.lastSyncMs)} last={!(s.status && connected)} />
-            {s.status && connected && (
-              <SensorsRow presentMask={s.status.presentMask} failures={s.status.failures} noBattery={s.info?.noBattery ?? false} />
-            )}
-          </Card>
-
-          <View className="h-6" />
-          <DangerZone serial={unit.serial} connected={can(Capability.factoryReset)} canErase={can(Capability.logErase)} />
-        </>
+      {!connected && (
+        <Card className="flex-row flex-wrap items-center gap-3">
+          {/* Wraps: once the text needs the room, the button goes underneath. */}
+          <T className="text-sm text-muted leading-5 flex-1 min-w-[55%]">
+            {connecting
+              ? 'Connecting…'
+              : shown
+                ? 'Out of range. Connect to change its settings.'
+                : 'Connect to change its settings. The app then shows this unit.'}
+          </T>
+          <View className="shrink-0">
+            <Button title="Connect" kind="secondary" busy={connecting} onPress={() => void selectUnit(unit.serial).catch(() => {})} />
+          </View>
+        </Card>
       )}
+      <Card className="py-1">
+        <NameRow
+          name={(connected ? s.name : null) ?? unit.name}
+          disabled={!can(Capability.rename)}
+          onSave={(name) => run('name', () => linkApi.setName(name).then(reloadUnits))}
+          error={errorAt('name')}
+        />
+        <Row
+          label="Sleep window"
+          value={`${formatClock(sleepWindow.times.bedMin)} – ${formatClock(sleepWindow.times.wakeMin)}`}
+          onPress={() => router.push({ pathname: '/sleep-window', params: { serial: unit.serial } })}
+        />
+        <Field label="Screen" error={errorAt('screen')}>
+          <ScreenPicker
+            disabled={!can(Capability.displayScreen)}
+            value={config?.displayScreen ?? null}
+            onChange={(v) =>
+              void run('screen', async () => {
+                await linkApi.setScreen(v);
+                if (screenTimer.current) clearTimeout(screenTimer.current);
+                setScreenApplying(true);
+                screenTimer.current = setTimeout(() => setScreenApplying(false), 3000);
+              }).catch(() => {})
+            }
+          />
+          {screenApplying && <T className="text-sm text-muted leading-5">The unit’s screen updates in a moment</T>}
+        </Field>
+        <Field label="Measure every" hint="More often uses more battery" error={errorAt('interval')}>
+          <Segmented<IntervalSeconds>
+            disabled={!connected}
+            value={(config?.intervalSeconds as IntervalSeconds) ?? null}
+            onChange={(v) => void run('interval', () => linkApi.setMeasurementInterval(v)).catch(() => {})}
+            options={INTERVALS_S.map((v) => ({ value: v, label: intervalLabel(v) }))}
+          />
+        </Field>
+        <Field
+          label="Bluetooth"
+          hint="Plugged in saves battery"
+          error={errorAt('bluetooth')}
+          last={!showPanelSleep && !showRefresh && !showEraseLog}>
+          <Segmented<'always' | 'plugged'>
+            disabled={!connected}
+            value={config ? (config.bleAlwaysAvailable ? 'always' : 'plugged') : null}
+            onChange={(v) => void run('bluetooth', () => linkApi.setAlwaysAvailable(v === 'always')).catch(() => {})}
+            options={[
+              { value: 'always', label: 'Always' },
+              { value: 'plugged', label: 'Plugged in' },
+            ]}
+          />
+        </Field>
+        {showPanelSleep && (
+          <Field
+            label="Panel follows your sleep window"
+            hint="By day it only flags CO₂ and loud noise"
+            error={errorAt('panelSleep')}
+            last={!showRefresh && !showEraseLog}>
+            <Segmented<'on' | 'off'>
+              label="Panel follows your sleep window"
+              value={panelFollowsSleep ? 'on' : 'off'}
+              onChange={(v) => void run('panelSleep', () => setPanelFollowsSleep(unit.serial, v === 'on')).catch(() => {})}
+              options={[
+                { value: 'on', label: 'On' },
+                { value: 'off', label: 'Off' },
+              ]}
+            />
+          </Field>
+        )}
+        {showRefresh && s.config && (
+          <Field
+            label="Deep refresh"
+            hint="Screen updates between full refreshes. Fewer clears ghosting; more saves battery."
+            error={errorAt('refresh')}
+            last={!showEraseLog}>
+            <Segmented<number>
+              label="Deep refresh, every so many screen updates"
+              value={s.config.fullRefreshEvery}
+              onChange={(v) => void run('refresh', () => linkApi.setFullRefreshEvery(v)).catch(() => {})}
+              options={refreshOptions(s.config.fullRefreshEvery)}
+            />
+          </Field>
+        )}
+        {showEraseLog && (
+          <Field
+            label="Erase the unit’s log after syncing"
+            hint="Your history then lives only on this phone."
+            error={errorAt('eraseLog')}
+            last>
+            <Segmented<'on' | 'off'>
+              label="Erase the unit’s log after syncing"
+              value={eraseAfterSync ? 'on' : 'off'}
+              onChange={(v) => toggleEraseLog(v === 'on')}
+              options={[
+                { value: 'off', label: 'Off' },
+                { value: 'on', label: 'On' },
+              ]}
+            />
+          </Field>
+        )}
+      </Card>
+
+      <SectionLabel>Calibration</SectionLabel>
+      <Card className="py-1">
+        {offsets ? (
+          <OffsetsForm
+            key={`${JSON.stringify(offsets)}${connected}`}
+            offsets={offsets}
+            tempUnit={tempUnit}
+            disabled={!can(Capability.calibrationOffsets)}
+            onSave={(o) => void run('offsets', () => linkApi.setOffsets(o)).catch(() => {})}
+            error={errorAt('offsets')}
+          />
+        ) : (
+          <T className="text-sm text-muted leading-5 py-3.5 border-b border-line">
+            Connect once to see the offsets
+          </T>
+        )}
+        <Row
+          label="Recalibrate CO₂"
+          value={
+            calibration?.lastFrcReferencePpm
+              ? `Last ${calibration.lastFrcEpochS ? ago(calibration.lastFrcEpochS * 1000) : 'done'}`
+              : 'Never'
+          }
+          onPress={can(Capability.frc) ? () => router.push('/calibrate') : undefined}
+          last
+        />
+      </Card>
+
+      <SectionLabel>Unit details</SectionLabel>
+      <Card className="py-1">
+        <Row label="Firmware" value={(connected ? s.firmware : null) ?? unit.firmware ?? '--'} />
+        {can(Capability.usbUpdate) && <UpdateFirmwareRow />}
+        <Row label="Serial" value={unit.serial} />
+        <Row label="Last synced" value={ago(unit.lastSyncMs)} last={!(s.status && connected)} />
+        {s.status && connected && (
+          <SensorsRow presentMask={s.status.presentMask} failures={s.status.failures} noBattery={s.info?.noBattery ?? false} />
+        )}
+      </Card>
+
+      <View className="h-6" />
+      <DangerZone serial={unit.serial} connected={can(Capability.factoryReset)} canErase={can(Capability.logErase)} />
     </>
   );
 }
@@ -287,7 +268,7 @@ function UpdateFirmwareRow() {
                 { text: 'OK' },
               ],
             )
-          : Alert.alert('Plug the unit in', 'The unit only starts an update while it is connected to a computer with a USB-C cable.'),
+          : Alert.alert('Plug the unit in', 'The unit only starts an update while it is connected to a computer with a USB-C cable'),
       )
       .catch((e) => Alert.alert('Could not start the update', linkApi.describeError(e)))
       .finally(() => setBusy(false));
@@ -473,13 +454,10 @@ function DangerZone({
   serial,
   connected,
   canErase,
-  demo = false,
 }: {
   serial: string;
   connected: boolean;
   canErase: boolean;
-  /** The demo unit: removing it only deletes the made-up nights. */
-  demo?: boolean;
 }) {
   // A message replaces the rows while something runs or after a reset; a
   // failure keeps the rows so the user can try again.
@@ -496,7 +474,7 @@ function DangerZone({
 
   const doForget = () => {
     setError(null);
-    setDone(demo ? 'Removing the demo…' : 'Removing the unit…');
+    setDone('Removing the unit…');
     // On success the unit is gone: back to the list.
     forget(serial)
       .then(() => {
@@ -505,24 +483,19 @@ function DangerZone({
       })
       .catch((e) => {
         setDone(null);
-        setError(`Could not ${demo ? 'remove the demo' : 'remove the unit'}: ${linkApi.describeError(e)}`);
+        setError(`Could not remove the unit: ${linkApi.describeError(e)}`);
       });
   };
 
   const confirmForget = () =>
-    demo
-      ? Alert.alert('Remove demo data?', 'The made-up nights are deleted from this phone.', [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Remove', style: 'destructive', onPress: doForget },
-        ])
-      : Alert.alert(
-          'Remove this unit from the phone?',
-          'Nights synced to this phone are deleted from it, and anything the unit has not synced yet will no longer reach this phone. The unit keeps its own log.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Remove', style: 'destructive', onPress: doForget },
-          ],
-        );
+    Alert.alert(
+      'Remove this unit from the phone?',
+      'Nights synced to this phone are deleted from it, and anything the unit has not synced yet will no longer reach this phone. The unit keeps its own log.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: doForget },
+      ],
+    );
 
   const reset = (erase: boolean) => {
     setError(null);
@@ -548,15 +521,6 @@ function DangerZone({
           : []),
       ],
     );
-
-  if (demo) {
-    return (
-      <Card className="py-1">
-        <Row label="Remove demo data" danger onPress={confirmForget} last={!error} />
-        {error && <T className="text-[13px] text-bad leading-[18px] pb-3">{error}</T>}
-      </Card>
-    );
-  }
 
   return (
     <Card className="py-1">

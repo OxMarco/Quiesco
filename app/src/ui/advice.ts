@@ -8,6 +8,7 @@ import type { StoredPoint } from '@/data/db';
 import type { Measurement, MetricKey } from '@/protocol/codec';
 import { JUDGED, metricValue, roundHalfAway, Severity } from '@/protocol/comfort';
 
+import { prose } from './format';
 import { pointValue } from './metrics';
 import { NOISE_NIGHT_AVG_DB, NOISE_NIGHT_PEAK_DB, REFERENCE_LABEL, REFERENCES, referenceSeverity, type ReferenceKind } from './references';
 import type { JudgeMode } from './sleep';
@@ -112,13 +113,13 @@ export function issueDetail({ metric, severity, above }: Issue, reading: Measure
   const bad = severity === Severity.Bad;
   switch (metric) {
     case 'co2':
-      if (mode === 'day') return bad ? 'The air is stale. Open a window now.' : 'Air the room for a few minutes.';
-      return bad ? 'Air this stale is linked to slightly worse sleep. Open a window now.' : 'Leave a door or window ajar tonight.';
+      if (mode === 'day') return bad ? 'The air is stale. Open a window now.' : 'Air the room for a few minutes';
+      return bad ? 'Air this stale is linked to slightly worse sleep. Open a window now.' : 'Leave a door or window ajar tonight';
     case 'temperature': {
-      if (!above) return bad ? 'Warm the room a little before bed, or add a blanket.' : 'An extra blanket or warmer sleepwear usually helps.';
+      if (!above) return bad ? 'Warm the room a little before bed, or add a blanket' : 'An extra blanket or warmer sleepwear usually helps';
       const feels = reading.temperatureC !== null && reading.humidityPct !== null ? feelsLike(reading.temperatureC, reading.humidityPct) : null;
-      const lead = feels !== null && feels - reading.temperatureC! >= 0.5 ? `Feels like ${Math.round(toUnit(feels, unit))} ${tempSymbol(unit)} with the humidity. ` : '';
-      return `${lead}${bad ? 'Airing the room before bed, a fan or a lighter duvet all help.' : 'A fan or a lighter duvet usually helps.'}`;
+      const lead = feels !== null && feels - reading.temperatureC! >= 0.5 && `Feels like ${Math.round(toUnit(feels, unit))} ${tempSymbol(unit)} with the humidity`;
+      return prose(lead, bad ? 'Airing the room before bed, a fan or a lighter duvet all help' : 'A fan or a lighter duvet usually helps');
     }
     case 'humidity':
       return above
@@ -160,7 +161,7 @@ export function hourDelta(metric: MetricKey, value: number | null, points: Store
   return best === null ? null : value - best.v;
 }
 
-/** "Up 310 ppm in the last hour."; null when the change is too small to mention. */
+/** "Up 310 ppm in the last hour"; null when the change is too small to mention. */
 export function trendSentence(metric: MetricKey, delta: number | null, unit: TempUnit): string | null {
   const min = TREND_MIN[metric];
   if (delta === null || min === undefined || Math.abs(delta) < min) return null;
@@ -172,7 +173,7 @@ export function trendSentence(metric: MetricKey, delta: number | null, unit: Tem
     amount = `${unit === 'F' ? Math.round(d) : Math.round(d * 2) / 2}°`;
   } else if (metric === 'humidity') amount = `${Math.round(size)} %`;
   else amount = `${Math.round(size / 10) * 10} ppm`;
-  return `${dir} ${amount} in the last hour.`;
+  return `${dir} ${amount} in the last hour`;
 }
 
 /** Whether the metric's reference is one for the night or a general one, in words. */
@@ -188,17 +189,17 @@ export function bandSentence(metric: MetricKey, mode: JudgeMode, unit: TempUnit)
   const r = REFERENCES[metric];
   switch (metric) {
     case 'co2':
-      return `Fresh is under ${r.okHi} ppm; above ${r.warnHi} ppm, open a window.`;
+      return `Fresh is under ${r.okHi} ppm; above ${r.warnHi} ppm, open a window`;
     case 'temperature':
-      return `Best for sleep is ${Math.round(toUnit(r.okLo, unit))} – ${Math.round(toUnit(r.okHi, unit))} ${tempSymbol(unit)}.`;
+      return `Best for sleep is ${Math.round(toUnit(r.okLo, unit))} – ${Math.round(toUnit(r.okHi, unit))} ${tempSymbol(unit)}`;
     case 'humidity':
-      return `Best for sleep is ${r.okLo} – ${r.okHi} %.`;
+      return `Best for sleep is ${r.okLo} – ${r.okHi} %`;
     case 'noise':
       return mode === 'sleep'
-        ? `Quiet for sleep is under ${r.okHi} dB(A), and ${NOISE_NIGHT_AVG_DB} dB(A) on average (WHO).`
-        : `By day, hearing guidance suggests an average under ${DAY_NOISE.warnHi} dB(A) over 24 hours.`;
+        ? `Quiet for sleep is under ${r.okHi} dB(A), and ${NOISE_NIGHT_AVG_DB} dB(A) on average (WHO)`
+        : `By day, hearing guidance suggests an average under ${DAY_NOISE.warnHi} dB(A) over 24 hours`;
     case 'light':
-      return `At most ${r.okHi} lux while you sleep; above ${r.warnHi} lux is too bright.`;
+      return `At most ${r.okHi} lux while you sleep; above ${r.warnHi} lux is too bright`;
   }
 }
 
@@ -207,7 +208,11 @@ export function stateWord(metric: MetricKey, value: number | null, severity: Sev
   if (value === null) return 'no reading';
   if (metric === 'light') return value < 3 ? 'dark' : value < 50 ? 'dim' : 'lit';
   if (severity === null) return mode === 'day' ? 'not judged by day' : 'not judged';
-  if (severity === Severity.Ok) return metric === 'noise' ? 'quiet' : metric === 'co2' ? 'fresh' : 'comfortable';
+  if (severity === Severity.Ok) {
+    // By day "ok" reaches 70 dB(A); a room at 68 is not quiet, just normal.
+    if (metric === 'noise') return mode === 'day' && value >= NOISE_NIGHT_PEAK_DB ? 'normal' : 'quiet';
+    return metric === 'co2' ? 'fresh' : 'comfortable';
+  }
   const limit = upperLimit(metric, mode);
   const above = limit !== null && value > limit;
   switch (metric) {
@@ -327,11 +332,11 @@ export const EVIDENCE: Record<JudgedMetric, Evidence> = {
       ],
       ticks: [20, NOISE_NIGHT_AVG_DB, NOISE_NIGHT_PEAK_DB, REFERENCES.noise.warnHi, 70],
     },
-    reference: 'For reference: a whisper is about 30 dB(A), a car passing outside a closed window 45 – 55 dB(A).',
+    reference: 'For reference: a whisper is about 30 dB(A), a car passing outside a closed window 45 – 55 dB(A)',
     counts:
       `Each stretch of two or more readings in a row above ${NOISE_NIGHT_PEAK_DB} dB(A) during your sleep window. The unit listens ` +
       'for about 7 seconds each time it measures, so a short sound between measurements can be missed.',
-    sources: 'WHO Guidelines for Community Noise (1999); WHO Night Noise Guidelines for Europe (2009).',
+    sources: 'WHO Guidelines for Community Noise (1999); WHO Night Noise Guidelines for Europe (2009)',
   },
   co2: {
     title: 'CO₂ and fresh air',
@@ -357,12 +362,12 @@ export const EVIDENCE: Record<JudgedMetric, Evidence> = {
       ],
       ticks: [400, REFERENCES.co2.okHi, REFERENCES.co2.warnHi, 2000],
     },
-    reference: 'Outdoor air is about 420 ppm.',
-    counts: `When the room first went above ${REFERENCES.co2.okHi} ppm during your sleep window, and the highest reading.`,
+    reference: 'Outdoor air is about 420 ppm',
+    counts: `When the room first went above ${REFERENCES.co2.okHi} ppm during your sleep window, and the highest reading`,
     sources:
       'Akimoto et al., Sci Technol Built Environ (2025, ASHRAE 1837-RP); Kang et al., Build Environ (2024); Fan et al., ' +
       'Build Environ (2022); Strøm-Tejsen et al., Indoor Air (2016); Health Canada residential CO₂ guideline (2021); ' +
-      'ASHRAE position document on indoor CO₂ (2025).',
+      'ASHRAE position document on indoor CO₂ (2025)',
   },
   temperature: {
     title: 'Temperature for sleep',
@@ -379,10 +384,10 @@ export const EVIDENCE: Record<JudgedMetric, Evidence> = {
       zones: bandZones('temperature', ['too cold', 'cool', 'comfortable', 'warm', 'too hot']),
       ticks: [14, REFERENCES.temperature.okLo, REFERENCES.temperature.okHi, 32],
     },
-    reference: '“Feels like” combines temperature and humidity, the way weather forecasts do.',
-    counts: 'Each stretch of two or more readings in a row outside the best-for-sleep range during your sleep window.',
+    reference: '“Feels like” combines temperature and humidity, the way weather forecasts do',
+    counts: 'Each stretch of two or more readings in a row outside the best-for-sleep range during your sleep window',
     sources:
-      'Okamoto-Mizuno & Mizuno, J Physiol Anthropol (2012); Baniassadi et al., Sci Total Environ (2023); WHO Housing and Health Guidelines (2018).',
+      'Okamoto-Mizuno & Mizuno, J Physiol Anthropol (2012); Baniassadi et al., Sci Total Environ (2023); WHO Housing and Health Guidelines (2018)',
   },
   humidity: {
     title: 'Humidity at night',
@@ -398,9 +403,9 @@ export const EVIDENCE: Record<JudgedMetric, Evidence> = {
       zones: bandZones('humidity', ['too dry', 'dry', 'comfortable', 'damp', 'too humid']),
       ticks: [0, REFERENCES.humidity.okLo, REFERENCES.humidity.okHi, 100],
     },
-    reference: 'Most homes sit between 40 and 60 % for most of the year.',
-    counts: `Each stretch of two or more readings in a row outside ${REFERENCES.humidity.okLo} – ${REFERENCES.humidity.okHi} % during your sleep window.`,
-    sources: 'US EPA indoor air quality guidance.',
+    reference: 'Most homes sit between 40 and 60 % for most of the year',
+    counts: `Each stretch of two or more readings in a row outside ${REFERENCES.humidity.okLo} – ${REFERENCES.humidity.okHi} % during your sleep window`,
+    sources: 'US EPA indoor air quality guidance',
   },
 };
 

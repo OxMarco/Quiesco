@@ -5,6 +5,7 @@
 
 #include "../model/Config.h"
 #include "../model/SleepWindow.h"
+#include "ResetHistory.h"
 #include "../third_party/flashdb/flashdb.h"
 
 class BondTable;
@@ -29,6 +30,11 @@ class ConfigStore {
   // only when nothing valid was read (check healthy() for a storage fault).
   bool loadSleepWindow(W25Q64Flash& flash, SleepWindow& window);
   bool saveSleepWindow(W25Q64Flash& flash, const SleepWindow& window);
+
+  // The last unexpected reset (ResetHistory). loadLastReset() false means
+  // none stored or unreadable; the record is then left zeroed.
+  bool loadLastReset(W25Q64Flash& flash, ResetHistory::Record& record);
+  bool saveLastReset(W25Q64Flash& flash, const ResetHistory::Record& record);
 
   bool healthy() const { return healthy_; }
   // 0 means no pending erase; otherwise the first sequence after deletion.

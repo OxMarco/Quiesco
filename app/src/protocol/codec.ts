@@ -267,9 +267,9 @@ export const DEVICE_NAME_MAX_BYTES = 16;
 /** Why a name would be rejected by the device, or null when it is valid. */
 export function deviceNameProblem(name: string): string | null {
   const bytes = utf8Encode(name);
-  if (bytes.length === 0) return 'Enter a name.';
-  if (bytes.length > DEVICE_NAME_MAX_BYTES) return 'Use at most 16 characters (fewer with accents or emoji).';
-  if (bytes.some((b) => b < 0x20 || b === 0x7f)) return 'Remove line breaks and control characters.';
+  if (bytes.length === 0) return 'Enter a name';
+  if (bytes.length > DEVICE_NAME_MAX_BYTES) return 'Use at most 16 characters (fewer with accents or emoji)';
+  if (bytes.some((b) => b < 0x20 || b === 0x7f)) return 'Remove line breaks and control characters';
   return null;
 }
 
@@ -349,6 +349,7 @@ export const Capability = {
   sleepWindow: 1 << 14,
   // Bit 15 is reserved (PROTOCOL.md §6.12).
   usbUpdate: 1 << 16,
+  resetRecord: 1 << 17,
 } as const;
 
 export interface DeviceInfo {
@@ -409,11 +410,63 @@ export interface Diagnostics {
   resetReason: number;
   uptimeSeconds: number;
   i2cBusStuck: boolean;
+  /** Heap in use at the last measurement, KiB; 0 without capability resetRecord. */
+  heapKiB: number;
 }
 
 export function decodeDiagnostics(data: Uint8Array): Diagnostics {
   const r = expectLength('diagnostics', data, 12);
-  return { resetReason: r.u32(0), uptimeSeconds: r.u32(4), i2cBusStuck: (r.u8(8) & 1) !== 0 };
+  return {
+    resetReason: r.u32(0),
+    uptimeSeconds: r.u32(4),
+    i2cBusStuck: (r.u8(8) & 1) !== 0,
+    heapKiB: r.u16(10),
+  };
+}
+
+// -------------------------------------------------------------- 6.18 last unexpected reset
+
+/** The last watchdog or lockup reset; cause 0 means none recorded. */
+export interface LastReset {
+  bootCounter: number;
+  uptimeSeconds: number;
+  cause: number;
+  state: number;
+  heapKiB: number;
+  errorStatus: number;
+  faultAddress: number;
+}
+
+export function decodeLastReset(data: Uint8Array): LastReset {
+  const r = expectLength('last reset', data, 20);
+  return {
+    bootCounter: r.u32(0),
+    uptimeSeconds: r.u32(4),
+    cause: r.u8(8),
+    state: r.u8(9),
+    heapKiB: r.u16(10),
+    errorStatus: r.u32(12),
+    faultAddress: r.u32(16),
+  };
+}
+
+const MBED_FAULTS: Record<number, string> = {
+  0x80ff013d: 'HardFault',
+  0x80ff013e: 'MemManage fault',
+  0x80ff013f: 'BusFault',
+  0x80ff0140: 'UsageFault',
+};
+
+/** One line for support, e.g. "watchdog, boot 64 after 37 h 6 min, …, HardFault at 0x00031a2c". */
+export function describeLastReset(r: LastReset): string {
+  if (r.cause === 0) return 'none recorded';
+  const hex = (n: number) => `0x${n.toString(16).padStart(8, '0')}`;
+  const parts = [describeResetReason(r.cause)];
+  const after = `${Math.floor(r.uptimeSeconds / 3600)} h ${Math.floor((r.uptimeSeconds % 3600) / 60)} min`;
+  if (r.bootCounter) parts.push(`boot ${r.bootCounter} after ${after}, state ${r.state}, heap ${r.heapKiB} KiB`);
+  if (r.errorStatus) parts.push(`${MBED_FAULTS[r.errorStatus] ?? hex(r.errorStatus)} at ${hex(r.faultAddress)}`);
+  else parts.push('no error raised (hang)');
+  return parts.join(', ');
 }
 
 const RESET_CAUSES: [number, string][] = [

@@ -1,7 +1,7 @@
 import type { StoredPoint } from '@/data/db';
 import type { Measurement } from '@/protocol/codec';
 import { BANDS, JUDGED, Severity } from '@/protocol/comfort';
-import { crossedAbove, hourDelta, issueHeadline, issuesOf, judgeFor, trendSentence } from '@/ui/advice';
+import { crossedAbove, hourDelta, issueHeadline, issuesOf, judgeFor, stateWord, trendSentence } from '@/ui/advice';
 import { REFERENCES } from '@/ui/references';
 import { formatDuration, judgeMode, type SleepWindow } from '@/ui/sleep';
 
@@ -64,11 +64,11 @@ describe('trend', () => {
   });
 
   test('says only changes big enough to matter', () => {
-    expect(trendSentence('co2', 310, 'C')).toBe('Up 310 ppm in the last hour.');
+    expect(trendSentence('co2', 310, 'C')).toBe('Up 310 ppm in the last hour');
     expect(trendSentence('co2', -40, 'C')).toBeNull();
-    expect(trendSentence('temperature', 1.4, 'C')).toBe('Up 1.5° in the last hour.');
-    expect(trendSentence('temperature', -1, 'F')).toBe('Down 2° in the last hour.');
-    expect(trendSentence('humidity', 4.2, 'C')).toBe('Up 4 % in the last hour.');
+    expect(trendSentence('temperature', 1.4, 'C')).toBe('Up 1.5° in the last hour');
+    expect(trendSentence('temperature', -1, 'F')).toBe('Down 2° in the last hour');
+    expect(trendSentence('humidity', 4.2, 'C')).toBe('Up 4 % in the last hour');
   });
 
   test('finds when the room last rose above the limit', () => {
@@ -87,4 +87,12 @@ test('the panel judges by the same bands as the app references', () => {
   const edges = (b: { warnLo: number; okLo: number; okHi: number; warnHi: number }) =>
     [b.warnLo, b.okLo, b.okHi, b.warnHi].map((v) => (Number.isFinite(v) && v > -1e8 ? v : null));
   for (const metric of JUDGED) expect(edges(BANDS[metric])).toEqual(edges(REFERENCES[metric]));
+});
+
+describe('state word', () => {
+  test('daytime noise under the limit is quiet only when it is', () => {
+    expect(stateWord('noise', 38, Severity.Ok, 'day')).toBe('quiet');
+    expect(stateWord('noise', 68, Severity.Ok, 'day')).toBe('normal');
+    expect(stateWord('noise', 40, Severity.Ok, 'sleep')).toBe('quiet');
+  });
 });

@@ -74,6 +74,17 @@ bool append(W25Q64Flash& flash, const uint8_t* data, uint32_t length) {
   return true;
 }
 
+// After a failed append. The head was the first 0xFF byte, but an erase cut
+// short leaves 0xFF bytes scattered among old text: a rescan moved only to
+// the next stray byte, so each cycle's flush failed and lost its lines for as
+// many cycles as the sector had stray bytes. Start the head's sector over
+// instead; a rescan is the fallback if even that erase fails.
+void restartHeadSector(W25Q64Flash& flash) {
+  const uint32_t sector = head - head % kSector;
+  headKnown = flash.eraseSector(sector);
+  head = sector;
+}
+
 }  // namespace
 
 bool flush(W25Q64Flash& flash) {
@@ -92,7 +103,7 @@ bool flush(W25Q64Flash& flash) {
                  static_cast<unsigned long>(buffer.dropped));
     if (length > 0 && !append(flash, reinterpret_cast<const uint8_t*>(line),
                               static_cast<uint32_t>(length))) {
-      headKnown = false;  // rescan next time
+      restartHeadSector(flash);
       return false;
     }
     buffer.dropped = 0;
@@ -103,7 +114,7 @@ bool flush(W25Q64Flash& flash) {
   // buffer and drop every new line instead.
   buffer.used = 0;
   if (!ok) {
-    headKnown = false;
+    restartHeadSector(flash);
   }
   return ok;
 }

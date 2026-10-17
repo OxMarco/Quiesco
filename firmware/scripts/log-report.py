@@ -233,6 +233,9 @@ def report_sensor_pair(records):
     print("  a steady offset is self-heating; a jump or drift in the difference "
           "means one sensor changed. Matching dew points mean both humidity "
           "sensors see the same air")
+    print("  not a calibration offset: the SCD41 applies its own default "
+          "compensation, which need not fit this case. Set the temperature "
+          "offset from a reference thermometer (--reference)")
 
 
 def parse_reference_time(text):

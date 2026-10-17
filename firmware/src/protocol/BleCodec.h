@@ -47,13 +47,14 @@ enum Capability : uint32_t {
   kCapSleepWindow = 1u << 14,  // 0012: panel judges by time of day
   // Bit 15 is reserved: never set (it once advertised an over-the-air update).
   kCapUsbUpdate = 1u << 16,  // device control opcode 4: XIAO-BOOT drive
+  kCapResetRecord = 1u << 17,  // 0013 last unexpected reset, 000F heap in use
 };
 constexpr uint32_t kCapabilities =
     kCapScreenSelect | kCapCalibrationOffsets | kCapForcedRecalibration |
     kCapDeviceRename | kCapLogSync | kCapFactoryReset | kCapLogErase |
     kCapBootCounter | kCapCalibrationState | kCapDiagnostics | kCapAppAuth |
     kCapChargingState | kCapTemperatureUnit | kCapEraseLogCommand |
-    kCapSleepWindow | kCapUsbUpdate;
+    kCapSleepWindow | kCapUsbUpdate | kCapResetRecord;
 
 constexpr uint16_t kDeviceInfoBytes = 20;
 constexpr uint16_t kCoreConfigBytes = 16;
@@ -62,6 +63,7 @@ constexpr uint16_t kReadingBytes = 20;
 constexpr uint16_t kCalibrationOffsetsBytes = 12;
 constexpr uint16_t kCalibrationStateBytes = 12;
 constexpr uint16_t kDiagnosticsBytes = 12;
+constexpr uint16_t kLastResetBytes = 20;  // ResetHistory::kRecordBytes
 constexpr uint16_t kCalibrationControlBytes = 4;
 constexpr uint16_t kDeviceControlBytes = 4;  // reset, enter (USB) update
 constexpr uint16_t kEraseLogControlBytes = 8;
@@ -155,6 +157,7 @@ struct Diagnostics {
   uint32_t resetReason;    // ResetReason bits of the last reset
   uint32_t uptimeSeconds;  // since this boot
   bool i2cBusStuck;        // SDA still low after recovery, last cycle
+  uint16_t heapKiB;        // heap in use at the last cycle start
 };
 
 // A device control write (§6.11).

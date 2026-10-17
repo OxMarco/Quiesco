@@ -31,7 +31,15 @@ export function Segmented<V extends string | number>({
             accessibilityRole="radio"
             accessibilityState={{ checked: on }}
             className={`flex-1 h-9 rounded-full items-center justify-center ${on ? 'bg-surface' : ''}`}>
-            <T className={`text-[13px] ${on ? 'font-body-semi' : 'text-muted'}`}>{o.label}</T>
+            {/* A fixed-height capsule: capped and shrunk to fit, never clipped. */}
+            <T
+              className={`text-[13px] ${on ? 'font-body-semi' : 'text-muted'}`}
+              maxFontSizeMultiplier={1.4}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}>
+              {o.label}
+            </T>
           </Pressable>
         );
       })}
@@ -59,13 +67,18 @@ export function Stepper({
   disabled?: boolean;
 }) {
   const clamp = (v: number) => Math.min(max, Math.max(min, Math.round(v / step) * step));
-  const text = `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value).toFixed(step < 1 ? 1 : 0)} ${unit}`;
+  // Offsets (a range through zero) show their sign; an absolute value like a CO₂ reference does not.
+  const sign = min >= 0 ? '' : value > 0 ? '+' : value < 0 ? '−' : '';
+  const text = `${sign}${Math.abs(value).toFixed(step < 1 ? 1 : 0)} ${unit}`;
   return (
     <View className="flex-row items-center justify-between py-2.5">
-      <T className="text-[15px]">{label}</T>
-      <View className={`flex-row items-center gap-2 ${disabled ? 'opacity-40' : ''}`}>
+      <T className="text-[15px] shrink">{label}</T>
+      <View className={`flex-row items-center gap-2 shrink-0 ${disabled ? 'opacity-40' : ''}`}>
         <StepButton label="−" a11y={`Decrease ${label}`} disabled={disabled || value <= min} onPress={() => onChange(clamp(value - step))} />
-        <T className="font-number-medium text-[15px] w-[68px] text-center">{text}</T>
+        {/* A minimum, not a fixed width: larger text sizes must not wrap "420 ppm". */}
+        <T className="font-number-medium text-[15px] min-w-[68px] text-center" numberOfLines={1}>
+          {text}
+        </T>
         <StepButton label="+" a11y={`Increase ${label}`} disabled={disabled || value >= max} onPress={() => onChange(clamp(value + step))} />
       </View>
     </View>

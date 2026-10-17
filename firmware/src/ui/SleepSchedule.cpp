@@ -46,6 +46,12 @@ JudgeMode judgeMode(uint64_t epochMs, const SleepWindow& window) {
                           int64_t{window.utcOffsetMinutes} * kMinuteMs;
   // nightOf: the moment's local date 12 h earlier.
   const int64_t night = floorDiv(localMs - kDayMs / 2, kDayMs);
+  // The previous night's window can run past noon (a late wake, a night
+  // shift); windows start between noon and noon, so no earlier one can.
+  const Window previous = windowForNight(night - 1, window);
+  if (localMs >= previous.fromMs && localMs < previous.toMs) {
+    return JudgeMode::kSleep;
+  }
   Window current = windowForNight(night, window);
   if (localMs >= current.toMs) {
     current = windowForNight(night + 1, window);

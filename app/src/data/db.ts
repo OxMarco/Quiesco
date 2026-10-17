@@ -8,7 +8,7 @@ import { inferEpochs } from '@/protocol/log';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 async function migrate(db: SQLite.SQLiteDatabase) {
   await db.execAsync('PRAGMA journal_mode = WAL;');
@@ -57,6 +57,11 @@ async function migrateSteps(db: SQLite.SQLiteDatabase, version: number) {
         value TEXT NOT NULL
       ) WITHOUT ROWID;
     `);
+  }
+  if (version < 3) {
+    // Demo mode is gone: drop the pretend unit and its made-up nights.
+    await db.runAsync("DELETE FROM records WHERE serial = 'DEMO000000000000'");
+    await db.runAsync("DELETE FROM units WHERE serial = 'DEMO000000000000'");
   }
 }
 
@@ -258,6 +263,17 @@ export async function recordsBetween(serial: string, fromS: number, toS: number)
     fromS,
     toS,
   );
+}
+
+export async function countBetween(serial: string, fromS: number, toS: number): Promise<number> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM records WHERE serial = ? AND epoch_s BETWEEN ? AND ?`,
+    serial,
+    fromS,
+    toS,
+  );
+  return row?.n ?? 0;
 }
 
 export async function timeSpan(serial: string): Promise<{ first: number; last: number; count: number } | null> {

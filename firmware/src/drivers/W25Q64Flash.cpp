@@ -34,12 +34,16 @@ uint8_t readStatus1() {
   return status;
 }
 
-void writeEnable() {
+// False when the chip did not latch WEL (status bit 1): a lost command or a
+// write-protected chip, which would ignore the program or erase that follows
+// and leave the old contents.
+bool writeEnable() {
   SPI.beginTransaction(kSpiSettings);
   csLow();
   SPI.transfer(0x06);
   csHigh();
   SPI.endTransaction();
+  return (readStatus1() & 0x02) != 0;
 }
 
 }  // namespace
@@ -86,6 +90,13 @@ void W25Q64Flash::end() {
     SPI.transfer(0xB9);  // deep power-down until the next release
     csHigh();
     SPI.endTransaction();
+    // App ends the flash last before the rail drops. MOSI can hold the last
+    // bit sent, and 0xB9 ends in a 1, which would feed the unpowered flash
+    // and panel through their input protection diodes until the next cycle.
+    // A zero byte with nothing selected leaves it low.
+    SPI.beginTransaction(kSpiSettings);
+    SPI.transfer(0x00);
+    SPI.endTransaction();
   }
   present_ = false;
 }
@@ -127,7 +138,9 @@ bool W25Q64Flash::program(uint32_t address, const uint8_t* data,
       (address % kPageBytes) + length > kPageBytes) {
     return false;
   }
-  writeEnable();
+  if (!writeEnable()) {
+    return false;
+  }
   SPI.beginTransaction(kSpiSettings);
   csLow();
   SPI.transfer(0x02);
@@ -158,12 +171,32 @@ bool W25Q64Flash::eraseSector(uint32_t address) {
       address % kSectorBytes != 0) {
     return false;
   }
-  writeEnable();
+  if (!writeEnable()) {
+    QUIESCO_TRACE_EVENT("flash", "erase not enabled", address);
+    return false;
+  }
   SPI.beginTransaction(kSpiSettings);
   csLow();
   SPI.transfer(0x20);
   sendAddress(address);
   csHigh();
   SPI.endTransaction();
-  return waitIdle(kEraseTimeoutMs);
+  if (!waitIdle(kEraseTimeoutMs)) {
+    return false;
+  }
+  // Program has its read-back verify; erase gets a blank check of its first
+  // page, where FlashDB keeps the sector header. A sector that reported
+  // success but kept its data would otherwise pass as erased: a log wipe
+  // that left records, or a header written over old bytes.
+  uint8_t head[kPageBytes];
+  if (!read(address, head, sizeof head)) {
+    return false;
+  }
+  for (uint8_t byte : head) {
+    if (byte != 0xFF) {
+      QUIESCO_TRACE_EVENT("flash", "erase not blank", address);
+      return false;
+    }
+  }
+  return true;
 }

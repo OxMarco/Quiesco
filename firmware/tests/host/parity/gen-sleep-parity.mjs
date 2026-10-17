@@ -24,6 +24,9 @@ const WINDOWS = [
   ['early evening 21:00-05:00', 1260, 300],
   ['bedtime 11:45 wraps the noon rule, wake 19:00', 705, 1140],
   ['bedtime 12:00 is an evening bedtime, wake 20:00', 720, 1200],
+  ['late wake after noon 04:00-12:30', 240, 750],
+  ['night shift 08:00-16:00', 480, 960],
+  ['longest night 23:00-13:00', 1380, 780],
 ];
 // [UTC offset minutes, fixed-offset zone the app runs in]
 const ZONES = [

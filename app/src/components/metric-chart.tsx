@@ -13,7 +13,7 @@ import { useState } from 'react';
 import { Modal, Pressable, useWindowDimensions, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAnimatedReaction, useDerivedValue } from 'react-native-reanimated';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CartesianChart, Line, useChartPressState, type CartesianChartRenderArg } from 'victory-native';
 import { scheduleOnRN } from 'react-native-worklets';
 
@@ -86,12 +86,14 @@ export function MetricChart(props: Props) {
 
 function FullScreenChart({ onClose, ...props }: Props & { onClose: () => void }) {
   const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const meta = METRICS[props.metric];
   const tempUnit = props.tempUnit ?? 'C';
   const unit = props.metric === 'temperature' && tempUnit === 'F' ? '°F' : meta.unit;
   const detail = `${clock(props.fromS, true)} – ${clock(props.toS, true)} · drag along the line to read a value`;
   return (
-    <SafeAreaView className="flex-1 bg-bg" edges={['top', 'bottom']}>
+    // Padded in JS, not SafeAreaView (see Screen).
+    <View className="flex-1 bg-bg" style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}>
       <View className="flex-row justify-between items-start px-5 pt-4 pb-2 gap-4">
         <View className="shrink gap-0.5">
           <T className="font-title text-2xl">
@@ -106,7 +108,7 @@ function FullScreenChart({ onClose, ...props }: Props & { onClose: () => void })
       <View className="flex-1 justify-center px-3">
         <ChartBody {...props} height={Math.round(height * 0.6)} quietAxis={false} interactive />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

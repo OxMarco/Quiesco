@@ -3,10 +3,11 @@
 
 #include <stdint.h>
 
-// Anchors the BLE-supplied Unix epoch to the monotonic clock. Purely RAM:
-// the epoch is intentionally lost on reset (no RTC) and the app re-syncs on
-// connect, so records written across a reboot are never mis-stamped by a
-// stale anchor.
+// Anchors the BLE-supplied Unix epoch to the monotonic clock. Purely RAM, and
+// there is no RTC: the app re-syncs on connect. The one exception is a
+// watchdog or lockup reset, when App re-anchors from the time of the last
+// watchdog feed (ResetHistory::epochAtReset), which bounds the gap. After any
+// other reset the epoch is lost, so a stale anchor never mis-stamps records.
 class WallClock {
  public:
   void sync(uint64_t epochMs, uint64_t monotonicNowMs) {

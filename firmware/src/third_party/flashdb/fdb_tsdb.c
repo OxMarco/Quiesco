@@ -4,7 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Modified for Quiesco (marked "Quiesco:"): an erased TSDB is initialised
- * one sector at a time instead of in one pass. See README.quiesco.md.
+ * one sector at a time instead of in one pass, a ring left with every
+ * sector FULL by a power cut mounts again, and a whole-TSDB format lets the
+ * firmware reload its watchdog. See README.quiesco.md.
  */
 
 /**
@@ -140,6 +142,10 @@ struct query_count_args {
     size_t count;
 };
 
+/* Quiesco: end_time of a sector that holds no committed record. Sequences
+ * (the log's timestamps) start at 1, so a negative time is never a record's. */
+#define TSDB_NO_END_TIME ((fdb_time_t)-1)
+
 struct check_sec_hdr_cb_args {
     fdb_tsdb_t db;
     bool check_failed;
@@ -151,6 +157,13 @@ struct check_sec_hdr_cb_args {
     uint32_t damaged_addr;
     size_t valid_num;
     uint32_t first_valid_addr;
+    /* Quiesco: the FULL sector with the newest end time */
+    size_t full_num;
+    uint32_t newest_full_addr;
+    fdb_time_t newest_full_time;
+    /* Quiesco: the FULL sector with the oldest start time */
+    uint32_t oldest_full_addr;
+    fdb_time_t oldest_full_time;
 };
 
 static fdb_err_t read_tsl(fdb_tsdb_t db, fdb_tsl_t tsl)
@@ -257,12 +270,18 @@ static fdb_err_t read_sector_info(fdb_tsdb_t db, uint32_t addr, tsdb_sec_info_t 
 
     FDB_ASSERT(sector);
 
+    /* Quiesco: an unreadable header is an invalid sector, not whatever the
+     * caller's struct held; init's callbacks branch on check_ok. */
+    sector->addr = addr;
+    sector->check_ok = false;
+    sector->magic = 0;
+    sector->end_time = TSDB_NO_END_TIME;
+
     /* read sector header raw data */
     if (_fdb_flash_read((fdb_db_t)db, addr, (uint32_t *)&sec_hdr, sizeof(struct sector_hdr_data)) != FDB_NO_ERR) {
         return FDB_READ_ERR;
     }
 
-    sector->addr = addr;
     memcpy(&sector->magic, sec_hdr.magic, sizeof(uint32_t));
 
     /* check magic word */
@@ -271,6 +290,10 @@ static fdb_err_t read_sector_info(fdb_tsdb_t db, uint32_t addr, tsdb_sec_info_t 
         return FDB_INIT_FAILED;
     }
     sector->check_ok = true;
+    /* Quiesco: a sector marked USING before its first record committed has
+     * no end info and no record; leave that visible instead of whatever the
+     * caller's struct held (stack garbage on the first sector at init). */
+    sector->end_time = TSDB_NO_END_TIME;
     sector->status = (fdb_sector_store_status_t) _fdb_get_status(sec_hdr.status, FDB_SECTOR_STORE_STATUS_NUM);
     memcpy(&sector->start_time, sec_hdr.start_time, sizeof(fdb_time_t));
     sector->end_info_stat[0] = (fdb_tsl_status_t) _fdb_get_status(sec_hdr.end_info[0].status, FDB_TSL_STATUS_NUM);
@@ -945,6 +968,15 @@ static bool check_sec_hdr_cb(tsdb_sec_info_t sector, void *arg1, void *arg2)
             (arg->check_failed) = true;
             return true;
         }
+    } else if (sector->status == FDB_SECTOR_STORE_FULL) {
+        if ((arg->full_num)++ == 0 || sector->end_time > arg->newest_full_time) {
+            arg->newest_full_addr = sector->addr;
+            arg->newest_full_time = sector->end_time;
+        }
+        if (arg->full_num == 1 || sector->start_time < arg->oldest_full_time) {
+            arg->oldest_full_addr = sector->addr;
+            arg->oldest_full_time = sector->start_time;
+        }
     } else if (sector->status == FDB_SECTOR_STORE_EMPTY) {
         (arg->empty_num) += 1;
         arg->empty_addr = sector->addr;
@@ -959,10 +991,18 @@ static bool check_sec_hdr_cb(tsdb_sec_info_t sector, void *arg1, void *arg2)
 
     return false;
 }
+/* Quiesco: called between the sector erases of a whole-TSDB format, which
+ * for the 7.9 MB log takes minutes; the firmware reloads its watchdog here
+ * (HardwareWatchdog.cpp), or the format restarted on every boot. */
+__attribute__((weak)) void fdb_quiesco_long_operation_step(void)
+{
+}
+
 static bool format_all_cb(tsdb_sec_info_t sector, void *arg1, void *arg2)
 {
     fdb_tsdb_t db = arg1;
 
+    fdb_quiesco_long_operation_step();
     format_sector(db, sector->addr);
 
     return false;
@@ -1088,7 +1128,7 @@ fdb_err_t fdb_tsdb_init(fdb_tsdb_t db, const char *name, const char *path, fdb_g
 {
     fdb_err_t result = FDB_NO_ERR;
     struct tsdb_sec_info sector;
-    struct check_sec_hdr_cb_args check_sec_arg = { db, false, 0, 0, 0, 0, 0, 0, 0, 0};
+    struct check_sec_hdr_cb_args check_sec_arg = { db, false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     FDB_ASSERT(get_time);
 
@@ -1143,6 +1183,26 @@ fdb_err_t fdb_tsdb_init(fdb_tsdb_t db, const char *name, const char *path, fdb_g
             check_sec_arg.empty_num = 1;
             check_sec_arg.empty_addr = initial_addr;
         }
+        /* Quiesco: every sector FULL. After the ring wrapped, power was lost
+         * between update_sec_status() closing the current sector and
+         * formatting the next, and cur_sec stayed unset: the oldest address
+         * then overflowed and every append failed. Finish that step: format
+         * the sector after the newest, the oldest one. */
+        if (check_sec_arg.empty_num == 0 && db->cur_sec.addr == FDB_DATA_UNUSED &&
+                check_sec_arg.full_num > 0) {
+            uint32_t next_addr = check_sec_arg.newest_full_addr + db_sec_size(db);
+            if (db->parent.not_formatable) {
+                result = FDB_READ_ERR;
+                goto __exit;
+            }
+            if (next_addr >= db_max_size(db)) {
+                next_addr = 0;
+            }
+            format_sector(db, next_addr);
+            read_sector_info(db, next_addr, &db->cur_sec, false);
+            check_sec_arg.empty_num = 1;
+            check_sec_arg.empty_addr = next_addr;
+        }
         if (check_sec_arg.empty_num > 0) {
             latest_addr = check_sec_arg.empty_addr;
         } else {
@@ -1161,8 +1221,16 @@ fdb_err_t fdb_tsdb_init(fdb_tsdb_t db, const char *name, const char *path, fdb_g
             db_oldest_addr(db) = latest_addr + db_sec_size(db);
         }
         if (check_sec_arg.erased_num > 0 || check_sec_arg.damaged_num > 0) {
-            db_oldest_addr(db) = check_sec_arg.valid_num > 0
-                    ? check_sec_arg.first_valid_addr : latest_addr;
+            /* Quiesco: with invalid sectors in the ring the one after the
+             * newest may not be readable. The oldest readable history is the
+             * FULL sector that started first; the lowest address is only
+             * right before the ring wraps. */
+            if (check_sec_arg.full_num > 0) {
+                db_oldest_addr(db) = check_sec_arg.oldest_full_addr;
+            } else {
+                db_oldest_addr(db) = check_sec_arg.valid_num > 0
+                        ? check_sec_arg.first_valid_addr : latest_addr;
+            }
         }
     }
     FDB_DEBUG("TSDB (%s) oldest sectors is 0x%08" PRIX32 ", current using sector is 0x%08" PRIX32 ".\n", db_name(db), db_oldest_addr(db),
@@ -1170,9 +1238,15 @@ fdb_err_t fdb_tsdb_init(fdb_tsdb_t db, const char *name, const char *path, fdb_g
     /* read the current using sector info */
     read_sector_info(db, db->cur_sec.addr, &db->cur_sec, true);
     /* get last save time */
-    if (db->cur_sec.status == FDB_SECTOR_STORE_USING) {
+    if (db->cur_sec.status == FDB_SECTOR_STORE_USING &&
+            db->cur_sec.end_time != TSDB_NO_END_TIME) {
         db->last_time = db->cur_sec.end_time;
-    } else if (db->cur_sec.status == FDB_SECTOR_STORE_EMPTY && db_oldest_addr(db) != db->cur_sec.addr) {
+    } else if (db->cur_sec.status == FDB_SECTOR_STORE_USING ||
+            (db->cur_sec.status == FDB_SECTOR_STORE_EMPTY && db_oldest_addr(db) != db->cur_sec.addr)) {
+        /* Quiesco: a USING sector with no committed record (power lost
+         * between marking it and writing the first record) continues from
+         * the sector before it, as an EMPTY one does. A previous sector that
+         * is erased or not FULL means a fresh ring. */
         struct tsdb_sec_info sec;
         uint32_t addr = db->cur_sec.addr;
 
@@ -1182,7 +1256,8 @@ fdb_err_t fdb_tsdb_init(fdb_tsdb_t db, const char *name, const char *path, fdb_g
             addr -= db_sec_size(db);
         }
         read_sector_info(db, addr, &sec, false);
-        db->last_time = sec.end_time;
+        db->last_time = (sec.check_ok && sec.status == FDB_SECTOR_STORE_FULL &&
+                sec.end_time != TSDB_NO_END_TIME) ? sec.end_time : 0;
     }
 
     /* unlock the TSDB */

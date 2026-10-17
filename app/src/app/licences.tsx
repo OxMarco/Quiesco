@@ -11,7 +11,7 @@ import { Platform, Pressable, SectionList, TextInput, View } from 'react-native'
 import { Card, T, Title } from '@/components/ui';
 import licences from '@/data/licences.json';
 import { useTheme } from '@/theme';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Item {
   name: string;
@@ -26,6 +26,7 @@ const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 
 export default function LicencesScreen() {
   const t = useTheme();
+  const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<string | null>(null);
 
@@ -40,11 +41,13 @@ export default function LicencesScreen() {
   }, [query]);
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-bg">
+    // Padded in JS, not SafeAreaView, so the list's end is not left below the screen (see Screen).
+    <View className="flex-1 bg-bg" style={{ paddingTop: insets.top }}>
       <SectionList
         sections={sections}
         keyExtractor={(i, index) => `${i.name}@${i.version}#${index}`}
-        contentContainerClassName="px-4 pb-10"
+        contentContainerClassName="px-4"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
         keyboardShouldPersistTaps="handled"
         stickySectionHeadersEnabled={false}
         initialNumToRender={30}
@@ -129,6 +132,6 @@ export default function LicencesScreen() {
         }}
         ListEmptyComponent={<T className="text-muted px-1 py-6">Nothing matches “{query}”.</T>}
       />
-    </SafeAreaView>
+    </View>
   );
 }

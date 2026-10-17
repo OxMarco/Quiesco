@@ -1,3 +1,12 @@
+/**
+ * Sentences as one string. A lone sentence gets no full stop (UI copy style);
+ * two or more are punctuated normally. Falsy parts are skipped.
+ */
+export function prose(...sentences: (string | null | false | undefined)[]): string {
+  const parts = sentences.filter((s): s is string => !!s);
+  return parts.length === 1 ? parts[0] : parts.map((s) => `${s}.`).join(' ');
+}
+
 export function ago(ms: number | null, now = Date.now()): string {
   if (ms === null) return 'never';
   const s = Math.max(0, Math.round((now - ms) / 1000));

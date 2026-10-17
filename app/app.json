@@ -11,11 +11,19 @@
       "bundleIdentifier": "rest.quiesco.app",
       "supportsTablet": false,
       "icon": "./assets/images/icon.png",
-      "appleTeamId": "HDP6U6R2Y6",
+      "appleTeamId": "CR48HV8UBC",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "bluetooth-central"
+        ]
       },
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.rest.quiesco.app"
+        ]
+      }
     },
     "android": {
       "package": "rest.quiesco.app",
@@ -26,7 +34,10 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.health.READ_SLEEP"
+      ]
     },
     "web": {
       "output": "static",
@@ -57,7 +68,51 @@
       ],
       "expo-sqlite",
       "expo-secure-store",
-      "expo-mail-composer"
+      "expo-mail-composer",
+      "expo-background-task",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "usePrecompiledModules": false
+          },
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Quiesco reads when you slept, so each night is judged over the hours you were actually asleep. It never writes to Apple Health, and nothing leaves your phone.",
+          "NSHealthUpdateUsageDescription": false,
+          "background": false
+        }
+      ],
+      "react-native-health-connect",
+      "@bacons/apple-targets",
+      [
+        "react-native-android-widget",
+        {
+          "fonts": [
+            "./node_modules/@expo-google-fonts/fredoka/600SemiBold/Fredoka_600SemiBold.ttf",
+            "./node_modules/@expo-google-fonts/noto-sans/500Medium/NotoSans_500Medium.ttf"
+          ],
+          "widgets": [
+            {
+              "name": "Room",
+              "label": "Quiesco",
+              "description": "How the room is right now, with the problem to fix first",
+              "minWidth": "110dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 2,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

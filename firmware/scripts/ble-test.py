@@ -18,6 +18,10 @@ Needs bleak (CoreBluetooth on macOS; also BlueZ and WinRT):
   scripts/ble-test.py download log.csv     whole log as CSV for log-report.py
   scripts/ble-test.py usb-update           unit on USB: reboot it into the XIAO-BOOT
                                            drive; copy a .uf2 onto it to update
+  scripts/ble-test.py diagnostics [--set-clock]
+                                           the unit's clock, diagnostics and last
+                                           unexpected reset, read before the
+                                           clock is written (only with --set-clock)
 
 The unit is the first one advertising the Quiesco service, or pass --name or
 --address (a CoreBluetooth UUID on macOS). Close the companion app first: the
@@ -67,7 +71,7 @@ INTERVAL, CORE_CONFIG, READING, STATUS = "0001", "0002", "0003", "0004"
 EPOCH, SCREEN, OFFSETS, NAME = "0005", "0006", "0007", "0008"
 SYNC_CONTROL, LOG_DATA, CAL_CONTROL, DEVICE_INFO = "0009", "000A", "000B", "000C"
 DEVICE_CONTROL, CAL_STATE, DIAGNOSTICS, AUTH, ENROL_KEY = "000D", "000E", "000F", "0010", "0011"
-SLEEP_WINDOW = "0012"
+SLEEP_WINDOW, LAST_RESET = "0012", "0013"
 DIS = {"2A29": "manufacturer", "2A24": "model", "2A25": "serial",
        "2A26": "firmware", "2A27": "hardware"}
 
@@ -91,6 +95,7 @@ CHARACTERISTICS = {
     AUTH: ("auth", {"read", "write"}),
     ENROL_KEY: ("enrolment metadata", {"read"}),
     SLEEP_WINDOW: ("sleep window", {"read", "write"}),
+    LAST_RESET: ("last unexpected reset", {"read"}),
 }
 # Blank (zeros) until the connection authenticates (§3).
 PROTECTED_READS = [INTERVAL, CORE_CONFIG, READING, STATUS, EPOCH, SCREEN,
@@ -101,8 +106,9 @@ CAP_SCREEN, CAP_OFFSETS, CAP_FRC, CAP_RENAME, CAP_LOG = 0, 1, 2, 3, 4
 CAP_RESET, CAP_ERASE, CAP_BOOT, CAP_CAL_STATE, CAP_DIAG = 5, 6, 7, 8, 9
 CAP_AUTH, CAP_CHARGING, CAP_TEMP_UNIT, CAP_ERASE_COMMAND, CAP_SLEEP_WINDOW = 10, 11, 12, 13, 14
 CAP_USB_UPDATE = 16  # bit 15 is reserved
+CAP_RESET_RECORD = 17
 # Characteristics a unit has only with a capability bit.
-CHARACTERISTIC_CAPS = {SLEEP_WINDOW: CAP_SLEEP_WINDOW}
+CHARACTERISTIC_CAPS = {SLEEP_WINDOW: CAP_SLEEP_WINDOW, LAST_RESET: CAP_RESET_RECORD}
 
 INTERVALS_S = (60, 300, 600, 1800)
 REQUEST_S = 8.0       # §5: up to ~5 s while the panel refreshes
@@ -278,7 +284,7 @@ def sleep_window_valid(data):
 CAPABILITY_NAMES = ["screen", "offsets", "frc", "rename", "log", "reset", "erase",
                     "boot-counter", "cal-state", "diagnostics", "app-auth",
                     "charging", "temp-unit", "erase-command", "sleep-window",
-                    "reserved-15", "usb-update"]
+                    "reserved-15", "usb-update", "reset-record"]
 
 
 def decode_device_info(data):
@@ -314,7 +320,24 @@ def decode_diagnostics(data):
     return {"reset_reason": reason,
             "reset_cause": ", ".join(causes) or ("power-on or brownout" if reason == 0
                                                  else hex(reason)),
-            "uptime_s": uptime, "i2c_bus_stuck": bool(flags & 1)}
+            "uptime_s": uptime, "i2c_bus_stuck": bool(flags & 1),
+            "heap_kib": struct.unpack_from("<H", data, 10)[0]}
+
+
+MBED_FAULTS = {0x80FF013D: "HardFault", 0x80FF013E: "MemManage fault",
+               0x80FF013F: "BusFault", 0x80FF0140: "UsageFault"}
+
+
+def decode_last_reset(data):
+    """§6.18: the last watchdog or lockup reset; cause 0 means none recorded."""
+    _check_length("last reset", data, 20)
+    boot, uptime, cause, state, heap, status, address = struct.unpack_from("<IIBBHII", data, 0)
+    causes = [name for bit, name in RESET_CAUSES.items() if bit < 4 and cause >> bit & 1]
+    return {"recorded": cause != 0, "boot": boot, "uptime_s": uptime,
+            "cause": ", ".join(causes) or "none", "state": state, "heap_kib": heap,
+            "error_status": status,
+            "error": MBED_FAULTS.get(status, hex(status) if status else "none"),
+            "fault_address": address}
 
 
 def decode_auth_state(data):
@@ -611,8 +634,8 @@ def self_test():
     expect("log sync START", encode_log_start(1201, 0, 244) == vec("sync start", "01 00 b1 04 00 00 00 00 f4 00"))
     expect("log sync ABORT", encode_log_abort()[:2] == b"\x02\x00" and len(encode_log_abort()) == 10)
 
-    info = decode_device_info(vec("device info", "06 00 ff 7f 01 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00"))
-    expect("device info", info == {"protocol": 6, "capabilities": 0x17FFF, "firmware": "1.2.3",
+    info = decode_device_info(vec("device info", "06 00 ff 7f 03 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00"))
+    expect("device info", info == {"protocol": 6, "capabilities": 0x37FFF, "firmware": "1.2.3",
                                    "debug_build": False, "enrolment_open": True,
                                    "enrolled": False, "no_battery": False,
                                    "scd41_serial": 0xA1B2C3D4E5F6, "boot_counter": 7}, info)
@@ -661,9 +684,16 @@ def self_test():
                                         "last_frc_reference_ppm": 420,
                                         "last_frc_correction_ppm": -37, "asc_off": True}, cal)
 
-    diag = decode_diagnostics(vec("diagnostics", "02 00 00 00 10 0e 00 00 00 00 00 00"))
+    diag = decode_diagnostics(vec("diagnostics", "02 00 00 00 10 0e 00 00 00 00 12 00"))
     expect("diagnostics", diag["reset_cause"] == "watchdog" and diag["uptime_s"] == 3600
-           and not diag["i2c_bus_stuck"], diag)
+           and not diag["i2c_bus_stuck"] and diag["heap_kib"] == 18, diag)
+    last = decode_last_reset(vec("last reset",
+                                 "40 00 00 00 b8 09 02 00 02 00 12 00 3d 01 ff 80 2c 1a 03 00"))
+    expect("last reset", last["recorded"] and last["boot"] == 64
+           and last["uptime_s"] == 37 * 3600 + 6 * 60 and last["cause"] == "watchdog"
+           and last["heap_kib"] == 18 and last["error"] == "HardFault"
+           and last["fault_address"] == 0x31A2C, last)
+    expect("no last reset", not decode_last_reset(bytes(20))["recorded"])
 
     challenge = bytes(range(16))
     key = bytes(range(0xA0, 0xB0))
@@ -1120,6 +1150,41 @@ async def download_all(unit, start=0, batch=2000, quiet=False):
 
 # ================================================================== commands
 
+async def cmd_diagnostics(args):
+    """Clock, diagnostics and last reset as the unit has them: the epoch is
+    read before anything writes it, so a clock kept across a reset shows."""
+    device = await find_unit(args)
+    unit = Unit(device)
+    await unit.connect()
+    try:
+        info, serial, _ = await read_identity(unit)
+        require_protocol(info)
+        await authenticate(unit, args, serial)
+        status = decode_status(await unit.read(STATUS))
+        epoch_ms = decode_epoch(await unit.read(EPOCH))
+        now_ms = time.time() * 1000
+        clock = {"synced": status["clock_synced"], "epoch_ms": epoch_ms}
+        if epoch_ms:
+            clock["epoch"] = datetime.datetime.fromtimestamp(epoch_ms / 1000).isoformat(
+                timespec="seconds")
+        print_fields(f"Unit {serial}, boot {info['boot_counter']}", clock)
+        if has_cap(info, CAP_DIAG):
+            print_fields("Diagnostics (000F)", decode_diagnostics(await unit.read(DIAGNOSTICS)))
+        if has_cap(info, CAP_RESET_RECORD):
+            last = decode_last_reset(await unit.read(LAST_RESET))
+            last["fault_address"] = f"{last['fault_address']:#010x}"
+            last["error_status"] = f"{last['error_status']:#010x}"
+            print_fields("Last unexpected reset (0013)", last)
+        else:
+            print("last unexpected reset (0013): not in this firmware (capability bit 17)")
+        if args.set_clock:
+            await unit.write(EPOCH, encode_epoch(now_ms))
+            print("clock written")
+    finally:
+        await unit.disconnect()
+    return 0
+
+
 async def cmd_scan(args):
     _, BleakScanner = _import_bleak()
     found = await BleakScanner.discover(timeout=args.scan_time, return_adv=True,
@@ -1288,6 +1353,7 @@ def describe(short, data):
                 READING: decode_reading, STATUS: decode_status, EPOCH: decode_epoch,
                 OFFSETS: decode_offsets, CAL_STATE: decode_calibration_state,
                 DIAGNOSTICS: decode_diagnostics, DEVICE_INFO: decode_device_info,
+                LAST_RESET: decode_last_reset,
                 AUTH: decode_auth_state, ENROL_KEY: decode_enrol_key,
                 SLEEP_WINDOW: lambda d: decode_sleep_window(d)["summary"]}
     if short == SCREEN:
@@ -1326,6 +1392,8 @@ class Suite:
 
     def protected_reads(self):
         extra = [SLEEP_WINDOW] if has_cap(self.info, CAP_SLEEP_WINDOW) else []
+        if has_cap(self.info, CAP_RESET_RECORD):
+            extra.append(LAST_RESET)
         return PROTECTED_READS + extra
 
     # -------------------------------------------------------------- plumbing
@@ -1595,6 +1663,7 @@ class Suite:
             (SYNC_CONTROL, "opcode 0", bytes(10)),
             (SYNC_CONTROL, "opcode 3", b"\x03" + bytes(9)),
             (SYNC_CONTROL, "opcode 255", b"\xff" + bytes(9)),
+            (SYNC_CONTROL, "reserved byte 1 set", b"\x02\x01" + bytes(8)),
             (SYNC_CONTROL, "ABORT while idle", encode_log_abort()),
             (CAL_CONTROL, "too short", b"\x00\x00\xa4"),
             (CAL_CONTROL, "too long", b"\x00\x00\xa4\x01\x00"),
@@ -2002,6 +2071,10 @@ def main():
     download.add_argument("--start", type=int, default=0, help="first sequence wanted")
     download.add_argument("--batch", type=int, default=2000)
     sub.add_parser("usb-update", help="reboot the unit into the XIAO-BOOT drive")
+    diagnostics = sub.add_parser("diagnostics",
+                                 help="clock, diagnostics and last unexpected reset")
+    diagnostics.add_argument("--set-clock", action="store_true",
+                             help="write the Mac's time afterwards")
     args = parser.parse_args()
 
     if args.self_test:
@@ -2016,7 +2089,7 @@ def main():
         if not args.out:
             parser.error("download needs an output file")
     handler = {"scan": cmd_scan, "info": cmd_info, "enrol": cmd_enrol, "run": cmd_run,
-               "download": cmd_download,
+               "download": cmd_download, "diagnostics": cmd_diagnostics,
                "usb-update": cmd_usb_update}[args.command]
 
     async def guarded():

@@ -28,11 +28,24 @@ if [ "$mbedtls_prefix" != /usr ]; then
   mbedtls_link=(-L"$mbedtls_prefix/lib" -lmbedcrypto)
 fi
 
+# SANITIZE=1 builds everything with AddressSanitizer and UBSan (make sanitize).
+# FlashDB's C keeps UBSan's null check off: its *_OFFSET macros are the
+# classic &((struct T *)0)->field offsetof, folded to a constant.
+san_c=()
+san_cxx=()
+if [ "${SANITIZE:-0}" = 1 ]; then
+  san_cxx=(-fsanitize=address,undefined -fno-sanitize-recover=undefined -g)
+  san_c=("${san_cxx[@]}" -fno-sanitize=null)
+  binary="$binary-san"; power_binary="$power_binary-san"
+  storage_binary="$storage_binary-san"; flashdb_build_dir="$flashdb_build_dir-san"
+  doctest_main="${doctest_main%.o}-san.o"
+fi
+
 mkdir -p "$flashdb_build_dir"
 flashdb_objects=()
 for source in fdb.c fdb_kvdb.c fdb_tsdb.c fdb_utils.c fal.c fal_flash.c fal_partition.c; do
   object="$flashdb_build_dir/${source%.c}.o"
-  "${CC:-cc}" -std=c11 -Wall -Wextra -Wno-unused-parameter \
+  "${CC:-cc}" ${san_c[@]+"${san_c[@]}"} -std=c11 -Wall -Wextra -Wno-unused-parameter \
     -I"$root/src" \
     -I"$root/src/third_party/flashdb" \
     -c "$root/src/third_party/flashdb/$source" -o "$object"
@@ -41,11 +54,11 @@ done
 
 # doctest's runner (tests/host/doctest_main.cpp), built once for every binary.
 # -isystem keeps its header out of -Werror; the tests themselves stay strict.
-"${CXX:-c++}" -std=c++14 -Wall -Wextra -Werror -pedantic \
+"${CXX:-c++}" ${san_cxx[@]+"${san_cxx[@]}"} -std=c++14 -Wall -Wextra -Werror -pedantic \
   -isystem "$doctest_dir" \
   -c "$root/tests/host/doctest_main.cpp" -o "$doctest_main"
 
-"${CXX:-c++}" \
+"${CXX:-c++}" ${san_cxx[@]+"${san_cxx[@]}"} \
   -std=c++14 \
   -Wall -Wextra -Werror -pedantic \
   -I"$root/src" \
@@ -62,7 +75,7 @@ done
 
 "$binary"
 
-"${CXX:-c++}" \
+"${CXX:-c++}" ${san_cxx[@]+"${san_cxx[@]}"} \
   -std=c++14 \
   -Wall -Wextra -Werror -pedantic \
   -DARDUINO_SEEED_XIAO_NRF52840_PLUS \
@@ -78,7 +91,7 @@ done
 
 # Flash-facing stores and the BLE wire codec run against the in-memory
 # W25Q64Flash sim (no Arduino fakes needed: every linked TU is pure C++).
-"${CXX:-c++}" \
+"${CXX:-c++}" ${san_cxx[@]+"${san_cxx[@]}"} \
   -std=c++14 \
   -Wall -Wextra -Werror -pedantic \
   -I"$root/tests/host/fakes" \
@@ -96,6 +109,7 @@ done
   "$root/src/services/CalibrationPolicy.cpp" \
   "$root/src/services/ConfigRecord.cpp" \
   "$root/src/services/ConfigStore.cpp" \
+  "$root/src/services/ResetHistory.cpp" \
   "$root/src/services/SampleLog.cpp" \
   "$root/src/services/SampleLogFlashDb.cpp" \
   "$root/src/services/SampleRecord.cpp" \
@@ -107,8 +121,20 @@ done
 
 "$storage_binary"
 
-runtime_binary="${TMPDIR:-/tmp}/quiesco-runtime-tests"
-"${CXX:-c++}" -std=c++14 -Wall -Wextra -Werror -pedantic \
+# The trace ring, as a trace build (QUIESCO_TRACE=1).
+trace_binary="${TMPDIR:-/tmp}/quiesco-trace-store-tests${SANITIZE:+-san}"
+"${CXX:-c++}" ${san_cxx[@]+"${san_cxx[@]}"} -std=c++14 -Wall -Wextra -Werror -pedantic \
+  -DQUIESCO_TRACE=1 \
+  -I"$root/tests/host/fakes" -I"$root/src" \
+  -isystem "$doctest_dir" \
+  "$root/tests/host/test_trace_store.cpp" "$doctest_main" \
+  "$root/tests/host/fakes/W25Q64FlashSim.cpp" \
+  "$root/src/storage/TraceStore.cpp" \
+  -o "$trace_binary"
+"$trace_binary"
+
+runtime_binary="${TMPDIR:-/tmp}/quiesco-runtime-tests${SANITIZE:+-san}"
+"${CXX:-c++}" ${san_cxx[@]+"${san_cxx[@]}"} -std=c++14 -Wall -Wextra -Werror -pedantic \
   -DARDUINO_SEEED_XIAO_NRF52840_PLUS \
   -I"$root/tests/host/fakes" -I"$root/src" -I"$root/src/third_party/flashdb" \
   ${mbedtls_include[@]+"${mbedtls_include[@]}"} \
@@ -122,6 +148,7 @@ runtime_binary="${TMPDIR:-/tmp}/quiesco-runtime-tests"
   "$root/src/diagnostics/DebugLog.cpp" \
   "$root/src/services/CalibrationPolicy.cpp" "$root/src/services/ConfigRecord.cpp" \
   "$root/src/services/ConfigStore.cpp" "$root/src/services/SampleLog.cpp" \
+  "$root/src/services/ResetHistory.cpp" \
   "$root/src/services/SampleLogFlashDb.cpp" "$root/src/services/SampleRecord.cpp" \
   "$root/src/services/UnitIdentity.cpp" "$root/src/services/BondTable.cpp" \
   "$root/src/services/Scheduler.cpp" "$root/src/ui/UiModel.cpp" \
@@ -130,7 +157,7 @@ runtime_binary="${TMPDIR:-/tmp}/quiesco-runtime-tests"
   "${mbedtls_link[@]}" -o "$runtime_binary"
 "$runtime_binary"
 
-"${CXX:-c++}" \
+"${CXX:-c++}" ${san_cxx[@]+"${san_cxx[@]}"} \
   -std=c++14 \
   -Wall -Wextra -Werror -pedantic \
   -DARDUINO_SEEED_XIAO_NRF52840_PLUS \

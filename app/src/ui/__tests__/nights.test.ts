@@ -1,7 +1,7 @@
 import type { StoredPoint } from '@/data/db';
 import { Severity } from '@/protocol/comfort';
-import { analyzeNight, spellReport } from '@/ui/nights';
-import { formatTime } from '@/ui/sleep';
+import { analyzeNight, judgedWindow, spellReport } from '@/ui/nights';
+import { formatTime, type SleepWindow, windowForNight } from '@/ui/sleep';
 
 const at = (h: number, min = 0) => new Date(2026, 8, 27, h, min).getTime() / 1000;
 
@@ -136,5 +136,27 @@ describe('night bands', () => {
       others: 0,
       severity: Severity.Bad,
     });
+  });
+});
+
+describe('the span a night is judged over', () => {
+  const w: SleepWindow = { times: { bedMin: 23 * 60, wakeMin: 7 * 60 }, set: true };
+  const ms = (d: number, h: number, min = 0) => new Date(2026, 8, d, h, min).getTime();
+
+  test('the sleep window when the health store has nothing for the night', () => {
+    expect(judgedWindow('2026-09-27', w, [])).toEqual(windowForNight('2026-09-27', w));
+  });
+
+  test('the recorded sleep when there is one', () => {
+    const spans = [{ startMs: ms(27, 22, 15), endMs: ms(28, 6, 30) }];
+    expect(judgedWindow('2026-09-27', w, spans)).toEqual({ fromS: ms(27, 22, 15) / 1000, toS: ms(28, 6, 30) / 1000 });
+    // Another night's sleep does not stand in for this one.
+    expect(judgedWindow('2026-09-26', w, spans)).toEqual(windowForNight('2026-09-26', w));
+  });
+
+  test('an afternoon of readings is outside the night it is filed under', () => {
+    // nightsWithData files 15:00 under the 27th; the window that night opens at 23:00.
+    const span = judgedWindow('2026-09-27', w, []);
+    expect(ms(27, 15) / 1000 < span.fromS).toBe(true);
   });
 });

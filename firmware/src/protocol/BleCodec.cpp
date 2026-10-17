@@ -82,6 +82,7 @@ void encodeDiagnostics(const Diagnostics& diagnostics,
   le::putU32(out + 0, diagnostics.resetReason);
   le::putU32(out + 4, diagnostics.uptimeSeconds);
   out[8] = diagnostics.i2cBusStuck ? 1 : 0;
+  le::putU16(out + 10, diagnostics.heapKiB);
 }
 
 void encodeCoreConfig(const Config& config, uint8_t out[kCoreConfigBytes]) {
@@ -229,7 +230,7 @@ bool decodeCalibrationOffsets(const uint8_t* data, uint16_t length,
 bool decodeCalibrationControl(const uint8_t* data, uint16_t length,
                               uint16_t& targetPpm) {
   if (length != kCalibrationControlBytes ||
-      data[0] != kCalOpForcedRecalibration) {
+      data[0] != kCalOpForcedRecalibration || data[1] != 0) {
     return false;
   }
   const uint16_t target = le::getU16(data + 2);
@@ -299,7 +300,7 @@ bool decodeSleepWindow(const uint8_t* data, uint16_t length,
 
 bool decodeLogSyncControl(const uint8_t* data, uint16_t length,
                           LogSyncRequest& request) {
-  if (length != kLogSyncControlBytes) {
+  if (length != kLogSyncControlBytes || data[1] != 0) {  // reserved, §1
     return false;
   }
   const uint8_t opcode = data[0];

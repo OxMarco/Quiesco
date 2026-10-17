@@ -30,9 +30,11 @@ class FakeSerial {
   void println(const char* value);
   void println(unsigned int value);
   void println(unsigned long value);
+  void println(float value, int decimals);
   void print(char value);
   void print(long value);
   void print(unsigned long long value);
+  void write(uint8_t value);
   int available();
   int read();
 };

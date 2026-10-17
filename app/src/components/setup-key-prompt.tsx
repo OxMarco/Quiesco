@@ -25,7 +25,7 @@ function SetupKeyForm() {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const submit = (value = text) => {
-    try { submitSetupKey(value); } catch (e) { setError(e instanceof Error ? e.message : 'Check the code and try again.'); }
+    try { submitSetupKey(value); } catch (e) { setError(e instanceof Error ? e.message : 'Check the code and try again'); }
   };
   const onChange = (v: string) => {
     const digits = v.replace(/\D/g, '').slice(0, 6);

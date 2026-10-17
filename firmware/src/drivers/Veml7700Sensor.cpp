@@ -7,6 +7,7 @@
 
 #include "../diagnostics/Trace.h"
 #include "../model/Reading.h"
+#include "Veml7700Lux.h"
 
 namespace {
 
@@ -17,10 +18,10 @@ constexpr uint16_t kShutdown = 1u << 0;  // ALS_SD
 // kept for its register names only. Its register reads return 0xFFFF on a
 // failed transfer: readALS() handed that back as counts, and its
 // read-modify-write setters wrote it back as config bits (shutdown, invalid
-// integration time). 0xFFFF counts take the bright path and come out above
-// 200 klx, which collect() drops: the only way this driver can end a
-// measurement in veml=read-error, as every cycle did on 2026-09-27.
-// Registers are now written whole and a failed read is retried.
+// integration time). 0xFFFF counts took the bright path and came out above
+// 200 klx, which collect() dropped: every cycle ended in veml=read-error on
+// 2026-09-27. Registers are now written whole and a failed read is retried,
+// so 0xFFFF counts are a real saturated reading.
 bool writeRegister(uint8_t reg, uint16_t value) {
   Wire.beginTransmission(kAddress);
   Wire.write(reg);
@@ -70,28 +71,11 @@ bool configure(uint8_t gain, uint8_t integrationTime) {
   return true;
 }
 
-// Current datasheet (rev 1.8): 0.0042 lx/count at gain 2 and 800 ms,
-// scaling inversely with gain and integration time.
-constexpr float kFinestResolutionLux = 0.0042f;
 constexpr uint16_t kLowCounts = 100;
 constexpr uint16_t kHighCounts = 10000;
 
-float resolutionLux(float gain, float integrationMs) {
-  return kFinestResolutionLux * (800.0f / integrationMs) * (2.0f / gain);
-}
-
-// Vishay's non-linearity correction for the low gains (application note
-// 84323), in lux.
-float correctedLux(float lux) {
-  return (((6.0135e-13f * lux - 9.3924e-9f) * lux + 8.1488e-5f) * lux +
-          1.0023f) *
-         lux;
-}
-
-bool validLux(float value) {
-  constexpr float kMaximumLux = 200000.0f;
-  return isfinite(value) && value >= 0.0f && value <= kMaximumLux;
-}
+using Veml7700Lux::correctedLux;
+using Veml7700Lux::resolutionLux;
 
 }  // namespace
 
@@ -166,11 +150,24 @@ void Veml7700Sensor::poll(uint64_t nowMs) {
       }
       break;
     case State::kFine:
+      // A light switched on after the coarse read saturates the fine range
+      // (~550 lx): measure again on the bright range instead.
+      if (Veml7700Lux::saturated(counts)) {
+        if (!configure(VEML7700_GAIN_1_8, VEML7700_IT_25MS)) {
+          readyAtMs_ = nowMs + kRetryMs;
+          break;
+        }
+        readyAtMs_ = nowMs + kBrightWaitMs;
+        state_ = State::kBright;
+        break;
+      }
       lux_ = counts * resolutionLux(2.0f, 400.0f);  // linear at high gain
       state_ = State::kComplete;
       break;
-    default:  // kBright
-      lux_ = correctedLux(counts * resolutionLux(0.125f, 25.0f));
+    default:  // kBright; saturated is above the rated range, held to it
+      lux_ = Veml7700Lux::saturated(counts)
+                 ? Veml7700Lux::kMaximumLux
+                 : correctedLux(counts * resolutionLux(0.125f, 25.0f));
       state_ = State::kComplete;
       break;
   }
@@ -187,7 +184,7 @@ void Veml7700Sensor::collect(Reading& reading) {
   }
 
   QUIESCO_TRACE_FLOAT("veml", "lux", lux_);
-  if (validLux(lux_)) {
+  if (Veml7700Lux::validLux(lux_)) {
     reading.lux = lux_;
     reading.valid |= VALID_LIGHT;
   }

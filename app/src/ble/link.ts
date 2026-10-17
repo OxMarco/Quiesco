@@ -17,11 +17,13 @@ import {
   decodeDeviceInfo,
   decodeDeviceName,
   decodeDiagnostics,
+  decodeLastReset,
   decodeReading,
   decodeSleepWindow,
   decodeStatus,
   DeviceInfo,
   Diagnostics,
+  LastReset,
   DisplayScreen,
   encodeCalibrationOffsets,
   encodeCoreConfig,
@@ -100,6 +102,8 @@ export interface LinkState {
   offsets: CalibrationOffsets | null;
   calibration: CalibrationState | null;
   diagnostics: Diagnostics | null;
+  /** The last watchdog or lockup reset (capability resetRecord). */
+  lastReset: LastReset | null;
   /** The sleep window the panel uses (capability sleepWindow). */
   sleepWindow: UnitSleepWindow | null;
   sync: SyncProgress | null;
@@ -120,6 +124,7 @@ const initial: LinkState = {
   offsets: null,
   calibration: null,
   diagnostics: null,
+  lastReset: null,
   sleepWindow: null,
   sync: null,
   error: null,
@@ -352,12 +357,12 @@ async function enrol(): Promise<EnrolledKey> {
     const bytes = await readQ(Chr.enrolKey);
     // While setup is pending 0011 holds only the key id (§6.16).
     if (bytes.length !== 20 || bytes.slice(2).some((b) => b !== 0)) {
-      throw new Error('Invalid setup response from the unit.');
+      throw new Error('Invalid setup response from the unit');
     }
     const keyId = bytes[0] | (bytes[1] << 8);
     if (keyId !== 0) return { keyId, key: await requestSetupKey(keyId) };
   }
-  throw new Error('The unit did not issue a key. Keep it on USB power and try again.');
+  throw new Error('The unit did not issue a key. Keep it on USB power, or unplug it and plug it back in, then try again.');
 }
 
 // The unit shows the issued key for 30 s (§6.16); keep reading for most of it.
@@ -432,6 +437,7 @@ export async function refreshAll() {
   if (can(Capability.calibrationOffsets)) patch.offsets = decodeCalibrationOffsets(await readQ(Chr.calibrationOffsets));
   if (can(Capability.calibrationState)) patch.calibration = decodeCalibrationState(await readQ(Chr.calibrationState));
   if (can(Capability.diagnostics)) patch.diagnostics = decodeDiagnostics(await readQ(Chr.diagnostics));
+  if (can(Capability.resetRecord)) patch.lastReset = decodeLastReset(await readQ(Chr.lastReset));
   if (can(Capability.sleepWindow)) patch.sleepWindow = decodeSleepWindow(await readQ(Chr.sleepWindow));
   link.set(patch);
 }
@@ -445,14 +451,14 @@ function onDropped() {
     phase: userDisconnect ? 'idle' : s.phase === 'ready' ? 'idle' : s.phase,
     sync: wasSyncing ? { ...s.sync!, state: 'failed', message: 'The unit disconnected. Sync again to continue.' } : s.sync,
   }));
-  activeSession?.fail('The unit disconnected.');
+  activeSession?.fail('The unit disconnected');
 }
 
 async function teardown() {
   cancelEnrollment();
   // The disconnect listener goes first, so end a running sync here rather
   // than leave it to the stall timer.
-  activeSession?.fail('The unit disconnected.');
+  activeSession?.fail('The unit disconnected');
   unsubscribers.forEach((u) => u());
   unsubscribers = [];
   disconnectSub?.remove();
@@ -615,7 +621,7 @@ const ERASE_CONFIRM_MS = 8_000;
  * the erase under way; throws if it refused. Config, keys and offsets stay.
  */
 export async function eraseLogUpTo(upToSequence: number) {
-  if (!can(Capability.logEraseCommand)) throw new Error('This unit cannot erase its log on its own.');
+  if (!can(Capability.logEraseCommand)) throw new Error('This unit cannot erase its log on its own');
   await writeQ(Chr.deviceControl, encodeLogErase(upToSequence));
   const deadline = Date.now() + ERASE_CONFIRM_MS;
   while (Date.now() < deadline) {
@@ -628,11 +634,12 @@ export async function eraseLogUpTo(upToSequence: number) {
   }
   // Erasing ends in ~90 s, so a flag never seen means the unit said no:
   // most likely a record newer than upToSequence landed meanwhile.
-  throw new Error('The unit did not erase its log.');
+  throw new Error('The unit did not erase its log');
 }
 
 export async function reloadDiagnostics() {
   if (can(Capability.diagnostics)) link.set({ diagnostics: decodeDiagnostics(await readQ(Chr.diagnostics)) });
+  if (can(Capability.resetRecord)) link.set({ lastReset: decodeLastReset(await readQ(Chr.lastReset)) });
   if (can(Capability.calibrationState)) link.set({ calibration: decodeCalibrationState(await readQ(Chr.calibrationState)) });
 }
 
@@ -664,7 +671,7 @@ export function syncLog(): Promise<number> {
 
 async function runSync(): Promise<number> {
   const { serial, info } = link.get();
-  if (!serial || !info || !hasCapability(info, Capability.logDownload)) throw new Error('This unit cannot send its log.');
+  if (!serial || !info || !hasCapability(info, Capability.logDownload)) throw new Error('This unit cannot send its log');
 
   const unit = await db.getUnit(serial);
   let cursor = unit?.cursor ?? 0;
@@ -788,6 +795,6 @@ export function describeError(e: unknown): string {
     return 'The unit refused access. Plug it into USB power and add it again.';
   }
   if (/timed out/i.test(text)) return `${text}. Move closer to the unit and try again.`;
-  if (/not connected|disconnect/i.test(text)) return 'The unit disconnected.';
+  if (/not connected|disconnect/i.test(text)) return 'The unit disconnected';
   return text;
 }

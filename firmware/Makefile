@@ -1,4 +1,4 @@
-.PHONY: build build-debug build-trace check licences smoke test verify
+.PHONY: build build-debug build-trace check licences sanitize smoke test verify
 
 build:
 	./scripts/build.sh
@@ -14,6 +14,9 @@ check:
 
 licences:
 	./scripts/collect-licences.sh
+
+sanitize:
+	SANITIZE=1 ./scripts/run-host-tests.sh
 
 smoke:
 	./scripts/build-smoke.sh

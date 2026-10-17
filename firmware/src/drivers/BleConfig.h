@@ -33,6 +33,8 @@ class BleConfig {
   void publishAscDisabled(bool ascDisabled);
   // Read-only, no notify; valid before begin() like publishConfig.
   void publishDiagnostics(const BleCodec::Diagnostics& diagnostics);
+  // 0013, a ResetHistory record (all zeros: none). Valid before begin().
+  void publishLastReset(const uint8_t record[BleCodec::kLastResetBytes]);
   // Like publishConfig, valid before begin(): it only sets the local value.
   void publishDeviceInfo(const BleCodec::DeviceInfo& info);
   void publishReading(const Reading& reading);
@@ -72,6 +74,7 @@ class BleConfig {
   static void onDisconnected(BLEDevice device);
   void resetSession(bool connected);
   void updateAdvertising();
+  void setAdvertisedName(const char* name);
   void publishCalibrationState();
   void setAuthenticated(bool authenticated);
   void newChallenge();
@@ -81,6 +84,10 @@ class BleConfig {
   void enrol(uint64_t nowMs);
 
   static constexpr uint8_t kMaxAuthFailures = 5;
+  // Setup codes issued without a completed setup before ENROL is refused
+  // until USB is unplugged and plugged back in. Failures reset with every
+  // connection, so without this, reconnecting gave unlimited guesses.
+  static constexpr uint8_t kMaxSetupCodesPerPlug = 10;
   static constexpr uint32_t kEnrolKeyVisibleMs = 180000;
   // How long the issued key stays in 0011 for the phone to read.
   static constexpr uint32_t kIssuedKeyVisibleMs = 30000;
@@ -90,11 +97,13 @@ class BleConfig {
   uint64_t epochMs_ = 0;
   bool ascDisabled_ = false;  // last accepted epoch write; 0 = never synced
   bool active_ = false;
-  bool advertising_ = false;
+  bool advertising_ = false;  // ArduinoBLE's flag, kept through connections
+  bool refreshAdvertising_ = false;  // set at a disconnect
   bool connected_ = false;
   bool authenticated_ = false;
   uint8_t challenge_[BleCodec::kAuthChallengeBytes] = {};
   uint8_t authFailures_ = 0;
+  uint8_t setupCodesIssued_ = 0;  // since USB was plugged in
   uint32_t session_ = 0;
   bool challengePending_ = false;
   uint16_t pendingKeyId_ = 0;
@@ -104,4 +113,9 @@ class BleConfig {
   bool enrollmentScreenPending_ = false;
   uint64_t enrolKeyUntilMs_ = 0;  // 0 = no pending setup
   bool alwaysAvailable_ = true;
+  // ArduinoBLE keeps the local name's pointer, reads it on every advertise()
+  // and measures the previous name through it on the next set; each name
+  // goes in the slot not in use, so neither is overwritten while referenced.
+  char advertisedNames_[2][sizeof Config::deviceName] = {};
+  uint8_t advertisedSlot_ = 0;
 };

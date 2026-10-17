@@ -9,7 +9,7 @@ import { Platform } from 'react-native';
 
 import type { LinkState } from '@/ble/link';
 import type * as db from '@/data/db';
-import { describeResetReason } from '@/protocol/codec';
+import { describeLastReset, describeResetReason } from '@/protocol/codec';
 
 import { traceLines } from './trace';
 
@@ -32,7 +32,7 @@ export function buildReport(link: LinkState, saved: db.Unit | null, now = new Da
     add('History synced', saved.lastSyncMs ? new Date(saved.lastSyncMs).toISOString() : 'never');
   }
   if (!link.serial && !link.info) {
-    out.push(saved ? 'Not connected right now.' : 'No unit on this phone.');
+    out.push(saved ? 'Not connected right now' : 'No unit on this phone');
   } else {
     add('Serial', link.serial);
     add('Firmware', link.firmware ?? link.info?.firmware);
@@ -46,7 +46,9 @@ export function buildReport(link: LinkState, saved: db.Unit | null, now = new Da
       add('Last reset', describeResetReason(link.diagnostics.resetReason));
       add('Uptime', formatUptime(link.diagnostics.uptimeSeconds));
       add('I²C bus stuck', link.diagnostics.i2cBusStuck ? 'yes' : 'no');
+      if (link.lastReset) add('Heap in use', `${link.diagnostics.heapKiB} KiB`);
     }
+    if (link.lastReset) add('Last unexpected reset', describeLastReset(link.lastReset));
     if (link.status) {
       const s = link.status;
       add('Clock synced', s.clockSynced ? 'yes' : 'no');

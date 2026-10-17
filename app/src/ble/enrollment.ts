@@ -13,7 +13,7 @@ let pending: {
 
 export function parseSetupCode(text: string, keyId: number): Uint8Array {
   const code = text.replace(/\s/g, '');
-  if (!/^\d{6}$/.test(code)) throw new Error('Enter the six digits from the unit’s screen.');
+  if (!/^\d{6}$/.test(code)) throw new Error('Enter the six digits from the unit’s screen');
   return setupKey(code, keyId);
 }
 

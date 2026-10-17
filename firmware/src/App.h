@@ -17,6 +17,7 @@
 #include "drivers/BleConfig.h"
 #include "services/ConfigStore.h"
 #include "services/EnvironmentalSampler.h"
+#include "services/ResetHistory.h"
 #include "services/BondTable.h"
 #include "services/SampleLog.h"
 #include "services/Scheduler.h"
@@ -99,6 +100,8 @@ class App {
   void servicePairing(uint64_t nowMs);
   void publishDeviceInfo();
   void publishDiagnostics(uint64_t nowMs);
+  void takeRetainedState(uint64_t nowMs);
+  void publishLastReset();
   void handleConsole(uint64_t nowMs);
   void serviceDump();
   void serviceStress(uint64_t nowMs);
@@ -132,6 +135,7 @@ class App {
   Reading reading_;
   FaultStatus faults_;
   UiModel lastRendered_;
+  bool batteryLow_ = false;  // low-battery screen hysteresis (UiModel.h)
   State state_ = State::kIdle;
   unsigned long cycleNumber_ = 0;
   bool hasRendered_ = false;
@@ -148,6 +152,13 @@ class App {
   bool redrawRequested_ = false;
   uint32_t bootCount_ = 0;
   uint32_t resetReason_ = 0;
+  // Refreshed in retained RAM at every watchdog feed, so the next boot can
+  // tell why this one ended (ResetHistory).
+  ResetHistory::Breadcrumb breadcrumb_;
+  // The last unexpected reset; pending until the first settings load
+  // persists it.
+  ResetHistory::Record lastReset_;
+  bool lastResetPending_ = false;
   // Debug console log dump (debug builds only): its own rail cycle.
   static constexpr uint8_t kDumpRecordsPerStep = 16;
   bool dumpRequested_ = false;
@@ -203,6 +214,12 @@ class App {
   static constexpr uint32_t kUpdateDisconnectMs = 300;
   bool updateRequested_ = false;
   uint64_t updateResetAtMs_ = 0;
+  // A request waits for settings, an erase or an FRC to finish first; one
+  // that cannot (a dead flash keeps settings pending forever) left the
+  // request stuck with nothing reported. After this long it goes ahead: an
+  // erase is journalled and resumes, and unsaveable settings are lost anyway.
+  static constexpr uint32_t kUpdateWaitLimitMs = 5 * 60 * 1000;
+  uint64_t updateRequestedAtMs_ = 0;
   uint16_t frcTargetPpm_ = 0;
   uint8_t frcState_ = BleCodec::kFrcIdle;  // reported via status
   int16_t frcCorrectionPpm_ = 0;
@@ -222,6 +239,12 @@ class App {
   uint16_t syncAttPayload_ = 0;
   uint32_t lastSentSequence_ = 0;
   uint64_t syncDeadlineMs_ = 0;
+  // A session with no record limit ends with END here, on a record boundary,
+  // well inside kSyncing's 60 min watchdog bound: at the minimum MTU a record
+  // takes 7 fragments 30 ms apart, so a full log would need ~6 h. The client
+  // continues from END's cursor (PROTOCOL.md §7.4, batching).
+  static constexpr uint32_t kSyncSessionLimitMs = 30UL * 60 * 1000;
+  uint64_t syncEndsAtMs_ = 0;
   uint64_t syncLastSendMs_ = 0;
   SampleRecord syncBatch_[kSyncBatchMax];
   uint8_t syncWire_[BleCodec::kWireRecordBytes];

@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 #include "../drivers/EpaperDisplay.h"
+#include "LightTile.h"
 #include "UiModel.h"
 
 // Layouts ported from the proven demo sketches (ui_face, ui_ledger, ui_bento,
@@ -286,18 +287,13 @@ void drawLedger(EpaperDisplay& d, const UiModel& m) {
 // Tile values carry their own unit, which keeps every label a bare metric name
 // that fits the 76px cell -- "NOISE dB" as a label does not. Two exceptions:
 // the CO2 hero prints digits only (the 24pt cut carries no letters) and light
-// abbreviates thousands, because a sunlit reading is six digits wide.
+// abbreviates thousands (LightTile.h).
 void bentoValue(UiMetric metric, long value, bool fahrenheit, char* out,
                 size_t size) {
   if (metric == UiMetric::kCo2) {
     snprintf(out, size, "%ld", value);
   } else if (metric == UiMetric::kLight) {
-    if (value < 1000) {
-      snprintf(out, size, "%ld lx", value);
-    } else {
-      const long k = (value + 500) / 1000;
-      snprintf(out, size, "%ldk lx", k > 99 ? 99 : k);
-    }
+    LightTile::format(value, out, size);
   } else {
     snprintf(out, size, "%ld%s", value, metricUnit(metric, fahrenheit));
   }

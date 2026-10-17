@@ -4,7 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Modified for Quiesco (marked "Quiesco:"): reads are checked before headers or values are
- * interpreted, and only confirmed blank sectors are formatted.
+ * interpreted, and only confirmed blank sectors are formatted, or a corrupt one while
+ * another sector holds KVs (an interrupted GC erase).
  * See README.quiesco.md.
  */
 
@@ -1582,32 +1583,55 @@ static bool check_oldest_addr_cb(kv_sec_info_t sector, void *arg1, void *arg2)
     return false;
 }
 
+/* Quiesco: arguments of check_sec_hdr_cb. */
+struct check_sec_hdr_args {
+    size_t failed_count;
+    size_t live_count; /* valid sectors holding KVs (USING or FULL) */
+};
+
+static bool count_live_sec_cb(kv_sec_info_t sector, void *arg1, void *arg2)
+{
+    size_t *live_count = arg1;
+
+    if (sector->check_ok && (sector->status.store == FDB_SECTOR_STORE_USING ||
+            sector->status.store == FDB_SECTOR_STORE_FULL)) {
+        ++*live_count;
+    }
+
+    return false;
+}
+
 static bool check_sec_hdr_cb(kv_sec_info_t sector, void *arg1, void *arg2)
 {
     if (!sector->check_ok) {
-        size_t *failed_count = arg1;
+        struct check_sec_hdr_args *args = arg1;
         fdb_kvdb_t db = arg2;
         uint8_t bytes[64];
         /* Quiesco: only confirmed blank sectors may be initialized. An I/O
-         * failure or a corrupt nonblank header is never permission to erase. */
+         * failure or a corrupt nonblank header is never permission to erase,
+         * with one exception: when another sector holds KVs, a corrupt one is
+         * taken for a GC erase that power loss cut short. GC erases a sector
+         * only after moving its KVs out, and without this the store failed to
+         * mount on every boot from then on. A lone live sector with a corrupt
+         * header still fails mount. */
         if (db->parent.not_formatable) {
-            ++*failed_count;
+            ++args->failed_count;
             return true;
         }
         for (uint32_t offset = 0; offset < db_sec_size(db); offset += sizeof bytes) {
             if (_fdb_flash_read((fdb_db_t)db, sector->addr + offset, bytes, sizeof bytes) != FDB_NO_ERR) {
-                ++*failed_count;
+                ++args->failed_count;
                 return true;
             }
             for (size_t i = 0; i < sizeof bytes; ++i) {
-                if (bytes[i] != 0xFF) {
-                    ++*failed_count;
+                if (bytes[i] != 0xFF && args->live_count == 0) {
+                    ++args->failed_count;
                     return true;
                 }
             }
         }
         if (format_sector(db, sector->addr, SECTOR_NOT_COMBINED) != FDB_NO_ERR) {
-            ++*failed_count;
+            ++args->failed_count;
             return true;
         }
     }
@@ -1668,12 +1692,14 @@ static fdb_err_t _fdb_kv_load(fdb_kvdb_t db)
     fdb_err_t result = FDB_NO_ERR;
     struct fdb_kv kv;
     struct kvdb_sec_info sector;
-    size_t check_failed_count = 0;
+    struct check_sec_hdr_args check_args = { 0, 0 };
 
     db->in_recovery_check = true;
+    /* Quiesco: count the sectors holding KVs first (check_sec_hdr_cb) */
+    sector_iterator(db, &sector, FDB_SECTOR_STORE_UNUSED, &check_args.live_count, NULL, count_live_sec_cb, false);
     /* check all sector header */
-    sector_iterator(db, &sector, FDB_SECTOR_STORE_UNUSED, &check_failed_count, db, check_sec_hdr_cb, false);
-    if (check_failed_count > 0) {
+    sector_iterator(db, &sector, FDB_SECTOR_STORE_UNUSED, &check_args, db, check_sec_hdr_cb, false);
+    if (check_args.failed_count > 0) {
         db->in_recovery_check = false;
         return FDB_READ_ERR;
     }

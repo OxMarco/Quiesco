@@ -112,7 +112,8 @@ setup key = first 16 bytes of HMAC-SHA-256(code as six ASCII digits, "QSETUP1" �
 and proves it with the normal challenge-response exchange. Once that proof
 succeeds, the unit saves the phone key (evicting the oldest phone if four are
 enrolled), authenticates the connection, and places the key id and phone key
-in `0011` for 30 seconds or until disconnect. The app reads it there and uses
+in `0011` for 30 seconds or until disconnect (USB removal does not withdraw
+it, and ENROL is ignored meanwhile). The app reads it there and uses
 the phone key, never the setup key, for every later connection. A wrong code
 counts as a failed proof (at most 5 per connection).
 
@@ -194,6 +195,7 @@ reads as zeros and ignores writes until the connection has authenticated (§3).
 | `0010` | Auth | read, write | 20; writes 2 or 20 | §6.15 |
 | `0011` | Enrolment metadata | read | 20 | §6.16 |
 | `0012` | Sleep window | read, write | 12 | §6.17 |
+| `0013` | Last unexpected reset | read | 20 | §6.18 |
 
 ## 5. Conventions
 
@@ -382,7 +384,9 @@ correction:
 |---|---|---|
 | 0 | u64 | Unix time, milliseconds |
 
-The unit has no real-time clock and loses the time on every reset. The value
+The unit has no real-time clock and loses the time on a reset, except after a
+watchdog or CPU lockup reset: the time of the last watchdog feed survives in
+RAM, so the unit carries on with a clock within about a second (§6.18). The value
 must be non-zero and below 2³² seconds. The device anchors it to its internal
 clock; later measurements, and log records from then on, carry wall-clock
 time. Records taken before the first sync have none (§7.4). **Write the time
@@ -551,17 +555,18 @@ Capability flags:
 | 14 | sleep window (`0012`): the panel can judge by time of day like the app |
 | 15 | reserved, never set |
 | 16 | firmware update over USB (`000D` opcode 4, §9.2) |
+| 17 | last unexpected reset (`0013`, §6.18) and heap in use in diagnostics (§6.14) |
 
 The SCD41 serial becomes available after the first measurement cycle, about
 1 s after boot, as does the boot counter; re-read if either is zero.
 Device info is readable without authentication, so an app can check
 compatibility and guide enrolment before it has access to anything else.
-Example: protocol 6, capabilities 0x17FFF (bits 0–14 and 16; bit 15
+Example: protocol 6, capabilities 0x37FFF (bits 0–14, 16 and 17; bit 15
 is reserved), firmware 1.2.3 release build,
 enrolment open, no phone enrolled yet, SCD41 serial 0xA1B2C3D4E5F6, boot 7:
 
 ```text
-06 00 ff 7f 01 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00
+06 00 ff 7f 03 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00
 ```
 
 ### 6.13 Calibration state `000E`
@@ -592,17 +597,19 @@ FRC to 420 ppm at 2026-01-01T00:00:00Z that corrected by −37 ppm, ASC off:
 | 0 | u32 | cause of the last reset: nRF52840 `RESETREAS` bits; 0 = power-on or brownout |
 | 4 | u32 | uptime since that reset, seconds |
 | 8 | u8 | flags: bit 0 = I2C bus stuck (SDA still low after recovery) at the last measurement |
-| 9 | u8 × 3 | reserved, 0 |
+| 9 | u8 | reserved, 0 |
+| 10 | u16 | heap in use at the last measurement, KiB, rounded up; 0 before the first (capability bit 17) |
 
 Reset-cause bits: 0 reset pin, 1 watchdog, 2 software reset (including a USB
 firmware upload), 3 CPU lockup, 16 wake from System OFF, 20 VBUS wake. A
 watchdog reset means the firmware stopped making progress; report it. Uptime
 is refreshed at every measurement. Together with the boot counter, this is
-what support and soak tests use to spot a unit that resets. Example: last
-reset by the watchdog, up one hour:
+what support and soak tests use to spot a unit that resets; the heap shows a
+leak as a figure that keeps rising over days. Example: last reset by the
+watchdog, up one hour, 18 KiB of heap in use:
 
 ```text
-02 00 00 00 10 0e 00 00 00 00 00 00
+02 00 00 00 10 0e 00 00 00 00 12 00
 ```
 
 ### 6.15 Auth `0010`
@@ -619,7 +626,10 @@ Read:
 | 18 | u16 | reserved, 0 |
 
 Write ENROL (2 bytes), accepted only while enrolment is open, no setup is
-pending and the connection has fewer than 5 failed proofs:
+pending, the connection has fewer than 5 failed proofs, and fewer than 10
+setup codes have been shown since the unit was plugged in without one of
+them completing a setup. Past that, unplug and plug the unit back in; this
+bounds guessing across reconnects:
 
 | Offset | Type | Field |
 |---|---|---|
@@ -711,8 +721,9 @@ rejected; a stored one falls back to the default until the app writes the
 window again. A later capability may define the bytes for custom per-night
 windows.
 
-A write with a reserved bit or byte set (bytes 8–11 anything but `FF`), or a
-time or offset out of range, is rejected and changes nothing. The
+A write with a reserved bit or byte set (bytes 8–11 anything but `FF`), a
+time or offset out of range, or a wake time equal to the bedtime, is rejected
+and changes nothing. The
 offset is a fixed number of minutes, so **rewrite it on every connection**
 (after the epoch time, §6.5); a daylight-saving change then follows at the
 next connection. The window is saved apart from the core config and survives
@@ -749,6 +760,37 @@ offset):
 The panel changes mode with the next measurement or redraw after the
 boundary, so it can lag the app by up to one measurement interval. A write
 that changes the mode right away redraws the panel at once.
+
+### 6.18 Last unexpected reset `0013`
+
+Capability bit 17. The last time the firmware stopped: a watchdog or CPU
+lockup reset. The unit works it out at the next boot from what the stopped
+boot left in RAM, saves it with the settings, and keeps it until the next
+such reset, through power cuts and factory resets. Power cuts, the reset
+button and firmware updates are not recorded; a unit with no record has only
+had those.
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | u32 | boot counter of the boot that ended; 0 = unknown |
+| 4 | u32 | that boot's uptime at its last watchdog feed, s |
+| 8 | u8 | cause: `RESETREAS` bits 0–3 (0 pin, 1 watchdog, 2 software, 3 lockup); 0 = no record |
+| 9 | u8 | firmware state then, for support (the `App::State` index) |
+| 10 | u16 | heap in use then, KiB |
+| 12 | u32 | Mbed OS error status of a fatal error raised after the last feed; 0 = none |
+| 16 | u32 | fault address: the PC at a CPU fault, else the caller of the error; 0 = none |
+
+A watchdog reset with no error status is a hang: a state that stopped
+advancing, or a loop that never returned. With an error status the firmware
+crashed (`0x80FF013D` is a HardFault) and the address names the code: look it
+up with `arm-none-eabi-addr2line -e firmware.ino.elf`. Bytes 0, 4, 9 and 10 are
+zero when the RAM did not survive. All zeros: no unexpected reset recorded.
+Example: the watchdog reset boot 64 after 37 h 6 min, idle, 18 KiB of heap,
+after a HardFault at `0x00031A2C`:
+
+```text
+40 00 00 00 b8 09 02 00 02 00 12 00 3d 01 ff 80 2c 1a 03 00
+```
 
 ---
 
@@ -907,7 +949,10 @@ b1 04 00 00 7f 00 01 00 10 c7 55 69 80 ee 36 00
   dated. A boot counter of 0 means unknown: never treat two such records as
   the same boot.
 - **Batching.** Use `maximum records` to keep a session short. A later START
-  with the returned cursor continues where it stopped.
+  with the returned cursor continues where it stopped. The unit also ends any
+  session after 30 minutes of streaming, with an END at a record boundary, so
+  an END means "continue from here", not "nothing newer": compare its cursor
+  with the newest sequence in status.
 
 ### 7.5 Example session
 

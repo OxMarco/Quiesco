@@ -98,8 +98,13 @@ export type SleepPhase =
 /** Where "now" sits relative to tonight's window, for the Room screen. */
 export function sleepPhase(nowMs: number, w: SleepWindow): SleepPhase {
   let night = nightOf(nowMs);
-  let win = windowForNight(night, w);
   const nowS = nowMs / 1000;
+  // The previous night's window can run past noon (a late wake, a night
+  // shift); windows start between noon and noon, so no earlier one can.
+  const [py, pm, pd] = nightDate(night);
+  const previous = windowForNight(nightKey(new Date(py, pm, pd - 1)), w);
+  if (nowS >= previous.fromS && nowS < previous.toS) return { kind: 'during', ...previous };
+  let win = windowForNight(night, w);
   if (nowS >= win.toS) {
     const [y, m, d] = nightDate(night);
     night = nightKey(new Date(y, m, d + 1));

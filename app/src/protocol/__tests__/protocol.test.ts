@@ -16,6 +16,8 @@ import {
   encodeEnrol,
   encodeProve,
   decodeDiagnostics,
+  decodeLastReset,
+  describeLastReset,
   decodeInterval,
   decodeReading,
   decodeSleepWindow,
@@ -52,7 +54,7 @@ import { hmacSha256, sha256 } from '../sha256';
 import { batteryPercent, nudge, roundHalfAway, Severity, verdict } from '../comfort';
 
 const G = {
-  deviceInfo: '06 00 ff 7f 01 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00',
+  deviceInfo: '06 00 ff 7f 03 00 01 02 03 02 f6 e5 d4 c3 b2 a1 07 00 00 00',
   authState: '06 00 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f 00 00',
   enrolKey: '34 12 00 00 a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab ac ad ae af',
   prove: '02 00 34 12 f0 64 2a b3 02 06 0f 2f 61 13 6b 3f 1d ab 8a 1a',
@@ -62,7 +64,8 @@ const G = {
   reading: '66 08 ad 11 cd 8b 01 00 64 02 0c 07 00 00 82 01 48 0f 7f 00',
   status: '6f 00 fd 00 00 03 00 00 00 00 00 00 d2 04 00 00 01 03 e9 ff',
   calibrationState: '00 b9 55 69 a4 01 db ff 01 00 00 00',
-  diagnostics: '02 00 00 00 10 0e 00 00 00 00 00 00',
+  diagnostics: '02 00 00 00 10 0e 00 00 00 00 12 00',
+  lastReset: '40 00 00 00 b8 09 02 00 02 00 12 00 3d 01 ff 80 2c 1a 03 00',
   epoch: '00 a8 da 76 9b 01 00 00',
   offsets: '00 00 c0 bf 00 00 00 c0 00 00 40 40',
   syncStart: '01 00 b1 04 00 00 00 00 f4 00',
@@ -93,7 +96,7 @@ describe('characteristic codecs', () => {
   test('device info', () => {
     expect(decodeDeviceInfo(fromHex(G.deviceInfo))).toEqual({
       protocolVersion: 6,
-      capabilities: 0x17fff,
+      capabilities: 0x37fff,
       firmware: '1.2.3',
       debugBuild: false,
       pairingOpen: true,
@@ -218,9 +221,23 @@ describe('characteristic codecs', () => {
       ascOff: true,
     });
     const d = decodeDiagnostics(fromHex(G.diagnostics));
-    expect(d).toEqual({ resetReason: 2, uptimeSeconds: 3600, i2cBusStuck: false });
+    expect(d).toEqual({ resetReason: 2, uptimeSeconds: 3600, i2cBusStuck: false, heapKiB: 18 });
     expect(describeResetReason(d.resetReason)).toBe('watchdog');
     expect(describeResetReason(0)).toBe('power-on or brownout');
+    const last = decodeLastReset(fromHex(G.lastReset));
+    expect(last).toEqual({
+      bootCounter: 64,
+      uptimeSeconds: 37 * 3600 + 6 * 60,
+      cause: 2,
+      state: 0,
+      heapKiB: 18,
+      errorStatus: 0x80ff013d,
+      faultAddress: 0x31a2c,
+    });
+    expect(describeLastReset(last)).toBe(
+      'watchdog, boot 64 after 37 h 6 min, state 0, heap 18 KiB, HardFault at 0x00031a2c',
+    );
+    expect(describeLastReset(decodeLastReset(new Uint8Array(20)))).toBe('none recorded');
   });
 
   test('device names follow the firmware rules', () => {

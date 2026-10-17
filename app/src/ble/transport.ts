@@ -15,9 +15,17 @@ const VERBOSE_BLE = __DEV__;
 
 let started: Promise<void> | null = null;
 
+// iOS state restoration: a connection the app asked for survives the app being
+// closed by the system, which relaunches it in the background when it lands.
+const RESTORE_ID = 'rest.quiesco.app.central';
+
 export function ensureStarted(): Promise<void> {
   // verboseLogging is read by the native module but missing from the types.
-  started ??= BleManager.start({ showAlert: false, verboseLogging: VERBOSE_BLE } as StartOptions);
+  started ??= BleManager.start({
+    showAlert: false,
+    verboseLogging: VERBOSE_BLE,
+    ...(Platform.OS === 'ios' ? { restoreIdentifierKey: RESTORE_ID } : {}),
+  } as StartOptions);
   return started;
 }
 
@@ -47,6 +55,17 @@ export async function radioState(): Promise<RadioState> {
 
 export function onRadioState(cb: (state: RadioState) => void) {
   return BleManager.onDidUpdateState((e) => cb(toRadioState(e.state)));
+}
+
+/** Whether Bluetooth may be used without asking: for background runs, which can't show a prompt. */
+export async function hasPermissions(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+  if (Platform.Version >= 31) {
+    const scan = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN);
+    const connect = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT);
+    return scan && connect;
+  }
+  return PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
 }
 
 /** Android 12+ needs runtime scan/connect permissions; iOS asks on first use. */
@@ -101,7 +120,9 @@ export async function scan(onFound: (advert: Advert) => void, seconds = 15): Pro
  */
 export async function connect(id: string): Promise<string[]> {
   await ensureStarted();
-  await BleManager.connect(id);
+  // iOS may have connected it already, for a waitFor() or after a restore.
+  const already = await BleManager.isPeripheralConnected(id).catch(() => false);
+  if (!already) await BleManager.connect(id);
   const info = await BleManager.retrieveServices(id);
   trace('services', (info.services ?? []).map((s) => shortId(s.uuid)));
   const offered = (info.characteristics ?? []).map((c) => `${shortId(c.service)}/${shortId(c.characteristic)}`);
@@ -125,6 +146,18 @@ const SECRET = { read: new Set([shortId(Chr.enrolKey)]), write: new Set([shortId
 /** What a trace may show of a value read from or written to `chr`. */
 export function loggable(op: 'read' | 'write', chr: string, data: Uint8Array): Uint8Array | string {
   return SECRET[op].has(shortId(chr)) ? redacted(data) : data;
+}
+
+/**
+ * Ask the system to connect whenever the unit comes into range, with no
+ * timeout. iOS: a plain connect never times out, and with background
+ * Bluetooth the app is woken (or relaunched) when it lands. Android: an
+ * autoconnect, which waits as long as the app's process lives (WorkManager
+ * covers the rest). Resolves on connection; rejects if cancelled with disconnect().
+ */
+export async function waitFor(id: string): Promise<void> {
+  await ensureStarted();
+  await BleManager.connect(id, Platform.OS === 'android' ? { autoconnect: true } : undefined);
 }
 
 export async function disconnect(id: string): Promise<void> {

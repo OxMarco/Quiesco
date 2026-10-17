@@ -7,9 +7,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
-import { prefsFor, setSleepWindow, shownUnit, useSession } from '@/ble/session';
+import { prefsFor, recordedSleep, setSleepWindow, shownUnit, useSession } from '@/ble/session';
 import { Button, Card, Sheet, SheetHeader, T } from '@/components/ui';
 import * as db from '@/data/db';
+import { HEALTH_STORE } from '@/health/sleep';
+import { usualTimes } from '@/ui/health-sleep';
 import {
   durationMin,
   formatClock,
@@ -35,10 +37,14 @@ export default function SleepWindowScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lightsOut = useLightsOut(unit?.serial ?? null, saved);
+  const usual = useUsualSleep();
 
   const valid = validTimes(draft.times);
+  // Recorded sleep beats lights out: it has the wake time too.
+  const fromHealth =
+    usual !== null && (usual.bedMin !== draft.times.bedMin || usual.wakeMin !== draft.times.wakeMin) ? usual : null;
   const suggest =
-    lightsOut !== null && circularGap(lightsOut, draft.times.bedMin) >= STEP_MIN ? lightsOut : null;
+    usual === null && lightsOut !== null && circularGap(lightsOut, draft.times.bedMin) >= STEP_MIN ? lightsOut : null;
 
   const save = () => {
     if (!unit) return;
@@ -59,9 +65,22 @@ export default function SleepWindowScreen() {
           action="Cancel"
           onAction={() => router.back()}
         />
-        <T className="text-muted text-[15px] leading-[22px]">Quiesco judges the room only while you sleep.</T>
+        <T className="text-muted text-[15px] leading-[22px]">Quiesco judges the room only while you sleep</T>
 
         <TimesEditor times={draft.times} onChange={(update) => setDraft((d) => ({ ...d, times: update(d.times) }))} />
+
+        {fromHealth !== null && (
+          <Card className="bg-primary/10 gap-2">
+            <T className="text-sm leading-5">
+              {`${HEALTH_STORE} has you asleep from about `}
+              <T className="font-body-semi text-sm">{`${formatClock(fromHealth.bedMin)} to ${formatClock(fromHealth.wakeMin)}`}</T>
+              {' on most nights'}
+            </T>
+            <View className="self-start">
+              <Button title="Use these times" kind="secondary" onPress={() => setDraft((d) => ({ ...d, times: fromHealth }))} />
+            </View>
+          </Card>
+        )}
 
         {suggest !== null && (
           <Card className="bg-primary/10 gap-2">
@@ -84,7 +103,7 @@ export default function SleepWindowScreen() {
       <View className="px-4 pb-10 pt-2 gap-2">
         {!valid && (
           <T className="text-bad text-sm text-center">
-            A sleep window runs {MIN_SLEEP_MIN / 60} to {MAX_SLEEP_MIN / 60} hours.
+            A sleep window runs {MIN_SLEEP_MIN / 60} to {MAX_SLEEP_MIN / 60} hours
           </T>
         )}
         {error && <T className="text-bad text-sm text-center">{error}</T>}
@@ -210,6 +229,20 @@ function circularGap(a: number, b: number): number {
 }
 
 /** When the lights usually go out, from the last two weeks of readings. */
+/** The usual sleep times over the last three weeks the health store recorded, while that setting is on. */
+function useUsualSleep(): SleepTimes | null {
+  const healthSleep = useSession((s) => s.healthSleep);
+  const [result, setResult] = useState<SleepTimes | null>(null);
+  useEffect(() => {
+    if (!healthSleep) return;
+    const now = Date.now();
+    recordedSleep(now - 21 * 86400_000, now)
+      .then((spans) => setResult(usualTimes(spans)))
+      .catch(() => {});
+  }, [healthSleep]);
+  return healthSleep ? result : null;
+}
+
 function useLightsOut(serial: string | null, w: SleepWindow): number | null {
   const [result, setResult] = useState<number | null>(null);
   useEffect(() => {

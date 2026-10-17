@@ -1,20 +1,27 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 
-import { useSession, useShownPrefs, useShownUnit } from '@/ble/session';
+import { recordedSleep, useSession, useShownPrefs, useShownUnit } from '@/ble/session';
 import { MetricChart } from '@/components/metric-chart';
 import { UnitSyncCard } from '@/components/sync';
 import { UnitChip } from '@/components/unit-title';
 import { Button, Card, Screen, T, Title } from '@/components/ui';
 import * as db from '@/data/db';
+import { HEALTH_STORE } from '@/health/sleep';
 import { Severity } from '@/protocol/comfort';
 import { severityColor, useTheme } from '@/theme';
 import { formatValue } from '@/ui/metrics';
-import { analyzeNight, NIGHT_BANDS, nightLabel, type NightStory, spellReport } from '@/ui/nights';
+import { analyzeNight, judgedWindow, NIGHT_BANDS, nightLabel, type NightStory, spellReport } from '@/ui/nights';
+import { sleepForNight } from '@/ui/health-sleep';
 import { formatTime, viewForNight, windowForNight } from '@/ui/sleep';
 import { formatTemp, type TempUnit, toUnit } from '@/ui/units';
 
 type Span = { fromS: number; toS: number };
+
+/** The charts' span: around the recorded sleep when there is one, else around the sleep window. */
+function nightView(night: string, w: Parameters<typeof viewForNight>[1], slept: Span | null): Span {
+  return slept ? { fromS: slept.fromS - 90 * 60, toS: slept.toS + 60 * 60 } : viewForNight(night, w);
+}
 
 export default function NightsScreen() {
   const unit = useShownUnit();
@@ -25,6 +32,11 @@ export default function NightsScreen() {
   const [nights, setNights] = useState<string[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [points, setPoints] = useState<db.StoredPoint[]>([]);
+  // The night's sleep as the health store recorded it, with the night it is for;
+  // without one for the night shown, it is judged by the sleep window.
+  const [recorded, setRecorded] = useState<{ night: string; span: Span | null } | null>(null);
+  const healthSleep = useSession((s) => s.healthSleep);
+  const slept = healthSleep && recorded?.night === selected ? recorded.span : null;
   // A failed read shows a card with a retry instead of a blank tab; bumping
   // `attempt` reruns both reads.
   const [error, setError] = useState<string | null>(null);
@@ -32,23 +44,60 @@ export default function NightsScreen() {
 
   useEffect(() => {
     if (!unit) return;
+    let live = true;
     db.nightsWithData(unit.serial)
+      .then(async (all) => {
+        // A night the unit logged only outside the sleep (an afternoon plugged
+        // in, say) would open to "No readings": list only nights with a
+        // reading in the span they are judged over.
+        let spans: Awaited<ReturnType<typeof recordedSleep>> = [];
+        if (healthSleep && all.length > 0) {
+          const [oy, om, od] = all[all.length - 1].split('-').map(Number);
+          const [ny, nm, nd] = all[0].split('-').map(Number);
+          spans = await recordedSleep(new Date(oy, om - 1, od, 12).getTime(), new Date(ny, nm - 1, nd + 1, 14).getTime()).catch(
+            () => [],
+          );
+        }
+        const list: string[] = [];
+        for (const night of all) {
+          const w = judgedWindow(night, sleepWindow, spans);
+          if ((await db.countBetween(unit.serial, w.fromS, w.toS)) > 0) list.push(night);
+        }
+        return list;
+      })
       .then((list) => {
+        if (!live) return;
         setNights(list);
         setSelected((current) => (current && list.includes(current) ? current : (list[0] ?? null)));
       })
-      .catch((e) => setError(errorText(e)));
-  }, [unit, dataVersion, attempt]);
+      .catch((e) => live && setError(errorText(e)));
+    return () => {
+      live = false;
+    };
+  }, [unit, dataVersion, attempt, healthSleep, sleepWindow]);
+
+  useEffect(() => {
+    if (!selected || !healthSleep) return;
+    let live = true;
+    // Noon of the evening to 14:00 the next day holds any sleep the night can have.
+    const [y, m, d] = selected.split('-').map(Number);
+    recordedSleep(new Date(y, m - 1, d, 12).getTime(), new Date(y, m - 1, d + 1, 14).getTime())
+      .then((spans) => live && setRecorded({ night: selected, span: sleepForNight(selected, spans) }))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [selected, healthSleep, dataVersion]);
 
   useEffect(() => {
     if (!unit || !selected) return;
-    const { fromS, toS } = viewForNight(selected, sleepWindow);
+    const { fromS, toS } = nightView(selected, sleepWindow, slept);
     db.recordsBetween(unit.serial, fromS, toS).then(setPoints).catch((e) => setError(errorText(e)));
-  }, [unit, selected, dataVersion, sleepWindow, attempt]);
+  }, [unit, selected, dataVersion, sleepWindow, slept, attempt]);
 
   if (error) {
     return (
-      <Screen>
+      <Screen tabBar>
         <Title detail={<UnitChip unit={unit} />}>Nights</Title>
         <Card className="gap-3">
           <T className="font-body-semi text-base">Couldn’t load your nights</T>
@@ -68,14 +117,14 @@ export default function NightsScreen() {
 
   if (!unit || (nights !== null && nights.length === 0)) {
     return (
-      <Screen>
+      <Screen tabBar>
         <Title detail={<UnitChip unit={unit} />}>Nights</Title>
         <UnitSyncCard unit={unit} />
         <Card>
           <T className="text-muted leading-6">
             {unit
               ? 'No nights yet. The unit logs a reading every few minutes; sync in the morning to see how the night went.'
-              : 'Add your Quiesco to start collecting nights.'}
+              : 'Add your Quiesco to start collecting nights'}
           </T>
         </Card>
       </Screen>
@@ -83,8 +132,8 @@ export default function NightsScreen() {
   }
   if (!selected) return <NightsLoading />;
 
-  const view = viewForNight(selected, sleepWindow);
-  const window = windowForNight(selected, sleepWindow);
+  const view = nightView(selected, sleepWindow, slept);
+  const window = slept ?? windowForNight(selected, sleepWindow);
   const story = analyzeNight(points, window);
   const items = nightItems(story, window, tempUnit);
   // Only what went wrong gets a full card; the rest is one line each.
@@ -93,10 +142,11 @@ export default function NightsScreen() {
   const chart = { points, view, window, tempUnit };
 
   return (
-    <Screen>
+    <Screen tabBar>
       <Title detail={<UnitChip unit={unit} />}>Nights</Title>
       <UnitSyncCard unit={unit} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 py-1">
+      {/* Edge to edge, so chips scroll under the screen edge instead of being cut at the margin. */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-4" contentContainerClassName="gap-2 py-1 px-4">
         {(nights ?? []).map((n) => (
           <Pressable
             key={n}
@@ -108,10 +158,15 @@ export default function NightsScreen() {
           </Pressable>
         ))}
       </ScrollView>
+      {slept && (
+        <T className="text-[13px] text-muted px-1 -mt-1">
+          {`Asleep ${formatTime(slept.fromS)} – ${formatTime(slept.toS)}, from ${HEALTH_STORE}`}
+        </T>
+      )}
 
       {story.samples === 0 ? (
         <Card>
-          <T className="text-muted leading-6">No readings in your sleep window.</T>
+          <T className="text-muted leading-6">No readings in your sleep window</T>
         </Card>
       ) : (
         <>
@@ -148,7 +203,7 @@ function NightsLoading() {
   const t = useTheme();
   const unit = useShownUnit();
   return (
-    <Screen>
+    <Screen tabBar>
       <Title detail={<UnitChip unit={unit} />}>Nights</Title>
       <View className="py-16 items-center">
         <ActivityIndicator color={t.textMuted} accessibilityLabel="Loading nights" />

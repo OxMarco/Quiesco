@@ -70,7 +70,8 @@ uint8_t batteryPercentFromVolts(float volts) {
 }
 
 UiModel buildUiModel(const Reading& reading, uint8_t configuredScreen,
-                     uint8_t temperatureUnit, bool charging, JudgeMode mode) {
+                     uint8_t temperatureUnit, bool charging, JudgeMode mode,
+                     bool wasBatteryLow) {
   UiModel model;
   model.fahrenheit = temperatureUnit == TEMPERATURE_UNIT_FAHRENHEIT;
   model.mode = mode;
@@ -114,7 +115,10 @@ UiModel buildUiModel(const Reading& reading, uint8_t configuredScreen,
   }
   model.charging = charging;
 
-  const bool batteryLow = batteryValid && reading.batteryV < kLowBatteryVolts;
+  const float lowVolts =
+      wasBatteryLow ? kLowBatteryRecoveryVolts : kLowBatteryVolts;
+  const bool batteryLow = batteryValid && reading.batteryV < lowVolts;
+  model.batteryLow = batteryLow;
   if (charging || batteryLow) {
     model.screen = ScreenId::kBattery;
   } else if (configuredScreen == DISPLAY_SCREEN_LEDGER) {

@@ -20,3 +20,10 @@ void HardwareWatchdog::kick() {
     NRF_WDT->RR[0] = WDT_RR_RR_Reload;
   }
 }
+
+// FlashDB's whole-log format (fdb_tsdb.c), a finite run of sector erases
+// that takes minutes: reload between erases so it can finish. A reload
+// write is ignored while the watchdog is not running.
+extern "C" void fdb_quiesco_long_operation_step(void) {
+  NRF_WDT->RR[0] = WDT_RR_RR_Reload;
+}

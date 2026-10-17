@@ -12,7 +12,6 @@ import { link, type SyncProgress } from '@/ble/link';
 import { syncNow } from '@/ble/session';
 import { useStore } from '@/ble/store';
 import type * as db from '@/data/db';
-import { isDemo } from '@/data/sample';
 import { useTheme } from '@/theme';
 
 import { Card, T } from './ui';
@@ -59,7 +58,7 @@ export function UnitSyncCard({ unit }: { unit: db.Unit | null }) {
   // Only this unit's download: the link may be visiting another one.
   const sync = useStore(link, (s) => (s.serial === unit?.serial ? s.sync : null));
   const connected = useStore(link, (s) => s.phase === 'ready' && s.serial === unit?.serial);
-  if (!unit || isDemo(unit)) return null;
+  if (!unit) return null;
   return <SyncCard sync={sync} connected={connected} />;
 }
 

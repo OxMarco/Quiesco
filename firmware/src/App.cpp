@@ -10,6 +10,7 @@
 #include "platform/BootloaderEntry.h"
 #include "platform/DeviceId.h"
 #include "platform/ResetReason.h"
+#include "platform/RetainedRam.h"
 #include "services/CalibrationPolicy.h"
 #include "storage/TraceStore.h"
 #include "ui/Renderer.h"
@@ -24,11 +25,12 @@ void App::begin() {
   DebugLog::begin(FirmwareVersion::kString, serialNumber_,
                   ResetReason::describe(resetReason_));
   watchdog_.begin();
+  const uint64_t nowMs = clock_.nowMs();
+  takeRetainedState(nowMs);
 
   config_ = UnitIdentity::defaultConfigForUnit(deviceId_);
   publishDeviceInfo();
 
-  const uint64_t nowMs = clock_.nowMs();
   publishDiagnostics(nowMs);
   renderedCharging_ = pollCharging(nowMs);
   scheduler_.begin(nowMs, config_.measurementIntervalSeconds);
@@ -46,6 +48,12 @@ void App::step() {
   }
   if (state_ == State::kIdle || nowMs - stateSinceMs_ < stateLimitMs(state_)) {
     watchdog_.kick();
+    breadcrumb_.bootCount = bootCount_;
+    ++breadcrumb_.feeds;
+    breadcrumb_.feedUptimeMs = nowMs;
+    breadcrumb_.feedEpochMs = wallClock_.epochMsAt(nowMs);
+    breadcrumb_.state = static_cast<uint8_t>(state_);
+    RetainedRam::store(breadcrumb_);
   }
   ble_.poll(nowMs);
   if (bleSession_ != ble_.session()) {
@@ -73,8 +81,13 @@ void App::step() {
         }
         break;
       }
-      if (updateRequested_ && readyForUpdate()) {
+      if (updateRequested_ &&
+          (readyForUpdate() ||
+           nowMs - updateRequestedAtMs_ >= kUpdateWaitLimitMs)) {
         updateRequested_ = false;
+        if (!readyForUpdate()) {
+          DebugLog::event("USB update after waiting, work left undone");
+        }
         DebugLog::event("entering USB bootloader");
         ble_.disconnect();
         updateResetAtMs_ = nowMs + kUpdateDisconnectMs;
@@ -314,6 +327,11 @@ void App::step() {
       }
       persistConfigSaved_ =
           flashPresent ? saveSettings(nowMs) : !settingsSavePending();
+      if (!flashPresent && !persistConfigSaved_) {
+        // As commitConfig(): without this the stale retry time started a
+        // config cycle on the next idle step, which failed the same way.
+        nextConfigRetryMs_ = nowMs + 60000;
+      }
       if (logErasePending_ && logEraseSequence_ == 0) {
         recordDeviceResult(faults_.flash, flashPresent, flash_.timedOut(), false);
         state_ = State::kRendering;
@@ -353,7 +371,10 @@ void App::step() {
           pairingShown_ ? buildPairingModel(pairingCode_)
                         : buildUiModel(reading_, config_.displayScreen,
                                        config_.temperatureUnit, charging,
-                                       judgeModeAt(nowMs));
+                                       judgeModeAt(nowMs), batteryLow_);
+      if (!pairingShown_) {
+        batteryLow_ = model.batteryLow;
+      }
       // The panel keeps its image unpowered, so an unchanged model means no
       // init and no refresh at all this cycle.
       const bool contentChanged =
@@ -437,6 +458,7 @@ void App::step() {
 }
 
 void App::startCycle(uint64_t nowMs, CycleKind kind) {
+  breadcrumb_.heapKiB = RetainedRam::heapKiB();
   if (kind == CycleKind::kMeasure) {
     ++cycleNumber_;
   }
@@ -480,6 +502,17 @@ bool App::loadSettings(uint64_t nowMs) {
     logErasePending_ = eraseSequence != 0;
     // Boot counter failure must not overwrite an unknown counter on retry.
     ok = configStore_.advanceBootCount(flash_, bootCount_);
+  }
+  if (ok) {
+    // Best effort, after the boot counter so a retry never counts a boot
+    // twice: a failed write still leaves the record on 0013 until reset.
+    if (lastResetPending_) {
+      configStore_.saveLastReset(flash_, lastReset_);
+    } else {
+      configStore_.loadLastReset(flash_, lastReset_);
+    }
+    lastResetPending_ = false;
+    publishLastReset();
   }
   // Mount the log while the flash is up, before BLE starts: unmounted, status
   // reports newest sequence 0, which the app reads as an empty or replaced
@@ -540,11 +573,13 @@ bool App::saveSettings(uint64_t nowMs) {
     }
     logEraseSequence_ = sampleLog_.lastSequence() + 1;
   }
-  if (configSavePending_ && configStore_.save(flash_, config_)) {
-    configSavePending_ = false;
-  }
+  // Bonds before config: a factory reset cut off between the two must not
+  // leave default settings that still trust the old phones.
   if (bondsSavePending_ && configStore_.saveBonds(flash_, bonds_)) {
     bondsSavePending_ = false;
+  }
+  if (configSavePending_ && configStore_.save(flash_, config_)) {
+    configSavePending_ = false;
   }
   if (sleepSavePending_ &&
       configStore_.saveSleepWindow(flash_, sleepWindow_)) {
@@ -607,6 +642,9 @@ void App::takeBleCommands(uint64_t nowMs) {
       // The drive only appears on USB; off USB the bootloader would just
       // start the firmware again, so refuse rather than reboot for nothing.
       if (batteryMonitor_.usbPowered()) {
+        if (!updateRequested_) {
+          updateRequestedAtMs_ = nowMs;
+        }
         updateRequested_ = true;
       } else {
         DebugLog::event("USB update refused (not on USB)");
@@ -661,6 +699,7 @@ void App::beginSyncSession(uint64_t nowMs) {
   lastSentSequence_ =
       syncRequest_.startSequence > 0 ? syncRequest_.startSequence - 1 : 0;
   syncDeadlineMs_ = nowMs + kSyncProgressTimeoutMs;
+  syncEndsAtMs_ = nowMs + kSyncSessionLimitMs;
   syncActive_ =
       sampleLog_.startRead(flash_, syncRequest_.startSequence, syncCursor_);
 }
@@ -679,6 +718,9 @@ void App::serviceSync(uint64_t nowMs) {
   }
   syncLastSendMs_ = nowMs;
   {
+    if (!syncEndPending_ && syncBatchCount_ == 0 && nowMs >= syncEndsAtMs_) {
+      syncEndPending_ = true;
+    }
     if (!syncEndPending_ && syncBatchCount_ == 0) {
       uint8_t wanted = BleCodec::recordsPerPacket(syncAttPayload_);
       if (wanted == 0) {
@@ -788,6 +830,9 @@ void App::factoryReset(uint64_t nowMs, bool eraseLog) {
   // Forget every phone, the requester included; its link stays authenticated
   // until it disconnects. Pairing again needs USB power.
   ble_.clearBonds();
+  if (ble_.takeBondsChanged(bonds_)) {
+    bondsSavePending_ = true;  // in this cycle's save, with the config
+  }
   frcPending_ = false;  // also ends a running soak (see kFrcSoaking)
   frcState_ = BleCodec::kFrcIdle;
   frcCorrectionPpm_ = 0;
@@ -882,7 +927,7 @@ uint32_t App::stateLimitMs(State state) {
     case State::kErasingLog:
       return 20UL * 60 * 1000;  // ~2000 sectors at up to 500 ms each
     case State::kSyncing:
-      return 60UL * 60 * 1000;  // a full log at the minimum MTU
+      return 60UL * 60 * 1000;  // a session ends itself at 30 min
     case State::kDumping:
       return 30UL * 60 * 1000;  // a full log over USB serial
     default:
@@ -903,9 +948,24 @@ void App::handleConsole(uint64_t nowMs) {
       info.bondCount = ble_.bondCount();
       info.usbPowered = batteryMonitor_.usbPowered();
       info.uptimeMs = nowMs;
+      info.heapKiB = RetainedRam::heapKiB();
+      info.lastReset = &lastReset_;
       DebugLog::info(info, config_);
       break;
     }
+    case 'x':
+      // Watchdog test: stop feeding it. Within 30 s the unit resets, and the
+      // next boot records the reset and keeps the clock.
+      DebugLog::event("console hang for the watchdog", 0);
+      for (;;) {
+        delay(1000);
+      }
+    case 'f':
+      // Fault test: a read from unmapped memory raises a BusFault, which the
+      // Mbed OS error hook captures before the watchdog resets the unit.
+      DebugLog::event("console fault", 0);
+      (void)*reinterpret_cast<volatile uint32_t*>(0xFFFFFFF0u);
+      break;
     case 'm':
       sampleRequested_ = true;
       break;
@@ -1012,7 +1072,43 @@ void App::publishDiagnostics(uint64_t nowMs) {
   diagnostics.resetReason = resetReason_;
   diagnostics.uptimeSeconds = static_cast<uint32_t>(nowMs / 1000);
   diagnostics.i2cBusStuck = !environmentalSampler_.busFree();
+  diagnostics.heapKiB = breadcrumb_.heapKiB;
   ble_.publishDiagnostics(diagnostics);
+}
+
+// What the previous boot left in retained RAM: the cause of a watchdog or
+// lockup reset, recorded at the first settings load, and the wall clock,
+// which such a reset need not lose (ResetHistory::epochAtReset).
+void App::takeRetainedState(uint64_t nowMs) {
+  ResetHistory::Breadcrumb previous;
+  ResetHistory::FaultCapture fault;
+  bool hasPrevious = false;
+  bool hasFault = false;
+  RetainedRam::take(previous, hasPrevious, fault, hasFault);
+  lastResetPending_ = ResetHistory::describe(
+      resetReason_, hasPrevious ? &previous : nullptr,
+      hasFault ? &fault : nullptr, lastReset_);
+  if (lastResetPending_) {
+    publishLastReset();
+    DebugLog::event("unexpected reset, previous boot", lastReset_.bootCount);
+  }
+  uint64_t epochAtResetMs = 0;
+  if (ResetHistory::epochAtReset(resetReason_,
+                                 hasPrevious ? &previous : nullptr,
+                                 HardwareWatchdog::kTimeoutMs,
+                                 epochAtResetMs)) {
+    // Bootloader time before nowMs began is not counted: under a second.
+    const uint64_t epochMs = epochAtResetMs + nowMs;
+    wallClock_.sync(epochMs, nowMs);
+    ble_.publishEpoch(epochMs);
+    DebugLog::event("clock kept across reset", 1);
+  }
+}
+
+void App::publishLastReset() {
+  uint8_t record[ResetHistory::kRecordBytes];
+  ResetHistory::encode(lastReset_, record);
+  ble_.publishLastReset(record);
 }
 
 void App::publishDeviceInfo() {

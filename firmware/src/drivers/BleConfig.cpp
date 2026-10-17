@@ -38,6 +38,7 @@ constexpr char kDiagnosticsUuid[] = "7A1E000F-8E6F-4A7A-AE32-515549455343";
 constexpr char kAuthUuid[] = "7A1E0010-8E6F-4A7A-AE32-515549455343";
 constexpr char kEnrolKeyUuid[] = "7A1E0011-8E6F-4A7A-AE32-515549455343";
 constexpr char kSleepWindowUuid[] = "7A1E0012-8E6F-4A7A-AE32-515549455343";
+constexpr char kLastResetUuid[] = "7A1E0013-8E6F-4A7A-AE32-515549455343";
 
 // Bluetooth SIG Device Information Service and its string characteristics.
 constexpr char kDisServiceUuid[] = "180A";
@@ -118,6 +119,8 @@ BLECharacteristic enrolKeyCharacteristic(kEnrolKeyUuid, BLERead,
 BLECharacteristic sleepWindowCharacteristic(
     kSleepWindowUuid, BLERead | BLEWrite | kProtected,
     BleCodec::kSleepWindowBytes + kSpareByte, false);
+BLECharacteristic lastResetCharacteristic(
+    kLastResetUuid, BLERead | kProtected, BleCodec::kLastResetBytes, true);
 
 BLEService disService(kDisServiceUuid);
 BLECharacteristic disManufacturer(kDisManufacturerUuid, BLERead,
@@ -132,8 +135,9 @@ BLECharacteristic disHardware(kDisHardwareUuid, BLERead,
 
 // One slot per writable characteristic, so writes to different
 // characteristics never displace each other; a second write to the same one
-// before App::step() takes it replaces the first. Callbacks run inside
-// BLE.poll() on the application thread, so the slots need no locking.
+// before App::step() takes it replaces the first. Callbacks run on the
+// application thread, inside BLE.poll() or nested in a notifying writeValue
+// (exposeProtected), so the slots need no locking.
 enum WriteSlot : uint8_t {
   kSlotCoreConfig,  // config slots in the order they are applied
   kSlotInterval,
@@ -162,11 +166,16 @@ bool linkAuthenticated = false;
 BleConfig* activeAdapter = nullptr;
 BLEDevice activePeer;
 
+void reblankRefusedWrite(WriteSlot slot);
+
 template <WriteSlot slot>
 void written(BLEDevice device, BLECharacteristic characteristic) {
   if (!(device == activePeer)) return;
   if (slot != kSlotAuth && !linkAuthenticated) {
-    return;  // unauthenticated writes change nothing
+    // Unauthenticated writes change nothing, and must not stay readable:
+    // ArduinoBLE keeps the written bytes as the value (§3: zeros until auth).
+    reblankRefusedWrite(slot);
+    return;
   }
   PendingWrite& write = pendingWrites[slot];
   const int length = characteristic.valueLength();
@@ -234,6 +243,7 @@ ProtectedValue protectedValues[] = {
     {&calibrationStateCharacteristic, {}, BleCodec::kCalibrationStateBytes},
     {&diagnosticsCharacteristic, {}, BleCodec::kDiagnosticsBytes},
     {&sleepWindowCharacteristic, {}, BleCodec::kSleepWindowBytes},
+    {&lastResetCharacteristic, {}, BleCodec::kLastResetBytes},
 };
 
 void setProtected(BLECharacteristic& characteristic, const uint8_t* value,
@@ -250,9 +260,42 @@ void setProtected(BLECharacteristic& characteristic, const uint8_t* value,
   }
 }
 
+// The characteristic a write slot lands in, when it is readable.
+BLECharacteristic* readableCharacteristic(WriteSlot slot) {
+  switch (slot) {
+    case kSlotCoreConfig: return &configCharacteristic;
+    case kSlotInterval: return &intervalCharacteristic;
+    case kSlotScreen: return &screenCharacteristic;
+    case kSlotCalibration: return &calibrationCharacteristic;
+    case kSlotName: return &nameCharacteristic;
+    case kSlotEpoch: return &epochCharacteristic;
+    case kSlotSleepWindow: return &sleepWindowCharacteristic;
+    default: return nullptr;  // write-only controls, and auth
+  }
+}
+
+void reblankRefusedWrite(WriteSlot slot) {
+  static const uint8_t kZeros[BleCodec::kStatusBytes] = {};
+  BLECharacteristic* characteristic = readableCharacteristic(slot);
+  for (ProtectedValue& entry : protectedValues) {
+    if (entry.characteristic == characteristic) {
+      characteristic->writeValue(kZeros, entry.length);
+      return;
+    }
+  }
+}
+
 void exposeProtected(bool show) {
   static const uint8_t kZeros[BleCodec::kStatusBytes] = {};
   for (ProtectedValue& entry : protectedValues) {
+    // A notify can wait in ArduinoBLE for controller buffers, polling HCI,
+    // so connect and disconnect callbacks can run inside this loop. One that
+    // changed the session has already exposed or blanked every value for
+    // the new state: carrying on would write real values for a new,
+    // unauthenticated peer to read.
+    if (linkAuthenticated != show) {
+      return;
+    }
     entry.characteristic->writeValue(show ? entry.value : kZeros,
                                      entry.length);
   }
@@ -298,7 +341,10 @@ bool BleConfig::begin(const Config& config, const char* serialNumber,
   BLE.setEventHandler(BLEConnected, onConnected);
   BLE.setEventHandler(BLEDisconnected, onDisconnected);
   resetSession(false);
-  BLE.setLocalName(config.deviceName);
+  // Both names: the advertised local name, and the GAP device name (2A00),
+  // which iOS lists until it has seen a scan response. Unset, the GAP name is
+  // ArduinoBLE's default, "Arduino".
+  setAdvertisedName(config.deviceName);
   BLE.setPairable(Pairable::NO);  // since protocol v4: no link-layer pairing
   disService.addCharacteristic(disManufacturer);
   disService.addCharacteristic(disModel);
@@ -327,6 +373,7 @@ bool BleConfig::begin(const Config& config, const char* serialNumber,
   service.addCharacteristic(authCharacteristic);
   service.addCharacteristic(enrolKeyCharacteristic);
   service.addCharacteristic(sleepWindowCharacteristic);
+  service.addCharacteristic(lastResetCharacteristic);
   BLE.addService(service);
   intervalCharacteristic.setEventHandler(BLEWritten, written<kSlotInterval>);
   configCharacteristic.setEventHandler(BLEWritten, written<kSlotCoreConfig>);
@@ -391,7 +438,12 @@ void BleConfig::onDisconnected(BLEDevice device) {
 void BleConfig::resetSession(bool connected) {
   ++session_;
   connected_ = connected;
-  advertising_ = false;
+  // A connection pauses advertising without clearing ArduinoBLE's flag, and
+  // the stack turns it back on after the disconnect (HCI.cpp), with the data
+  // from before: a rename meanwhile would advertise the old name, and on
+  // battery it would advertise against the "plugged in" policy. The next
+  // poll restarts it or stops it.
+  if (!connected) refreshAdvertising_ = advertising_;
   memset(pendingWrites, 0, sizeof pendingWrites);
   memset(challenge_, 0, sizeof challenge_);
   authFailures_ = 0;
@@ -464,8 +516,11 @@ void BleConfig::serviceAuth(uint64_t nowMs) {
   // Prove. A handful of tries per connection; each consumes the challenge.
   static const uint8_t kZeroChallenge[BleCodec::kAuthChallengeBytes] = {};
   bool accepted = false;
-  if (authFailures_ < kMaxAuthFailures &&
-      !HmacSha256::equal(challenge_, kZeroChallenge, sizeof challenge_)) {
+  // No challenge yet (one is drawn after the connect, or the RNG failed): a
+  // proof against zeros is refused but is not the phone's failure.
+  const bool challengeIssued =
+      !HmacSha256::equal(challenge_, kZeroChallenge, sizeof challenge_);
+  if (authFailures_ < kMaxAuthFailures && challengeIssued) {
     uint8_t address[6];
     uint8_t key[BleCodec::kAuthKeyBytes];
     keyIdAddress(request.keyId, address);
@@ -480,7 +535,7 @@ void BleConfig::serviceAuth(uint64_t nowMs) {
     }
   }
   DebugLog::event("ble auth attempt", accepted ? 1 : 0);
-  if (!accepted && authFailures_ < kMaxAuthFailures) {
+  if (!accepted && challengeIssued && authFailures_ < kMaxAuthFailures) {
     authFailures_++;
   }
   newChallenge();
@@ -492,6 +547,7 @@ void BleConfig::serviceAuth(uint64_t nowMs) {
       keyIdAddress(pendingKeyId_, address);
       bondTable.storeLtk(address, pendingKey_);
       bondsChanged = true;  // only a proof of the on-screen code can add a phone
+      setupCodesIssued_ = 0;
       uint8_t out[BleCodec::kEnrolKeyBytes];
       BleCodec::encodeEnrolKey(pendingKeyId_, pendingKey_, out);
       clearEnrolKey();
@@ -509,7 +565,11 @@ void BleConfig::enrol(uint64_t nowMs) {
     publishAuthState();
     return;
   }
-  if (pendingKeyId_ != 0 || authFailures_ >= kMaxAuthFailures) {
+  // enrolKeyUntilMs_ also covers an issued key the phone has not read yet:
+  // a new setup would replace it in 0011, leaving a stored key no phone holds.
+  if (pendingKeyId_ != 0 || enrolKeyUntilMs_ != 0 ||
+      authFailures_ >= kMaxAuthFailures ||
+      setupCodesIssued_ >= kMaxSetupCodesPerPlug) {
     DebugLog::event("ble enrol ignored (pending or locked out)");
     publishAuthState();
     return;
@@ -560,6 +620,7 @@ void BleConfig::enrol(uint64_t nowMs) {
   }
   pendingKeyId_ = keyId;
   pendingCode_ = code;
+  setupCodesIssued_++;
   memcpy(pendingKey_, key, sizeof pendingKey_);
   enrollmentScreenPending_ = true;
   uint8_t out[BleCodec::kEnrolKeyBytes];
@@ -588,6 +649,9 @@ void BleConfig::clearBonds() {
   bondTable.clear();
   clearEnrolKey();
   bondsChanged = true;
+  if (active_) {
+    publishAuthState();  // the enrolled flag, before the app reads it again
+  }
 }
 
 uint8_t BleConfig::bondCount() const {
@@ -605,7 +669,12 @@ void BleConfig::setPairingAllowed(bool allowed) {
     return;
   }
   pairingOpen = allowed;
-  if (!allowed) clearEnrolKey();
+  setupCodesIssued_ = 0;  // a replug, by someone at the unit
+  // Unplugging cancels a setup not yet proved. A key already issued is
+  // stored and stays readable for its 30 s (or until the disconnect):
+  // withdrawing it left a phone entry, maybe evicting a real phone, that no
+  // phone could use.
+  if (!allowed && pendingKeyId_ != 0) clearEnrolKey();
   if (active_) {
     publishAuthState();  // the enrolment-open flag
   }
@@ -735,11 +804,21 @@ void BleConfig::publishConfig(const Config& config) {
       BLE.stopAdvertise();
       advertising_ = false;
     }
-    BLE.setLocalName(config.deviceName);
+    setAdvertisedName(config.deviceName);
     if (restartAdvertising) {
       advertising_ = BLE.advertise() != 0;
     }
   }
+}
+
+void BleConfig::setAdvertisedName(const char* name) {
+  const uint8_t slot = advertisedSlot_ ^ 1;
+  strncpy(advertisedNames_[slot], name, sizeof advertisedNames_[slot] - 1);
+  advertisedNames_[slot][sizeof advertisedNames_[slot] - 1] = '\0';
+  if (BLE.setLocalName(advertisedNames_[slot])) {
+    advertisedSlot_ = slot;
+  }
+  BLE.setDeviceName(advertisedNames_[slot]);
 }
 
 void BleConfig::publishDiagnostics(const BleCodec::Diagnostics& diagnostics) {
@@ -770,6 +849,10 @@ void BleConfig::publishReading(const Reading& reading) {
   uint8_t out[BleCodec::kReadingBytes];
   BleCodec::encodeReadingCompact(reading, out);
   setProtected(readingCharacteristic, out, sizeof out);  // notifies if authenticated
+}
+
+void BleConfig::publishLastReset(const uint8_t record[BleCodec::kLastResetBytes]) {
+  setProtected(lastResetCharacteristic, record, BleCodec::kLastResetBytes);
 }
 
 void BleConfig::publishEpoch(uint64_t epochMs) {
@@ -807,10 +890,12 @@ void BleConfig::updateAdvertising() {
     return;
   }
   const bool shouldAdvertise = alwaysAvailable_ || pairingOpen;
-  if (shouldAdvertise && !advertising_) {
+  if (shouldAdvertise && (!advertising_ || refreshAdvertising_)) {
+    if (advertising_) BLE.stopAdvertise();
     advertising_ = BLE.advertise() != 0;
   } else if (!shouldAdvertise && advertising_) {
     BLE.stopAdvertise();
     advertising_ = false;
   }
+  refreshAdvertising_ = false;
 }

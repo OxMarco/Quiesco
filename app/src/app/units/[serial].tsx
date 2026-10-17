@@ -11,7 +11,7 @@ export default function UnitScreen() {
   const { serial } = useLocalSearchParams<{ serial: string }>();
   const unit = useSession((s) => s.units.find((u) => u.serial === serial) ?? null);
   // Removed while open (or a stale link): nothing left to show.
-  if (!unit) return <NotFound message="This unit is no longer on this phone." />;
+  if (!unit) return <NotFound message="This unit is no longer on this phone" />;
   return (
     <Screen>
       <Pressable

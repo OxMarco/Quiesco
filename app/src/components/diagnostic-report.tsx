@@ -5,7 +5,7 @@
 import * as MailComposer from 'expo-mail-composer';
 import { useState } from 'react';
 import { Linking, Modal, Platform, Pressable, ScrollView, Share, View } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { link } from '@/ble/link';
 import { session, shownUnit } from '@/ble/session';
@@ -41,6 +41,7 @@ export function DiagnosticReportRow({ last }: { last?: boolean }) {
 }
 
 function ReportSheet({ report, onClose }: { report: string; onClose: () => void }) {
+  const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; bad: boolean } | null>(null);
 
@@ -64,11 +65,12 @@ function ReportSheet({ report, onClose }: { report: string; onClose: () => void 
 
   const share = () => {
     setNote(null);
-    Share.share({ title: SUBJECT, message: report }).catch(() => setNote({ text: 'Couldn’t open the share sheet.', bad: true }));
+    Share.share({ title: SUBJECT, message: report }).catch(() => setNote({ text: 'Couldn’t open the share sheet', bad: true }));
   };
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} className="flex-1 bg-bg">
+    // Padded in JS, not SafeAreaView, so the buttons are not pushed below the screen (see Screen).
+    <View className="flex-1 bg-bg" style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}>
       <View className="flex-row items-center justify-between px-5 pt-4 pb-2">
         <T className="font-body-semi text-lg">Diagnostic report</T>
         <Pressable onPress={onClose} accessibilityRole="button" hitSlop={12}>
@@ -89,7 +91,7 @@ function ReportSheet({ report, onClose }: { report: string; onClose: () => void 
         <Button title={`Email to ${SUPPORT_EMAIL}`} onPress={email} busy={busy} />
         <Button title="Share…" kind="secondary" onPress={share} />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

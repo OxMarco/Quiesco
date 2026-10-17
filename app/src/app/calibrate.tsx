@@ -41,7 +41,7 @@ export default function CalibrateScreen() {
       {!started ? (
         <>
           <Card className="gap-3">
-            <Step n={1} text="Put the unit outdoors, or on the sill of a wide-open window, out of direct sun." />
+            <Step n={1} text="Put the unit outdoors, or on the sill of a wide-open window, out of direct sun" />
             <Step n={2} text="Wait 5 minutes so it breathes only outdoor air. Keep away from people and exhaust: breath raises CO₂." />
             <Step n={3} text="Start. The unit measures once a minute for 5 minutes, then corrects itself. You can close the app." />
           </Card>
@@ -51,7 +51,7 @@ export default function CalibrateScreen() {
           </Card>
           {error && <T className="text-bad text-sm">{error}</T>}
           <Button title="Start recalibration" disabled={!connected} onPress={start} />
-          {!connected && <T className="text-muted text-sm">Connect to the unit first.</T>}
+          {!connected && <T className="text-muted text-sm">Connect to the unit first</T>}
         </>
       ) : (
         <Card className="items-center gap-3 py-8">
@@ -76,7 +76,7 @@ export default function CalibrateScreen() {
                   ? 'The phone lost the unit. A started run carries on by itself; reconnect later and the result shows in Settings.'
                   : frc === FrcState.Soaking
                   ? 'About 5 minutes. Leave the unit where it is.'
-                  : 'The run starts with the next measurement.'}
+                  : 'The run starts with the next measurement'}
           </T>
         </Card>
       )}

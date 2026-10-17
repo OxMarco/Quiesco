@@ -23,6 +23,7 @@ export const Chr = {
   auth: quiesco('0010'),
   enrolKey: quiesco('0011'),
   sleepWindow: quiesco('0012'),
+  lastReset: quiesco('0013'),
 } as const;
 
 export const DIS_SERVICE = '180A';

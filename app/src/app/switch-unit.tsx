@@ -12,7 +12,6 @@ import { useStore } from '@/ble/store';
 import { Face } from '@/components/face';
 import { Button, Card, Sheet, SheetHeader, T } from '@/components/ui';
 import * as db from '@/data/db';
-import { isDemo } from '@/data/sample';
 import { Severity } from '@/protocol/comfort';
 import { trace } from '@/debug/trace';
 import { severityColor, useTheme } from '@/theme';
@@ -91,9 +90,7 @@ function UnitRow({
   const syncing = useSession((s) => s.background === unit.serial);
   const window = useSession((s) => prefsFor(s, unit.serial).sleepWindow);
   const issue = point ? (issuesOf(fromPoint(point), judgeMode(now, window))[0] ?? null) : null;
-  const status = isDemo(unit)
-    ? 'Demo'
-    : connected
+  const status = connected
       ? 'Connected'
       : syncing
         ? 'Syncing…'

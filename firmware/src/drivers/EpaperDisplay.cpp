@@ -3,6 +3,7 @@
 
 #include <Adafruit_GFX.h>
 #include <GxEPD2_BW.h>
+#include <SPI.h>
 
 #include "../ui/fonts/FredokaRegular7pt.h"
 #include "../ui/fonts/FredokaRegular9pt.h"
@@ -67,8 +68,23 @@ class FrameBuffer : public Adafruit_GFX {
   uint8_t data_[kFrameBytes];
 };
 
-GxEPD2_154_T8 panel(BoardPins::kEpaperCs, BoardPins::kEpaperDc,
-                     BoardPins::kEpaperReset, BoardPins::kEpaperBusy);
+// GxEPD2 waits up to 10 s on BUSY at every power-on, refresh and power-off,
+// and a frame plus hibernate has five such waits: a stuck line kept one step
+// for 50 s, past the 30 s watchdog, and the redraw forced after the reset
+// hung again, a reboot loop. A full refresh takes about 1.6 s, so 4 s per
+// wait still spares a cold panel; once BUSY is seen stuck, the waits left in
+// that frame are cut to a few ms, as their commands go nowhere.
+constexpr uint32_t kBusyTimeoutMs = 4000;
+constexpr uint32_t kStuckBusyTimeoutMs = 5;
+
+class Panel : public GxEPD2_154_T8 {
+ public:
+  using GxEPD2_154_T8::GxEPD2_154_T8;
+  void setBusyTimeoutMs(uint32_t ms) { _busy_timeout = ms * 1000UL; }
+};
+
+Panel panel(BoardPins::kEpaperCs, BoardPins::kEpaperDc,
+            BoardPins::kEpaperReset, BoardPins::kEpaperBusy);
 FrameBuffer frame;
 uint8_t previousFrame[kFrameBytes];
 bool previousFrameValid = false;
@@ -108,6 +124,9 @@ bool busyReleased() {
   if (!released) {
     QUIESCO_TRACE_EVENT("display", "busy still low", 1);
   }
+  if (!released && !busyTimedOut) {
+    panel.setBusyTimeoutMs(kStuckBusyTimeoutMs);
+  }
   busyTimedOut = busyTimedOut || !released;
   return released;
 }
@@ -129,6 +148,7 @@ bool EpaperDisplay::begin(bool useFullRefresh) {
   busyTimedOut = false;
   sawBusy = false;
   responsive = false;
+  panel.setBusyTimeoutMs(kBusyTimeoutMs);
   panel.init(0, fullRefresh);
   waitForResetBusy();
   panel.setBusyCallback(busyObserved, nullptr);
@@ -145,6 +165,15 @@ bool EpaperDisplay::end() {
   panel.powerOff();
   const bool released = busyReleased();
   panel.hibernate();
+  // hibernate()'s check code 0xA5 ends in a 1 and MOSI holds the last bit:
+  // in a redraw cycle nothing else is sent before the rail drops, and the
+  // pin fed the unpowered panel and flash through their protection diodes
+  // until the next cycle. A zero byte with neither chip selected parks it low
+  // (W25Q64Flash::end() does the same after a measure cycle).
+  digitalWrite(BoardPins::kFlashCs, HIGH);
+  SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
+  SPI.transfer(0x00);
+  SPI.endTransaction();
   // Never call SPI.end() on this core: MbedSPI::end() deletes the bus object
   // without nulling it, so the next begin() skips re-creation and every later
   // transfer runs on freed memory (HARDWARE.md §6.2). The object persists across
@@ -161,12 +190,14 @@ bool EpaperDisplay::endFrame() {
   if (fullRefresh) {
     panel.writeImageForFullRefresh(frame.data(), 0, 0, kWidth, kHeight);
     panel.refresh(false);
+    busyReleased();  // a timeout cuts the power-off wait below
     panel.writeImageAgain(frame.data(), 0, 0, kWidth, kHeight);
     panel.powerOff();
   } else {
     panel.writeImageToPrevious(previousFrame, 0, 0, kWidth, kHeight);
     panel.writeImage(frame.data(), 0, 0, kWidth, kHeight);
     panel.refresh(true);
+    busyReleased();
     panel.writeImageAgain(frame.data(), 0, 0, kWidth, kHeight);
   }
   QUIESCO_TRACE_EVENT("display",

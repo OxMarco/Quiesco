@@ -114,8 +114,10 @@ bool initializeFlashDbTs(W25Q64Flash& flash, fdb_tsdb_t db,
   memset(db, 0, sizeof *db);
   uint32_t sectorBytes = FlashStorageLayout::kSectorBytes;
   fdb_tsdb_control(db, FDB_TSDB_CTRL_SET_SEC_SIZE, &sectorBytes);
+  // As for the KV store: a read that failed during init leaves FlashDB's
+  // view of the ring (its newest time, its oldest sector) unknown.
   if (fdb_tsdb_init(db, databaseName, partitionName, clock, recordBytes,
-                    nullptr) == FDB_NO_ERR) {
+                    nullptr) == FDB_NO_ERR && !readFailed) {
     return true;
   }
   memset(db, 0, sizeof *db);

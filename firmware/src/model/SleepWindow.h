@@ -47,7 +47,10 @@ inline bool isValidSleepWindow(const SleepWindow& window) {
          window.utcOffsetMinutes >= SleepWindow::kMinOffsetMinutes &&
          window.utcOffsetMinutes <= SleepWindow::kMaxOffsetMinutes &&
          window.bedMin < SleepWindow::kMinutesPerDay &&
-         window.wakeMin < SleepWindow::kMinutesPerDay;
+         window.wakeMin < SleepWindow::kMinutesPerDay &&
+         // Equal times make a zero-length window: day bands all night. The
+         // app never sends one (it holds sleep to a minimum length).
+         window.bedMin != window.wakeMin;
 }
 
 // The 12-byte layout, shared by the BLE characteristic and the flash record.

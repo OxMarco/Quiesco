@@ -4,11 +4,11 @@
 
 import * as Application from 'expo-application';
 import * as StoreReview from 'expo-store-review';
-import { AppState, Appearance } from 'react-native';
+import { AppState, Appearance, Platform } from 'react-native';
 
 import * as db from '@/data/db';
-import { isDemo } from '@/data/sample';
 import { trace } from '@/debug/trace';
+import * as health from '@/health/sleep';
 import {
   type CalibrationOffsets,
   type CalibrationState,
@@ -19,6 +19,7 @@ import {
   TemperatureUnit,
   type UnitSleepWindow,
 } from '@/protocol/codec';
+import type { SleepSpan } from '@/ui/health-sleep';
 import type { SleepWindow } from '@/ui/sleep';
 import { localeTempUnit, type TempUnit } from '@/ui/units';
 
@@ -69,6 +70,8 @@ interface SessionState {
   tempUnit: TempUnit;
   /** False until the user has picked °C or °F; tempUnit is then the locale's guess. */
   tempUnitSet: boolean;
+  /** Judge nights by the sleep the phone's health store recorded, where it has some. */
+  healthSleep: boolean;
 }
 
 export const session = new Store<SessionState>({
@@ -83,6 +86,7 @@ export const session = new Store<SessionState>({
   radio: 'unknown',
   tempUnit: localeTempUnit(),
   tempUnitSet: false,
+  healthSleep: false,
 });
 
 export function useSession<S>(select: (s: SessionState) => S): S {
@@ -166,7 +170,7 @@ export async function selectUnit(serial: string) {
   await db.setSetting(SELECTED_KEY, serial);
   const unit = shownUnit(session.get());
   const l = linkApi.link.get();
-  if (!unit || isDemo(unit) || (l.serial === serial && l.phase === 'ready')) return;
+  if (!unit || (l.serial === serial && l.phase === 'ready')) return;
   await reconnect();
 }
 
@@ -195,6 +199,7 @@ export async function syncNow() {
   await eraseLogIfDue().catch((e) => trace('log erase failed', e));
   // Never over a quiet background sync: the user is looking at another unit.
   if (!session.get().background) await askForReviewIfDue().catch((e) => trace('review prompt failed', e));
+  if (AppState.currentState !== 'active') await settleInBackground().catch((e) => trace('settle failed', e));
   return count;
 }
 
@@ -291,6 +296,22 @@ async function pushTempUnit() {
   if (l.config.temperatureUnit !== want) await linkApi.setTemperatureUnit(want);
 }
 
+const HEALTH_SLEEP_KEY = 'healthSleep';
+
+/** Turning it on asks the health store for access first; stays off if that fails. */
+export async function setHealthSleep(on: boolean): Promise<boolean> {
+  const granted = on ? await health.requestSleepAccess() : false;
+  await db.setSetting(HEALTH_SLEEP_KEY, granted);
+  session.set((s) => ({ healthSleep: granted, dataVersion: s.dataVersion + 1 }));
+  return granted;
+}
+
+/** Recorded sleep over [fromMs, toMs), or none while the setting is off. */
+export async function recordedSleep(fromMs: number, toMs: number): Promise<SleepSpan[]> {
+  if (!session.get().healthSleep) return [];
+  return health.sleepSpans(fromMs, toMs);
+}
+
 const THEME_KEY = 'theme';
 
 function applyTheme(pref: ThemePref) {
@@ -303,12 +324,21 @@ export async function setTheme(pref: ThemePref) {
   session.set({ theme: pref });
 }
 
-let booted = false;
+let loading: Promise<void> | null = null;
 
-/** Called once from the root layout. */
-export async function boot() {
-  if (booted) return;
-  booted = true;
+/**
+ * The stored part of the session: settings and units, no Bluetooth. A
+ * background run (no screen) needs just this; boot() adds the listeners.
+ */
+export function loadSession(): Promise<void> {
+  loading ??= readSession().catch((e) => {
+    loading = null;
+    throw e;
+  });
+  return loading;
+}
+
+async function readSession() {
   const unit = await db.getSetting<TempUnit>(TEMP_UNIT_KEY);
   if (unit === 'C' || unit === 'F') session.set({ tempUnit: unit, tempUnitSet: true });
   const theme = await db.getSetting<ThemePref>(THEME_KEY);
@@ -318,16 +348,35 @@ export async function boot() {
   }
   const selected = await db.getSetting<string>(SELECTED_KEY);
   if (typeof selected === 'string') session.set({ selected });
+  if ((await db.getSetting<boolean>(HEALTH_SLEEP_KEY)) === true) session.set({ healthSleep: true });
   await reloadUnits();
   await migrateLegacyPrefs();
+}
+
+let booted = false;
+
+/** Called once from the root layout. */
+export async function boot() {
+  if (booted) return;
+  booted = true;
+  await loadSession();
   watchUnitSettings();
   ble.onRadioState((radio) => {
     session.set({ radio });
     if (radio === 'on') quietReconnect();
   });
-  // Back from the background: the unit may be in range again.
+  // A link that drops while the app is in the background (the unit restarts,
+  // or walks out of range) gets the same treatment as leaving the screen.
+  let wasReady = false;
+  linkApi.link.subscribe(() => {
+    const ready = linkApi.link.get().phase === 'ready';
+    if (wasReady && !ready && AppState.currentState !== 'active') settleInBackground().catch(() => {});
+    wasReady = ready;
+  });
   AppState.addEventListener('change', (state) => {
+    // Back from the background: the unit may be in range again.
     if (state === 'active' && session.get().radio === 'on') quietReconnect();
+    if (state === 'background') settleInBackground().catch((e) => trace('settle failed', e));
   });
   const radio = await ble.radioState().catch(() => 'unknown' as const);
   session.set({ radio });
@@ -372,8 +421,7 @@ export function reconnect(): Promise<void> {
   reconnecting ??= (async () => {
     stopBackgroundSync();
     const unit = shownUnit(session.get());
-    // The demo unit has no radio behind it.
-    if (!unit || isDemo(unit)) return;
+    if (!unit) return;
     const l = linkApi.link.get();
     if (l.serial === unit.serial && !SETTLED.includes(l.phase)) return;
     if (!(await ble.requestPermissions())) return;
@@ -418,7 +466,7 @@ async function syncOthersIfDue() {
   const live = () => gen === backgroundGeneration;
   const s = session.get();
   const shown = shownUnit(s);
-  const others = s.units.filter((u) => u.serial !== shown?.serial && !isDemo(u));
+  const others = s.units.filter((u) => u.serial !== shown?.serial);
   if (others.length === 0) return;
   // A unit without a key on this phone would ask for a setup code: never in the background.
   const candidates = [];
@@ -440,7 +488,7 @@ async function syncOthersIfDue() {
     if (live()) {
       session.set({ background: null });
       const back = shownUnit(session.get());
-      if (back && !isDemo(back)) await open(back.peripheralId).catch((e) => trace('reconnect failed', e));
+      if (back) await open(back.peripheralId).catch((e) => trace('reconnect failed', e));
     }
   }
 }
@@ -462,4 +510,68 @@ export async function forget(serial: string) {
   }));
   await db.setSetting(SELECTED_KEY, session.get().selected);
   quietReconnect();
+}
+
+// --------------------------------------------------- in the background
+
+/**
+ * The unit's battery decides what the app does when it leaves the screen. On
+ * USB power the link stays up, so live readings keep the widgets current; on
+ * battery it is dropped, because a held connection drains the unit, and the
+ * next background run syncs again. Out of range, the system is asked to connect
+ * whenever the unit comes back (waitFor), which wakes the app to sync.
+ */
+async function settleInBackground() {
+  if (AppState.currentState === 'active') return;
+  const unit = shownUnit(session.get());
+  if (!unit) return;
+  const l = linkApi.link.get();
+  if (l.serial === unit.serial && l.phase === 'ready') {
+    const syncing = l.sync && l.sync.state !== 'done' && l.sync.state !== 'failed';
+    if (syncing) return; // syncNow settles when it ends
+    if (!unitOnUsb()) await linkApi.disconnect();
+    return;
+  }
+  if (l.serial === unit.serial && !SETTLED.includes(l.phase)) return; // still connecting
+  waitForUnit(unit);
+}
+
+/** On USB power (or a bench unit with no battery), holding the link costs the unit nothing. */
+function unitOnUsb(): boolean {
+  const info = linkApi.link.get().info;
+  return !!info && (info.noBattery || info.pairingOpen);
+}
+
+let waitingFor: string | null = null;
+
+function waitForUnit(unit: db.Unit) {
+  if (Platform.OS === 'web' || waitingFor === unit.peripheralId) return;
+  waitingFor = unit.peripheralId;
+  trace('waiting for unit', unit.serial);
+  ble
+    .waitFor(unit.peripheralId)
+    .then(() => backgroundSync('unit in range'))
+    .catch(() => {})
+    .finally(() => {
+      if (waitingFor === unit.peripheralId) waitingFor = null;
+    });
+}
+
+/**
+ * One background run: sync the shown unit if it can be reached, which also
+ * sets its clock. Never asks for anything (permissions, a setup code), so a
+ * unit without a key on this phone is skipped. Called by the periodic task
+ * (expo-background-task) and when a waited-for unit comes into range.
+ */
+export async function backgroundSync(reason: string): Promise<void> {
+  trace('background sync', reason);
+  await loadSession();
+  const unit = shownUnit(session.get());
+  if (!unit || (await keys.loadKey(unit.serial)) === null) return;
+  if (!(await ble.hasPermissions())) return;
+  if ((await ble.radioState().catch(() => 'unknown')) !== 'on') return;
+  const l = linkApi.link.get();
+  if (l.serial === unit.serial && l.phase === 'ready') await syncNow().catch((e) => trace('background sync failed', e));
+  else await (reconnecting ?? open(unit.peripheralId)).catch((e) => trace('background sync failed', e));
+  if (AppState.currentState !== 'active') await settleInBackground().catch(() => {});
 }

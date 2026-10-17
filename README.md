@@ -168,10 +168,6 @@ cd Quiesco
 6. **Install the app** → [`app/`](app/README.md#run-it)
    Build it onto your phone, plug the unit into USB and pair.
 
-> [!TIP]
-> Only want to try the software? The app's welcome screen has **Try it with
-> demo data**, so you can explore every screen without hardware.
-
 ## ⬆ Upgrade firmware
 
 No software needed, on macOS, Windows or Linux. Plug the unit into a

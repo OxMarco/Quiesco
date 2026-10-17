@@ -1,3 +1,4 @@
+import { prose } from '@/ui/format';
 import { EVIDENCE, evidenceScale, feelsLikeLabel, scaleParts } from '@/ui/advice';
 import { formatValue } from '@/ui/metrics';
 import { deltaFromUnit, deltaToUnit, formatTemp, fromUnit, toUnit } from '@/ui/units';
@@ -24,5 +25,14 @@ describe('temperature units', () => {
     expect(unit).toBe('°F');
     expect(scale.min).toBeCloseTo(57.2);
     expect(scaleParts(scale).map((p) => p.share)).toEqual(scaleParts(EVIDENCE.temperature.scale).map((p) => p.share).map((s) => expect.closeTo(s, 6)));
+  });
+});
+
+describe('prose', () => {
+  test('a lone sentence has no full stop, several are punctuated', () => {
+    expect(prose('Best for sleep is 16 – 20 °C')).toBe('Best for sleep is 16 – 20 °C');
+    expect(prose('Best for sleep is 40 – 60 %', false, 'The room passed it at about 21:10')).toBe(
+      'Best for sleep is 40 – 60 %. The room passed it at about 21:10.',
+    );
   });
 });

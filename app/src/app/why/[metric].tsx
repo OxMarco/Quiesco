@@ -7,7 +7,7 @@ import { useSession } from '@/ble/session';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { FirmnessDots } from '@/components/evidence';
-import { NotFound, Sheet, T } from '@/components/ui';
+import { NotFound, Sheet, T, TitleText } from '@/components/ui';
 import { EVIDENCE, evidenceScale, FIRMNESS_ORDER, type JudgedMetric, scaleParts, type Zone } from '@/ui/advice';
 
 const ZONE_CLASS: Record<Zone['tone'], string> = {
@@ -25,7 +25,9 @@ export default function WhyScreen() {
     <Sheet tone="surface">
     <ScrollView contentContainerClassName="px-4 pt-6 pb-12 gap-4">
       <View className="flex-row justify-between items-center gap-4">
-        <T className="font-title text-2xl shrink">{e.title}</T>
+        <T className="font-title text-2xl leading-9 shrink">
+          <TitleText>{e.title}</TitleText>
+        </T>
         <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={12}>
           <T className="text-primary font-body-semi">Close</T>
         </Pressable>
@@ -115,11 +117,12 @@ function Scale({ scale, unit }: ReturnType<typeof evidenceScale>) {
   const parts = scaleParts(scale);
   return (
     <View className="gap-1.5">
+      {/* Narrow zones shrink their label to fit ("can wake you") rather than cut or split a word. */}
       <View className="flex-row">
         {parts.map((p) => (
-          <View key={p.label} style={{ flex: p.share }} className="items-center">
+          <View key={p.label} style={{ flex: p.share }} className="items-center px-0.5">
             {p.share >= 0.12 && (
-              <T className="font-body-semi text-[11px]" numberOfLines={1}>
+              <T className="font-body-semi text-[11px]" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
                 {p.label}
               </T>
             )}

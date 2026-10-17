@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include <cmath>
+#include <string>
 #include <vector>
 
 #include "doctest.h"
 
+#include "drivers/Bme280Compensation.h"
+#include "drivers/Veml7700Lux.h"
 #include "dsp/AcousticMetrics.h"
 #include "model/Config.h"
 #include "model/FaultStatus.h"
@@ -13,6 +16,7 @@
 #include "model/SleepWindow.h"
 #include "parity/sleep_parity_vectors.h"
 #include "ui/ComfortEvaluation.h"
+#include "ui/LightTile.h"
 #include "ui/SleepSchedule.h"
 #include "ui/UiModel.h"
 
@@ -203,6 +207,20 @@ TEST_CASE("screen selection and battery override") {
   lowBattery.batteryV = 3.4f;
   CHECK(buildUiModel(lowBattery, DISPLAY_SCREEN_FACE, TEMPERATURE_UNIT_CELSIUS, false).screen ==
         ScreenId::kBattery);
+  // Hysteresis: 3.55 V enters nothing, but leaves the battery screen only
+  // once the cell is back above 3.6 V.
+  lowBattery.batteryV = 3.55f;
+  const UiModel calm = buildUiModel(lowBattery, DISPLAY_SCREEN_FACE, TEMPERATURE_UNIT_CELSIUS,
+                                    false, JudgeMode::kSleep, false);
+  CHECK(calm.screen == ScreenId::kFace);
+  CHECK(!calm.batteryLow);
+  const UiModel held = buildUiModel(lowBattery, DISPLAY_SCREEN_FACE, TEMPERATURE_UNIT_CELSIUS,
+                                    false, JudgeMode::kSleep, true);
+  CHECK(held.screen == ScreenId::kBattery);
+  CHECK(held.batteryLow);
+  lowBattery.batteryV = 3.65f;
+  CHECK(buildUiModel(lowBattery, DISPLAY_SCREEN_FACE, TEMPERATURE_UNIT_CELSIUS, false,
+                     JudgeMode::kSleep, true).screen == ScreenId::kFace);
   // Unknown battery voltage must not trap the UI on the battery screen.
   lowBattery.valid &= ~VALID_BATTERY;
   CHECK(buildUiModel(lowBattery, DISPLAY_SCREEN_FACE, TEMPERATURE_UNIT_CELSIUS, false).screen ==
@@ -307,6 +325,35 @@ TEST_CASE("judge mode around bedtime and wake") {
   const uint64_t friday = day + 24 * 60 * minute;
   CHECK(at(friday + (23 * 60 + 30) * minute) == JudgeMode::kSleep);
   CHECK(at(friday + (24 * 60 + 7 * 60 + 30) * minute) == JudgeMode::kDay);
+}
+
+TEST_CASE("judge mode for windows that run past noon") {
+  SleepWindow window = defaultSleepWindow();
+  window.flags = SleepWindow::kFlagFollowApp;
+  const uint64_t day = 1790812800000ULL;  // Thursday 2026-10-01 00:00 UTC
+  const uint64_t minute = 60000;
+  auto at = [&](uint64_t hhmm) {
+    return SleepSchedule::judgeMode(day + (hhmm / 100 * 60 + hhmm % 100) * minute, window);
+  };
+  window.bedMin = 4 * 60;  // a late wake: 04:00-12:30
+  window.wakeMin = 12 * 60 + 30;
+  CHECK(at(1159) == JudgeMode::kSleep);
+  CHECK(at(1215) == JudgeMode::kSleep);
+  CHECK(at(1230) == JudgeMode::kDay);
+  window.bedMin = 8 * 60;  // a night shift: 08:00-16:00
+  window.wakeMin = 16 * 60;
+  CHECK(at(1300) == JudgeMode::kSleep);
+  CHECK(at(1559) == JudgeMode::kSleep);
+  CHECK(at(1600) == JudgeMode::kDay);
+  window.bedMin = 23 * 60;  // the app's longest: 23:00-13:00
+  window.wakeMin = 13 * 60;
+  CHECK(at(1230) == JudgeMode::kSleep);
+  CHECK(at(1300) == JudgeMode::kDay);
+  window.bedMin = 11 * 60 + 45;  // bedtime just before noon: 11:45-19:00
+  window.wakeMin = 19 * 60;
+  CHECK(at(1201) == JudgeMode::kSleep);
+  CHECK(at(1859) == JudgeMode::kSleep);
+  CHECK(at(1900) == JudgeMode::kDay);
 }
 
 TEST_CASE("panel judge mode falls back to sleep bands") {
@@ -598,3 +645,190 @@ TEST_CASE("battery percent from volts") {
 
 }  // namespace
 
+
+TEST_CASE("BME280 compensation and failed reads") {
+  // Bosch's worked example (BMP280 datasheet §8.1, the same T and P formulas).
+  Bme280::Calibration c = {};
+  c.t1 = 27504; c.t2 = 26435; c.t3 = -1000;
+  c.p1 = 36477; c.p2 = -10685; c.p3 = 3024; c.p4 = 2855; c.p5 = 140;
+  c.p6 = -7; c.p7 = 15500; c.p8 = -14600; c.p9 = 6000;
+  c.h1 = 75; c.h2 = 362; c.h3 = 0; c.h4 = 313; c.h5 = 50; c.h6 = 30;
+  CHECK(Bme280::plausible(c));
+  const uint8_t burst[8] = {0x65, 0x5A, 0xC0, 0x7E, 0xED, 0x00, 0x6C, 0x00};
+  const Bme280::Raw raw = Bme280::decodeBurst(burst);
+  CHECK_EQ(415148, raw.pressure);
+  CHECK_EQ(519888, raw.temperature);
+  CHECK_EQ(0x6C00, raw.humidity);
+  const Bme280::Measurement m = Bme280::compensate(c, raw);
+  CHECK(m.temperatureC == doctest::Approx(25.08f));
+  CHECK(m.pressurePa == doctest::Approx(100653.27f).epsilon(0.0005));
+  CHECK(Bme280::validPressurePa(m.pressurePa));
+  CHECK(std::isfinite(m.humidityPct));
+  CHECK((m.humidityPct >= 0.0f && m.humidityPct <= 100.0f));
+
+  // Humidity is clamped to the sensor's 0-100 %.
+  CHECK_EQ(100.0f, Bme280::humidityPct(c, Bme280::temperatureFine(c, raw.temperature), 0xFFFF));
+  CHECK_EQ(0.0f, Bme280::humidityPct(c, Bme280::temperatureFine(c, raw.temperature), 0));
+
+  // Registers still at their reset values were not measured.
+  Bme280::Raw skipped = raw;
+  skipped.humidity = Bme280::kSkipped16Bit;
+  skipped.pressure = Bme280::kSkipped20Bit;
+  Bme280::Measurement partial = Bme280::compensate(c, skipped);
+  CHECK(std::isfinite(partial.temperatureC));
+  CHECK(std::isnan(partial.humidityPct));
+  CHECK(std::isnan(partial.pressurePa));
+  skipped.temperature = Bme280::kSkipped20Bit;
+  partial = Bme280::compensate(c, skipped);
+  CHECK(std::isnan(partial.temperatureC));
+  CHECK(std::isnan(partial.humidityPct));
+  CHECK(std::isnan(partial.pressurePa));
+
+  // A pressure decoded from a failed transfer (0xF7 echoed) is rejected.
+  const uint8_t echoed[8] = {0xF7, 0xF7, 0xF7, 0x7E, 0xED, 0x00, 0x6C, 0x00};
+  const float bogus = Bme280::compensate(c, Bme280::decodeBurst(echoed)).pressurePa;
+  CHECK_FALSE(Bme280::validPressurePa(bogus));
+  CHECK_FALSE(Bme280::validPressurePa(NAN));
+  CHECK_FALSE(Bme280::validPressurePa(29999.0f));
+  CHECK(Bme280::validPressurePa(30000.0f));
+  CHECK(Bme280::validPressurePa(110000.0f));
+  CHECK_FALSE(Bme280::validPressurePa(110001.0f));
+
+  // A calibration read from a silent bus.
+  Bme280::Calibration blank = {};
+  CHECK_FALSE(Bme280::plausible(blank));
+  // P1 = 0 would divide by zero: NaN, not a crash or 0 Pa.
+  Bme280::Calibration noP1 = c;
+  noP1.p1 = 0;
+  CHECK(std::isnan(Bme280::pressurePa(noP1, 128000, raw.pressure)));
+}
+
+TEST_CASE("VEML7700 lux conversion over the whole range") {
+  using namespace Veml7700Lux;
+  const float bright = resolutionLux(0.125f, 25.0f);
+  CHECK(bright == doctest::Approx(2.1504f));
+  CHECK(resolutionLux(2.0f, 400.0f) == doctest::Approx(0.0084f));
+  // The correction raises readings and never lowers them below the raw lux.
+  float previous = 0.0f;
+  for (uint32_t counts = 0; counts <= 65535; counts += 1) {
+    const float raw = counts * bright;
+    const float lux = correctedLux(raw);
+    CHECK(validLux(lux));
+    CHECK(lux >= previous);  // monotonic: brighter never reads darker
+    previous = lux;
+    if (counts == 0) CHECK_EQ(0.0f, lux);
+  }
+  // Direct sun (raw ~30 klx) used to come out at 337 klx and be dropped.
+  CHECK_EQ(kMaximumLux, correctedLux(30000.0f));
+  CHECK(validLux(correctedLux(30000.0f)));
+  // Indoor light is corrected by a few percent.
+  CHECK(correctedLux(500.0f) == doctest::Approx(520.39f).epsilon(0.001));
+  CHECK(saturated(65535));
+  CHECK(saturated(kSaturatedCounts));
+  CHECK_FALSE(saturated(kSaturatedCounts - 1));
+  CHECK_FALSE(validLux(NAN));
+  CHECK_FALSE(validLux(-0.1f));
+  CHECK_FALSE(validLux(kMaximumLux + 1.0f));
+}
+
+TEST_CASE("comfort band edges match the app exactly") {
+  struct Edge { UiMetric metric; float value; Severity sleep; };
+  // At an edge the milder verdict holds, as in the app's references.ts:
+  // bad is < warnLo or > warnHi, warn is < okLo or > okHi.
+  const Edge edges[] = {
+      {UiMetric::kTemperature, 13.0f, Severity::kBad},
+      {UiMetric::kTemperature, 14.0f, Severity::kWarn},
+      {UiMetric::kTemperature, 15.0f, Severity::kWarn},
+      {UiMetric::kTemperature, 16.0f, Severity::kOk},
+      {UiMetric::kTemperature, 20.0f, Severity::kOk},
+      {UiMetric::kTemperature, 21.0f, Severity::kWarn},
+      {UiMetric::kTemperature, 24.0f, Severity::kWarn},
+      {UiMetric::kTemperature, 25.0f, Severity::kBad},
+      {UiMetric::kHumidity, 29.0f, Severity::kBad},
+      {UiMetric::kHumidity, 30.0f, Severity::kWarn},
+      {UiMetric::kHumidity, 39.0f, Severity::kWarn},
+      {UiMetric::kHumidity, 40.0f, Severity::kOk},
+      {UiMetric::kHumidity, 60.0f, Severity::kOk},
+      {UiMetric::kHumidity, 61.0f, Severity::kWarn},
+      {UiMetric::kHumidity, 70.0f, Severity::kWarn},
+      {UiMetric::kHumidity, 71.0f, Severity::kBad},
+      {UiMetric::kHumidity, 0.0f, Severity::kBad},
+      {UiMetric::kHumidity, 100.0f, Severity::kBad},
+      {UiMetric::kNoise, 55.0f, Severity::kWarn},
+      {UiMetric::kNoise, -10.0f, Severity::kOk},
+      {UiMetric::kCo2, 0.0f, Severity::kOk},
+      {UiMetric::kCo2, 40000.0f, Severity::kBad},
+      {UiMetric::kTemperature, -40.0f, Severity::kBad},
+      {UiMetric::kTemperature, 85.0f, Severity::kBad},
+  };
+  for (const Edge& edge : edges) {
+    CAPTURE(static_cast<int>(edge.metric));
+    CAPTURE(edge.value);
+    CHECK(edge.sleep == bandSeverity(edge.metric, edge.value, JudgeMode::kSleep));
+  }
+  // By day: noise on hearing limits, temperature and humidity not judged.
+  CHECK(Severity::kOk == bandSeverity(UiMetric::kNoise, 70.0f, JudgeMode::kDay));
+  CHECK(Severity::kWarn == bandSeverity(UiMetric::kNoise, 71.0f, JudgeMode::kDay));
+  CHECK(Severity::kWarn == bandSeverity(UiMetric::kNoise, 85.0f, JudgeMode::kDay));
+  CHECK(Severity::kBad == bandSeverity(UiMetric::kNoise, 86.0f, JudgeMode::kDay));
+  CHECK(Severity::kOk == bandSeverity(UiMetric::kTemperature, 35.0f, JudgeMode::kDay));
+  CHECK(Severity::kOk == bandSeverity(UiMetric::kHumidity, 90.0f, JudgeMode::kDay));
+  CHECK(Severity::kBad == bandSeverity(UiMetric::kCo2, 1001.0f, JudgeMode::kDay));
+}
+
+TEST_CASE("acoustic metrics at the extremes") {
+  constexpr uint16_t kCount = 1000;
+  AcousticMetrics metrics;
+
+  // A dead microphone (all zeros): not audio, and the level stays finite.
+  metrics.reset();
+  const std::vector<int16_t> zeros(kCount, 0);
+  for (int i = 0; i < 8; ++i) metrics.addBuffer(zeros.data(), kCount);
+  CHECK_FALSE(metrics.valid());
+  CHECK(std::isfinite(metrics.dbA(8.0f)));
+  CHECK(std::isfinite(metrics.dbSpl(8.0f)));
+  CHECK_EQ(int32_t{0}, metrics.peak());
+
+  // Full scale both ways: no overflow in peak or the sums.
+  metrics.reset();
+  std::vector<int16_t> rails(kCount);
+  for (uint16_t i = 0; i < kCount; ++i) rails[i] = i % 2 ? -32768 : 32767;
+  for (int i = 0; i < 200; ++i) metrics.addBuffer(rails.data(), kCount);
+  CHECK_EQ(int32_t{32768}, metrics.peak());
+  CHECK_EQ(uint32_t{200 * kCount}, metrics.clipped());
+  CHECK_FALSE(metrics.valid());
+  CHECK(std::isfinite(metrics.dbA(8.0f)));
+  CHECK(metrics.rms() == doctest::Approx(32767.5f).epsilon(0.001));
+
+  // Up to 10 % of samples at the rail is still audio (a door slam); more is
+  // the stopped-clock signature.
+  auto withClipped = [&](uint16_t clipped) {
+    std::vector<int16_t> samples = squareWave(1000, 0, kCount);
+    for (uint16_t i = 0; i < clipped; ++i) samples[i] = i % 2 ? -32767 : 32767;
+    AcousticMetrics m;
+    m.reset();
+    m.addBuffer(samples.data(), kCount);
+    return m;
+  };
+  CHECK(withClipped(kCount / 10).valid());
+  CHECK_FALSE(withClipped(kCount / 10 + 1).valid());
+  CHECK_EQ(uint32_t{kCount / 10}, withClipped(kCount / 10).clipped());
+}
+
+TEST_CASE("light tile text fits every reading") {
+  auto text = [](long lux) {
+    char out[20];
+    LightTile::format(lux, out, sizeof out);
+    return std::string(out);
+  };
+  CHECK_EQ(std::string("0 lx"), text(0));
+  CHECK_EQ(std::string("999 lx"), text(999));
+  CHECK_EQ(std::string("1k lx"), text(1000));
+  CHECK_EQ(std::string("1k lx"), text(1499));
+  CHECK_EQ(std::string("2k lx"), text(1500));
+  CHECK_EQ(std::string("99k lx"), text(99499));
+  // 99.5 klx rounds to 100k, which drops the unit to fit the cell.
+  CHECK_EQ(std::string("100k"), text(99500));
+  CHECK_EQ(std::string("120k"), text(120000));
+  CHECK_EQ(std::string("0 lx"), text(-1));
+}

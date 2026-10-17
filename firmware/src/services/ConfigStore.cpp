@@ -17,6 +17,9 @@ constexpr char kSleepWindowKey[] = "sleep";
 // Format byte ahead of the 12-byte wire layout, so the record can grow.
 constexpr uint8_t kSleepWindowFormat = 1;
 constexpr size_t kSleepWindowRecordBytes = 1 + SleepWindow::kBytes;
+constexpr char kLastResetKey[] = "last_reset";
+constexpr uint8_t kLastResetFormat = 1;
+constexpr size_t kLastResetRecordBytes = 1 + ResetHistory::kRecordBytes;
 
 void advanceSequence(uint32_t& sequence) {
   sequence++;
@@ -172,4 +175,28 @@ bool ConfigStore::saveSleepWindow(W25Q64Flash& flash,
   struct fdb_blob blob;
   fdb_blob_make(&blob, record, sizeof record);
   return finishOperation(fdb_kv_set_blob(&db_, kSleepWindowKey, &blob) == FDB_NO_ERR);
+}
+
+bool ConfigStore::loadLastReset(W25Q64Flash& flash,
+                                ResetHistory::Record& record) {
+  record = ResetHistory::Record();
+  if (!initialize(flash)) return false;
+  uint8_t stored[kLastResetRecordBytes] = {};
+  struct fdb_blob blob;
+  fdb_blob_make(&blob, stored, sizeof stored);
+  const size_t length = fdb_kv_get_blob(&db_, kLastResetKey, &blob);
+  return finishOperation(true) && length == sizeof stored &&
+         stored[0] == kLastResetFormat &&
+         ResetHistory::decode(stored + 1, ResetHistory::kRecordBytes, record);
+}
+
+bool ConfigStore::saveLastReset(W25Q64Flash& flash,
+                                const ResetHistory::Record& record) {
+  if (!initialize(flash)) return false;
+  uint8_t stored[kLastResetRecordBytes];
+  stored[0] = kLastResetFormat;
+  ResetHistory::encode(record, stored + 1);
+  struct fdb_blob blob;
+  fdb_blob_make(&blob, stored, sizeof stored);
+  return finishOperation(fdb_kv_set_blob(&db_, kLastResetKey, &blob) == FDB_NO_ERR);
 }

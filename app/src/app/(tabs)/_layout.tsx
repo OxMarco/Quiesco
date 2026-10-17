@@ -1,9 +1,16 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
+import { useSession } from '@/ble/session';
+import { Loading, Welcome } from '@/components/welcome';
 import { useTheme } from '@/theme';
 
 export default function TabsLayout() {
   const t = useTheme();
+  const loaded = useSession((s) => s.loaded);
+  const hasUnit = useSession((s) => s.units.length > 0);
+  // No tabs until a unit is added: Nights and Settings would be empty.
+  if (!loaded) return <Loading />;
+  if (!hasUnit) return <Welcome />;
   return (
     <NativeTabs tintColor={t.primary} backgroundColor={t.bg} labelStyle={{ color: t.textMuted }}>
       <NativeTabs.Trigger name="index">

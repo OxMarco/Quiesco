@@ -26,20 +26,22 @@ const openSwitcher = () => router.push('/switch-unit');
 export function UnitTitle({ unit, detail, children }: { unit: db.Unit | null; detail?: React.ReactNode; children: string }) {
   const several = useSession((s) => s.units.length > 1);
   if (!several || !unit) return <Title detail={detail}>{children}</Title>;
+  // A unit's name is up to 16 characters and can't share a line with the
+  // detail without being cut, so the detail goes underneath.
   return (
-    <View className="flex-row items-end justify-between pt-3 pb-1 gap-3">
+    <View className="pt-3 pb-1 gap-2">
       <Pressable
         onPress={openSwitcher}
         accessibilityRole="button"
         accessibilityLabel={`${unit.name}. Switch unit`}
         hitSlop={8}
-        className="flex-row items-center gap-1.5 shrink active:opacity-60">
-        <T className="font-wordmark text-[30px] leading-[38px] shrink" numberOfLines={1}>
+        className="flex-row items-center gap-1.5 self-start active:opacity-60">
+        <T className="font-wordmark text-[30px] leading-[38px] shrink" numberOfLines={2}>
           {unit.name}
         </T>
         <Chevron size={20} />
       </Pressable>
-      {detail}
+      {detail && <View className="flex-row">{detail}</View>}
     </View>
   );
 }

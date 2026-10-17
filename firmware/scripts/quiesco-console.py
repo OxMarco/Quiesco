@@ -11,6 +11,10 @@
                                                 first (make build-trace only)
   scripts/quiesco-console.py monitor [out.txt]  print (and save) every line,
                                                 timestamped, until Ctrl-C
+  scripts/quiesco-console.py hang               stop feeding the watchdog; the
+                                                unit resets within 30 s
+  scripts/quiesco-console.py fault              raise a bus fault; the next boot
+                                                reports its address
 
 The port is found automatically when exactly one /dev/cu.usbmodem* exists;
 pass --port otherwise. Standard library only (termios), macOS and Linux.
@@ -136,7 +140,7 @@ def main():
     parser.add_argument("--port")
     parser.add_argument("command",
                         choices=["info", "measure", "stress", "dump", "trace",
-                                 "monitor"])
+                                 "monitor", "hang", "fault"])
     parser.add_argument("file", nargs="?")
     args = parser.parse_args()
     port = Port(args.port or find_port())
@@ -145,6 +149,11 @@ def main():
         info(port)
     elif args.command == "measure":
         port.send("m")
+    elif args.command in ("hang", "fault"):
+        # The unit drops off USB when it resets; run `info` once it is back.
+        port.send("x" if args.command == "hang" else "f")
+        for line in port.lines(timeout=2):
+            print(line)
     elif args.command == "stress":
         port.send("w")
         for line in port.lines(timeout=60):

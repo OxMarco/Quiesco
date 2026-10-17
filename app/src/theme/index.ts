@@ -43,6 +43,9 @@ const night: Palette = {
   driftwood: '#E8A77F',
 };
 
+/** Both palettes, for code outside React (the Android widget renders without hooks). */
+export const Palettes = { day, night } as const;
+
 /** The e-ink panel: warm paper and ink in both themes, like the real glass. */
 export const Panel = { paper: '#EEE8DC', ink: '#1E2B2D' } as const;
 

@@ -36,6 +36,10 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx expo lint
       - run: npx jest --ci
+      # The firmware's SleepSchedule is tested against vectors generated from
+      # sleep.ts; a change to either side must regenerate them.
+      - name: Firmware sleep parity vectors match the app
+        run: node ../firmware/tests/host/parity/gen-sleep-parity.mjs | diff - ../firmware/tests/host/parity/sleep_parity_vectors.h
 
   firmware:
     runs-on: ubuntu-24.04
@@ -48,6 +52,9 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libmbedtls-dev
       - run: make check
       - run: make test
+        env:
+          MBEDTLS_PREFIX: /usr
+      - run: make sanitize
         env:
           MBEDTLS_PREFIX: /usr
       - run: python3 scripts/ble-test.py --self-test

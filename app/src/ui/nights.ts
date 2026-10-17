@@ -8,7 +8,8 @@ import { roundHalfAway, Severity } from '@/protocol/comfort';
 import { feelsLike } from './advice';
 import { pointValue } from './metrics';
 import { type Reference, REFERENCES, referenceSeverity } from './references';
-import { formatTime, nightKey } from './sleep';
+import { sleepForNight, type SleepSpan } from './health-sleep';
+import { formatTime, nightKey, type SleepWindow, windowForNight } from './sleep';
 
 type BandedMetric = 'noise' | 'co2' | 'temperature' | 'humidity' | 'light';
 
@@ -115,6 +116,15 @@ function bandSpells(night: StoredPoint[], metric: BandedMetric, endS: number): S
       severity,
     };
   });
+}
+
+/**
+ * The span a night is judged over: the sleep the health store recorded for
+ * it, else the sleep window. The night list keeps only nights with a reading
+ * in it, so a chip never opens to an empty night.
+ */
+export function judgedWindow(night: string, w: SleepWindow, spans: SleepSpan[]): { fromS: number; toS: number } {
+  return sleepForNight(night, spans) ?? windowForNight(night, w);
 }
 
 export function analyzeNight(points: StoredPoint[], window: { fromS: number; toS: number }): NightStory {

@@ -31,8 +31,10 @@ was in how the pieces met.
 
 A workflow on every push and pull request to `master`:
 
-- `app/`: `npm ci`, `npx tsc --noEmit`, `npx expo lint`, `npx jest`
-- `firmware/`: `make check`, `make test` (host build, no hardware)
+- `app/`: `npm ci`, `npx tsc --noEmit`, `npx expo lint`, `npx jest`, and a
+  check that the firmware's sleep parity vectors still match `sleep.ts`
+- `firmware/`: `make check`, `make test`, `make sanitize` (host build, no
+  hardware)
 - `firmware/scripts/ble-test.py --self-test` (codec and crypto vectors, no
   hardware)
 

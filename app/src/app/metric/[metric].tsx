@@ -26,6 +26,7 @@ import {
   trendSentence,
   upperLimit,
 } from '@/ui/advice';
+import { prose } from '@/ui/format';
 import { REFERENCES } from '@/ui/references';
 import { formatValue, METRICS } from '@/ui/metrics';
 import { formatTime, judgeMode, sleepPhase, VERDICT_LEAD_MIN } from '@/ui/sleep';
@@ -36,7 +37,7 @@ export default function MetricScreen() {
   const unit = useShownUnit();
   if (!(metric in METRICS)) return <NotFound />;
   // Forgotten while the sheet was open, or opened by a link with no unit.
-  if (!unit) return <NotFound message="There is no unit on this phone." />;
+  if (!unit) return <NotFound message="There is no unit on this phone" />;
   return <MetricPage unit={unit} metric={metric as MetricKey} />;
 }
 
@@ -77,13 +78,14 @@ function MetricPage({ unit, metric }: { unit: db.Unit; metric: MetricKey }) {
     <Sheet>
     <ScrollView contentContainerClassName="px-4 pt-6 pb-12 gap-4">
       <View className="flex-row justify-between items-center gap-4">
-        <T className="font-title text-2xl shrink">{metric === 'co2' ? 'Air freshness' : meta.label}</T>
+        <T className="font-title text-2xl leading-9 shrink">{metric === 'co2' ? 'Air freshness' : meta.label}</T>
         <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={12}>
           <T className="text-primary font-body-semi">Close</T>
         </Pressable>
       </View>
 
-      <View className="flex-row justify-between items-end px-1">
+      {/* Wraps: at large text sizes the verdict drops under the number rather than off the edge. */}
+      <View className="flex-row flex-wrap justify-between items-end gap-x-4 px-1">
         <T className="font-number text-[48px] leading-[54px]">
           {formatValue(metric, value, false, tempUnit)}
           <T className="font-body-medium text-base text-muted">
@@ -136,10 +138,9 @@ function MetricPage({ unit, metric }: { unit: db.Unit; metric: MetricKey }) {
 
       <View className="gap-1 px-1">
         {trend && <T className="font-body-semi text-base">{trend}</T>}
-        {!trend && hasPoints && delta !== null && <T className="font-body-semi text-base">Steady over the last hour.</T>}
+        {!trend && hasPoints && delta !== null && <T className="font-body-semi text-base">Steady over the last hour</T>}
         <T className="text-[15px] leading-[22px] text-muted">
-          {band}
-          {since !== null && since > fromS ? ` The room passed it at about ${formatTime(since)}.` : ''}
+          {prose(band, since !== null && since > fromS && `The room passed it at about ${formatTime(since)}`)}
         </T>
       </View>
 

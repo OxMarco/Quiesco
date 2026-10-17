@@ -10,6 +10,7 @@
 #include "../model/Config.h"
 #include "../model/FaultStatus.h"
 #include "../model/Reading.h"
+#include "../services/ResetHistory.h"
 #include "../services/SampleRecord.h"
 #include "../ui/UiModel.h"
 
@@ -222,7 +223,8 @@ void help() {
   Serial.println(
       "commands: i info, m measure now, d dump log as CSV, "
       "w 45 s flash-write stress (unplug during it), "
-      "t print the trace ring (trace builds), ? help");
+      "t print the trace ring (trace builds), x hang (watchdog test), "
+      "f bus fault (fault-capture test), ? help");
 }
 
 void info(const Info& info, const Config& config) {
@@ -232,14 +234,33 @@ void info(const Info& info, const Config& config) {
   Line device;
   device.add(
       "info firmware=%s serial=%s boot=%lu reset=%s uptime_s=%lu log=#%lu "
-      "bonds=%u usb=%s%s",
+      "bonds=%u usb=%s%s heap_kib=%u",
       info.firmwareVersion, info.serialNumber,
       static_cast<unsigned long>(info.bootCount), info.resetReason,
       static_cast<unsigned long>(info.uptimeMs / 1000),
       static_cast<unsigned long>(info.lastSequence),
       static_cast<unsigned>(info.bondCount), info.usbPowered ? "yes" : "no",
-      kBatteryFitted ? "" : " battery=none");
+      kBatteryFitted ? "" : " battery=none",
+      static_cast<unsigned>(info.heapKiB));
   device.print();
+
+  // The last watchdog or lockup reset (PROTOCOL.md §6.18).
+  const ResetHistory::Record& last = *info.lastReset;
+  Line reset;
+  if (last.cause == 0) {
+    reset.add("info last_reset=none");
+  } else {
+    reset.add(
+        "info last_reset=%s boot=%lu uptime_s=%lu state=%u heap_kib=%u "
+        "error=0x%08lx address=0x%08lx",
+        (last.cause & ResetHistory::kCauseWatchdog) ? "watchdog" : "lockup",
+        static_cast<unsigned long>(last.bootCount),
+        static_cast<unsigned long>(last.uptimeS),
+        static_cast<unsigned>(last.state), static_cast<unsigned>(last.heapKiB),
+        static_cast<unsigned long>(last.errorStatus),
+        static_cast<unsigned long>(last.errorAddress));
+  }
+  reset.print();
 
   Line settings;
   settings.add(

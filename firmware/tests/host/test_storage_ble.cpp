@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Executed host tests for the flash-facing stores (over the in-memory
 // W25Q64Flash sim) and the BLE wire codec.
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "doctest.h"
 
@@ -21,6 +23,7 @@
 #include "services/CalibrationPolicy.h"
 #include "services/ConfigRecord.h"
 #include "services/ConfigStore.h"
+#include "services/ResetHistory.h"
 #include "services/BondTable.h"
 #include "services/SampleLog.h"
 #include "services/UnitIdentity.h"
@@ -29,7 +32,7 @@
 
 // Golden wire vectors (lowercase hex bytes); see the "protocol golden vectors" test case.
 #define GOLDEN_DEVICE_INFO \
-  "06 00 ff 7f 01 00 01 02 03 02 f6 e5 d4 c3 b2 a1 " \
+  "06 00 ff 7f 03 00 01 02 03 02 f6 e5 d4 c3 b2 a1 " \
   "07 00 00 00"
 #define GOLDEN_INTERVAL "2c 01 00 00"
 #define GOLDEN_CORE_CONFIG "05 00 00 00 2c 01 00 00 0a 00 00 00 01 02 00 00"
@@ -40,7 +43,9 @@
   "6f 00 fd 00 00 03 00 00 00 00 00 00 d2 04 00 00 " \
   "01 03 e9 ff"
 #define GOLDEN_CALIBRATION_STATE "00 b9 55 69 a4 01 db ff 01 00 00 00"
-#define GOLDEN_DIAGNOSTICS "02 00 00 00 10 0e 00 00 00 00 00 00"
+#define GOLDEN_DIAGNOSTICS "02 00 00 00 10 0e 00 00 00 00 12 00"
+#define GOLDEN_LAST_RESET \
+  "40 00 00 00 b8 09 02 00 02 00 12 00 3d 01 ff 80 2c 1a 03 00"
 #define GOLDEN_EPOCH "00 a8 da 76 9b 01 00 00"
 #define GOLDEN_OFFSETS "00 00 c0 bf 00 00 00 c0 00 00 40 40"
 #define GOLDEN_SYNC_START "01 00 b1 04 00 00 00 00 f4 00"
@@ -230,6 +235,41 @@ Reading readingForSample(uint32_t index) {
   return reading;
 }
 
+TEST_CASE("config store survives a corrupted config record") {
+  FlashSim::reset();
+  W25Q64Flash flash; flash.begin();
+  {
+    ConfigStore store;
+    REQUIRE(store.save(flash, sampleConfig()));
+    BondTable bonds;
+    const uint8_t address[6] = {1, 2, 3, 4, 5, 6};
+    const uint8_t key[16] = {9, 9, 9};
+    bonds.storeLtk(address, key);
+    REQUIRE(store.saveBonds(flash, bonds));
+  }
+  // Bit rot in the stored record: its device name, inside the value.
+  uint8_t* config = FlashSim::data() + FlashStorageLayout::kConfigDbOffset;
+  const char needle[] = "Bedroom-2";
+  uint8_t* hit = std::search(config, config + FlashStorageLayout::kConfigDbBytes,
+                             needle, needle + sizeof needle - 1);
+  REQUIRE(hit != config + FlashStorageLayout::kConfigDbBytes);
+  hit[0] ^= 0x01;
+
+  ConfigStore rebooted;
+  Config loaded = defaultConfig();
+  CHECK_FALSE(rebooted.load(flash, loaded));  // not a half-trusted config
+  CHECK(rebooted.healthy());                  // a bad record, not a bad store
+  CHECK(strcmp(loaded.deviceName, "Quiesco") == 0);  // defaults untouched
+  BondTable bonds;
+  CHECK(rebooted.loadBonds(flash, bonds));    // the phones are kept
+  CHECK_EQ(uint8_t{1}, bonds.count());
+  // Saving defaults over it works, and they read back after a reboot.
+  CHECK(rebooted.save(flash, defaultConfig()));
+  ConfigStore again;
+  CHECK(again.load(flash, loaded));
+  CHECK(strcmp(loaded.deviceName, "Quiesco") == 0);
+}
+
 TEST_CASE("config read failures do not erase") {
   FlashSim::reset();
   W25Q64Flash flash;
@@ -273,6 +313,41 @@ TEST_CASE("config read failures do not erase") {
   CHECK(!corrupt.load(flash, out));
   CHECK(memcmp(before, FlashSim::data() + FlashStorageLayout::kConfigDbOffset,
                sizeof before) == 0);
+}
+
+TEST_CASE("config store recovers from an interrupted GC erase") {
+  FlashSim::reset();
+  W25Q64Flash flash;
+  flash.begin();
+  ConfigStore store;
+  Config config = sampleConfig();
+  // Rewrites until GC has moved the live KVs at least once.
+  for (int i = 0; i < 200; ++i) {
+    config.measurementIntervalSeconds = (i % 2) ? 300 : 60;
+    CHECK(store.save(flash, config));
+  }
+  // GC erases a sector only once its KVs have moved: power lost mid-erase
+  // leaves that sector neither valid nor blank, beside a sector in use.
+  constexpr uint32_t kSector = 4096;
+  bool recovered = false;
+  for (uint32_t sector = 0; sector < FlashStorageLayout::kConfigDbBytes / kSector; ++sector) {
+    std::vector<uint8_t> saved(FlashSim::data() + FlashStorageLayout::kConfigDbOffset,
+                               FlashSim::data() + FlashStorageLayout::kConfigDbOffset +
+                                   FlashStorageLayout::kConfigDbBytes);
+    uint8_t* bytes = FlashSim::data() + FlashStorageLayout::kConfigDbOffset + sector * kSector;
+    for (uint32_t i = 0; i < kSector; ++i) {
+      bytes[i] = (i % 3 == 0) ? 0xFF : static_cast<uint8_t>(i * 37);
+    }
+    ConfigStore reboot;
+    Config out;
+    if (reboot.load(flash, out)) {
+      CHECK_EQ(config.measurementIntervalSeconds, out.measurementIntervalSeconds);
+      CHECK(reboot.save(flash, config));
+      recovered = true;
+    }
+    memcpy(FlashSim::data() + FlashStorageLayout::kConfigDbOffset, saved.data(), saved.size());
+  }
+  CHECK_MESSAGE(recovered, "the sector without live KVs is reformatted");
 }
 
 TEST_CASE("sample log readout") {
@@ -448,6 +523,215 @@ TEST_CASE("sample log resume after the ring wrapped") {
   CHECK_EQ(uint32_t{120001}, expected);
 }
 
+TEST_CASE("sample log recovers when every sector reads full") {
+  FlashSim::reset();
+  W25Q64Flash flash; flash.begin();
+  uint32_t sequence = 0;
+  {
+    SampleLog log;
+    for (; sequence < 110000; ++sequence)
+      CHECK(log.append(flash, readingForSample(sequence + 1)));
+    // Power lost after the current sector was closed, before the next one
+    // (the oldest) was erased: every sector now reads FULL.
+    const uint32_t erases = FlashSim::sampleSectorErases();
+    FlashSim::failSampleEraseAt(1);
+    while (FlashSim::sampleSectorErases() == erases) {
+      log.append(flash, readingForSample(++sequence));
+    }
+  }
+  SampleLog rebooted;
+  CHECK(rebooted.mount(flash));
+  CHECK(rebooted.append(flash, readingForSample(sequence + 1)));
+  CHECK(rebooted.append(flash, readingForSample(sequence + 2)));
+  SampleLogCursor cursor; SampleRecord out;
+  CHECK(rebooted.startRead(flash, 0, cursor));
+  uint32_t previous = 0, count = 0;
+  while (rebooted.readNext(flash, cursor, out)) {
+    CHECK(out.sequence > previous);
+    previous = out.sequence; ++count;
+  }
+  CHECK(cursor.active);
+  CHECK(count > 90000);
+  CHECK_EQ(rebooted.lastSequence(), previous);
+}
+
+// FlashDB reads a sector's state into a stack struct at mount; fill the stack
+// with a non-zero pattern first so a field it leaves unset reads as garbage
+// here as it can on the unit.
+__attribute__((noinline)) void poisonStack() {
+  volatile uint8_t pattern[16384];
+  for (size_t i = 0; i < sizeof pattern; ++i) pattern[i] = 0xA5;
+}
+
+__attribute__((noinline)) bool mountAfterPoison(SampleLog& log, W25Q64Flash& flash) {
+  poisonStack();
+  return log.mount(flash);
+}
+
+// Reads the whole log; returns the newest sequence and checks the order.
+uint32_t readAllInOrder(SampleLog& log, W25Q64Flash& flash, uint32_t* count) {
+  SampleLogCursor cursor; SampleRecord out;
+  CHECK(log.startRead(flash, 0, cursor));
+  uint32_t previous = 0, seen = 0;
+  while (log.readNext(flash, cursor, out)) {
+    CHECK(out.sequence > previous);
+    previous = out.sequence; ++seen;
+  }
+  CHECK(cursor.active);
+  if (count != nullptr) *count = seen;
+  return previous;
+}
+
+int64_t sampleSectorStartTime(uint32_t sector) {
+  int64_t start;
+  std::memcpy(&start, FlashSim::data() + FlashStorageLayout::kSampleDbOffset +
+                          sector * 4096 + 5, sizeof start);
+  return start;
+}
+
+TEST_CASE("sample log mount fails rather than guess after a read error") {
+  FlashSim::reset();
+  W25Q64Flash flash; flash.begin();
+  {
+    SampleLog log;
+    for (uint32_t i = 1; i <= 5000; ++i) REQUIRE(log.append(flash, readingForSample(i)));
+  }
+  int failedMounts = 0;
+  for (int read = 1; read <= 40; ++read) {
+    CAPTURE(read);
+    SampleLog rebooted;
+    FlashSim::failReadAt(read);
+    const bool mounted = rebooted.mount(flash);
+    FlashSim::failReadAt(0);
+    if (mounted) {
+      // A mount that succeeded saw every read it needed.
+      CHECK_EQ(uint32_t{5000}, rebooted.lastSequence());
+    } else {
+      ++failedMounts;
+    }
+  }
+  CHECK(failedMounts > 0);
+  SampleLog healthy;
+  REQUIRE(healthy.mount(flash));
+  CHECK_EQ(uint32_t{5000}, healthy.lastSequence());
+  CHECK(healthy.append(flash, readingForSample(5001)));
+}
+
+TEST_CASE("sample log survives power loss on the very first append") {
+  // Each cut lands at a different step of opening sector 0: the USING mark,
+  // its start time, then the record itself.
+  for (int cut = 1; cut <= 6; ++cut) {
+    CAPTURE(cut);
+    FlashSim::reset();
+    W25Q64Flash flash; flash.begin();
+    {
+      SampleLog log;
+      CHECK(log.mount(flash));
+      FlashSim::failProgramAt(cut);
+      log.append(flash, readingForSample(1));
+      FlashSim::failProgramAt(0);  // power is lost: nothing else runs
+    }
+    SampleLog rebooted;
+    REQUIRE(mountAfterPoison(rebooted, flash));
+    const uint32_t before = rebooted.lastSequence();
+    CHECK(before <= 1);
+    CHECK(rebooted.append(flash, readingForSample(2)));
+    CHECK_EQ(before + 1, rebooted.lastSequence());
+    CHECK_EQ(rebooted.lastSequence(), readAllInOrder(rebooted, flash, nullptr));
+  }
+}
+
+TEST_CASE("sample log survives power loss opening sector 0 after a wrap") {
+  FlashSim::reset();
+  W25Q64Flash flash; flash.begin();
+  // Find the append that wraps the ring into sector 0, then replay a fresh
+  // ring up to just before it.
+  uint32_t next = 1;
+  {
+    SampleLog log;
+    for (;; ++next) {
+      REQUIRE(log.append(flash, readingForSample(next)));
+      if (next > 1 && sampleSectorStartTime(0) != 1) break;
+    }
+  }
+  FlashSim::reset();
+  {
+    SampleLog log;
+    for (uint32_t i = 1; i < next; ++i)
+      REQUIRE(log.append(flash, readingForSample(i)));
+  }
+  const std::vector<uint8_t> snapshot(FlashSim::data(),
+                                      FlashSim::data() + FlashStorageLayout::kSampleDbEnd);
+  const uint32_t committed = next - 1;
+  for (int cut = 1; cut <= 14; ++cut) {
+    CAPTURE(cut);
+    std::memcpy(FlashSim::data(), snapshot.data(), snapshot.size());
+    {
+      SampleLog log;
+      REQUIRE(log.mount(flash));
+      CHECK_EQ(committed, log.lastSequence());
+      FlashSim::failProgramAt(cut);
+      log.append(flash, readingForSample(next));
+      FlashSim::failProgramAt(0);  // power is lost: nothing else runs
+    }
+    SampleLog rebooted;
+    REQUIRE(mountAfterPoison(rebooted, flash));
+    const uint32_t before = rebooted.lastSequence();
+    CHECK((before == committed || before == committed + 1));
+    CHECK(rebooted.append(flash, readingForSample(next + 1)));
+    CHECK_EQ(before + 1, rebooted.lastSequence());
+    uint32_t count = 0;
+    CHECK_EQ(rebooted.lastSequence(), readAllInOrder(rebooted, flash, &count));
+    CHECK(count > 90000);
+  }
+}
+
+TEST_CASE("sample log keeps its history when an erase after a wrap is cut short") {
+  FlashSim::reset();
+  W25Q64Flash flash; flash.begin();
+  uint32_t sequence = 0;
+  {
+    SampleLog log;
+    for (; sequence < 110000; ++sequence)
+      CHECK(log.append(flash, readingForSample(sequence + 1)));
+    const uint32_t erases = FlashSim::sampleSectorErases();
+    FlashSim::failSampleEraseAt(1);
+    while (FlashSim::sampleSectorErases() == erases)
+      log.append(flash, readingForSample(++sequence));
+  }
+  // The erase of the sector after the newest began: its header is blank
+  // while the body still holds the oldest records.
+  int64_t newest = -1;
+  uint32_t newestSector = 0;
+  const uint32_t sectors =
+      (FlashStorageLayout::kSampleDbEnd - FlashStorageLayout::kSampleDbOffset) / 4096;
+  for (uint32_t s = 0; s < sectors; ++s) {
+    const int64_t start = sampleSectorStartTime(s);
+    if (start > newest) { newest = start; newestSector = s; }
+  }
+  const uint32_t torn = (newestSector + 1) % sectors;
+  std::memset(FlashSim::data() + FlashStorageLayout::kSampleDbOffset + torn * 4096,
+              0xFF, 256);
+
+  SampleLog rebooted;
+  REQUIRE(rebooted.mount(flash));
+  CHECK(rebooted.append(flash, readingForSample(sequence + 1)));
+  uint32_t count = 0;
+  CHECK_EQ(rebooted.lastSequence(), readAllInOrder(rebooted, flash, &count));
+  CHECK(count > 90000);
+
+  // A stale app cursor resumes at the true oldest record with no gap.
+  SampleLogCursor cursor; SampleRecord out;
+  CHECK(rebooted.startRead(flash, 1, cursor));
+  CHECK(rebooted.readNext(flash, cursor, out));
+  uint32_t expected = out.sequence + 1;
+  while (rebooted.readNext(flash, cursor, out)) {
+    CHECK_EQ(expected, out.sequence);
+    ++expected;
+  }
+  CHECK_EQ(rebooted.lastSequence() + 1, expected);
+}
+
 void expectSealedPacket(const uint8_t* packet, uint16_t length) {
   uint8_t copy[BleCodec::kMaxLogPacketBytes];
   memcpy(copy, packet, length);
@@ -500,6 +784,21 @@ TEST_CASE("BLE codec decoders") {
   wire[0] = 9;
   LittleEndian::putU16(wire + 2, 420);
   CHECK(!BleCodec::decodeCalibrationControl(wire, 4, target));
+  wire[0] = BleCodec::kCalOpForcedRecalibration;
+  wire[1] = 1;  // reserved byte must be zero (PROTOCOL.md §1)
+  CHECK(!BleCodec::decodeCalibrationControl(wire, 4, target));
+  wire[1] = 0;
+  LittleEndian::putU16(wire + 2, 399);
+  CHECK(!BleCodec::decodeCalibrationControl(wire, 4, target));
+  LittleEndian::putU16(wire + 2, 400);
+  CHECK(BleCodec::decodeCalibrationControl(wire, 4, target));
+  LittleEndian::putU16(wire + 2, 2000);
+  CHECK(BleCodec::decodeCalibrationControl(wire, 4, target));
+  LittleEndian::putU16(wire + 2, 2001);
+  CHECK(!BleCodec::decodeCalibrationControl(wire, 4, target));
+  LittleEndian::putU16(wire + 2, 420);
+  CHECK(!BleCodec::decodeCalibrationControl(wire, 3, target));
+  CHECK(!BleCodec::decodeCalibrationControl(wire, 5, target));
 
   char name[Config::kDeviceNameMaxLength + 1];
   const uint8_t good[] = {'S', 'a', 'l', 'o', 'n'};
@@ -527,6 +826,15 @@ TEST_CASE("BLE codec decoders") {
   CHECK_EQ(uint16_t{180}, request.attPayload);
   wire[0] = 7;
   CHECK(!BleCodec::decodeLogSyncControl(wire, 10, request));
+  wire[0] = BleCodec::kSyncOpStart;
+  wire[1] = 1;  // reserved byte must be zero (PROTOCOL.md §1)
+  CHECK(!BleCodec::decodeLogSyncControl(wire, 10, request));
+  wire[1] = 0;
+  CHECK(!BleCodec::decodeLogSyncControl(wire, 9, request));
+  CHECK(!BleCodec::decodeLogSyncControl(wire, 11, request));
+  wire[0] = BleCodec::kSyncOpAbort;
+  CHECK(BleCodec::decodeLogSyncControl(wire, 10, request));
+  CHECK_EQ(BleCodec::kSyncOpAbort, request.opcode);
 }
 
 TEST_CASE("BLE codec encoders") {
@@ -793,6 +1101,93 @@ TEST_CASE("boot counter") {
   CHECK(isValidSampleRecord(record));
 }
 
+TEST_CASE("reset history") {
+  constexpr uint32_t kPin = 1u << 0, kWatchdog = 1u << 1, kSoft = 1u << 2,
+                     kLockup = 1u << 3;
+  ResetHistory::Breadcrumb previous;
+  previous.bootCount = 64;
+  previous.feeds = 1000;
+  previous.feedUptimeMs = 133560500;
+  previous.feedEpochMs = 1791847042000ULL;
+  previous.state = 3;
+  previous.heapKiB = 20;
+  ResetHistory::Record record;
+
+  // Only a stopped firmware is recorded: power, button and uploads are not.
+  CHECK_FALSE(ResetHistory::describe(0, &previous, nullptr, record));
+  CHECK_FALSE(ResetHistory::describe(kPin, &previous, nullptr, record));
+  CHECK_FALSE(ResetHistory::describe(kSoft, &previous, nullptr, record));
+  CHECK(ResetHistory::describe(kWatchdog, &previous, nullptr, record));
+  CHECK_EQ(uint32_t{64}, record.bootCount);
+  CHECK_EQ(uint32_t{133560}, record.uptimeS);
+  CHECK_EQ(ResetHistory::kCauseWatchdog, record.cause);
+  CHECK_EQ(uint8_t{3}, record.state);
+  CHECK_EQ(uint16_t{20}, record.heapKiB);
+  CHECK_EQ(uint32_t{0}, record.errorStatus);
+
+  // A fatal error after the last feed is the cause; one before it was survived.
+  ResetHistory::FaultCapture fault;
+  fault.status = 0x80FF013D;
+  fault.address = 0x31A2C;
+  fault.feeds = 1000;
+  CHECK(ResetHistory::describe(kWatchdog, &previous, &fault, record));
+  CHECK_EQ(uint32_t{0x80FF013D}, record.errorStatus);
+  CHECK_EQ(uint32_t{0x31A2C}, record.errorAddress);
+  fault.feeds = 990;
+  CHECK(ResetHistory::describe(kWatchdog, &previous, &fault, record));
+  CHECK_EQ(uint32_t{0}, record.errorStatus);
+
+  // RAM lost: the cause alone.
+  CHECK(ResetHistory::describe(kLockup, nullptr, nullptr, record));
+  CHECK_EQ(uint32_t{0}, record.bootCount);
+  CHECK_EQ(ResetHistory::kCauseLockup, record.cause);
+
+  // The clock: one watchdog timeout after the last feed, at once for a
+  // lockup; never across a pin or soft reset, or without a synced clock.
+  uint64_t epoch = 0;
+  CHECK(ResetHistory::epochAtReset(kWatchdog, &previous, 30000, epoch));
+  CHECK_EQ(previous.feedEpochMs + 30000, epoch);
+  CHECK(ResetHistory::epochAtReset(kLockup, &previous, 30000, epoch));
+  CHECK_EQ(previous.feedEpochMs, epoch);
+  CHECK_FALSE(ResetHistory::epochAtReset(kWatchdog | kPin, &previous, 30000, epoch));
+  CHECK_FALSE(ResetHistory::epochAtReset(kWatchdog | kSoft, &previous, 30000, epoch));
+  CHECK_FALSE(ResetHistory::epochAtReset(0, &previous, 30000, epoch));
+  CHECK_FALSE(ResetHistory::epochAtReset(kWatchdog, nullptr, 30000, epoch));
+  previous.feedEpochMs = 0;
+  CHECK_FALSE(ResetHistory::epochAtReset(kWatchdog, &previous, 30000, epoch));
+
+  uint8_t wire[ResetHistory::kRecordBytes];
+  CHECK(ResetHistory::describe(kWatchdog, nullptr, &fault, record));
+  ResetHistory::encode(record, wire);
+  ResetHistory::Record decoded;
+  CHECK(ResetHistory::decode(wire, sizeof wire, decoded));
+  CHECK_EQ(record.errorAddress, decoded.errorAddress);
+  CHECK_FALSE(ResetHistory::decode(wire, sizeof wire - 1, decoded));
+}
+
+TEST_CASE("last reset persistence") {
+  FlashSim::reset();
+  W25Q64Flash flash;
+  flash.begin();
+  ConfigStore store;
+  ResetHistory::Record record;
+  CHECK_FALSE(store.loadLastReset(flash, record));  // none stored
+  CHECK(store.healthy());
+  CHECK_EQ(uint8_t{0}, record.cause);
+  record.bootCount = 7;
+  record.cause = ResetHistory::kCauseWatchdog;
+  record.errorAddress = 0x1234;
+  CHECK(store.saveLastReset(flash, record));
+  CHECK(store.save(flash, sampleConfig()));  // shares the KV store
+
+  ConfigStore rebooted;
+  ResetHistory::Record loaded;
+  CHECK(rebooted.loadLastReset(flash, loaded));
+  CHECK_EQ(uint32_t{7}, loaded.bootCount);
+  CHECK_EQ(ResetHistory::kCauseWatchdog, loaded.cause);
+  CHECK_EQ(uint32_t{0x1234}, loaded.errorAddress);
+}
+
 TEST_CASE("sample log erase") {
   FlashSim::reset();
   W25Q64Flash flash;
@@ -1053,10 +1448,26 @@ TEST_CASE("protocol golden vectors") {
   diagnostics.resetReason = 1u << 1;  // watchdog
   diagnostics.uptimeSeconds = 3600;
   diagnostics.i2cBusStuck = false;
+  diagnostics.heapKiB = 18;
   uint8_t diagnosticsWire[BleCodec::kDiagnosticsBytes];
   BleCodec::encodeDiagnostics(diagnostics, diagnosticsWire);
   expectVector(doc, "diagnostics", diagnosticsWire, sizeof diagnosticsWire,
                GOLDEN_DIAGNOSTICS);
+
+  ResetHistory::Record lastReset;
+  lastReset.bootCount = 64;
+  lastReset.uptimeS = 37 * 3600 + 6 * 60;
+  lastReset.cause = ResetHistory::kCauseWatchdog;
+  lastReset.state = 0;
+  lastReset.heapKiB = 18;
+  lastReset.errorStatus = 0x80FF013D;  // HardFault
+  lastReset.errorAddress = 0x00031A2C;
+  uint8_t lastResetWire[BleCodec::kLastResetBytes];
+  static_assert(BleCodec::kLastResetBytes == ResetHistory::kRecordBytes,
+                "0013 carries the record as stored");
+  ResetHistory::encode(lastReset, lastResetWire);
+  expectVector(doc, "last reset", lastResetWire, sizeof lastResetWire,
+               GOLDEN_LAST_RESET);
 
   const uint8_t sync[BleCodec::kLogSyncControlBytes] = {
       BleCodec::kSyncOpStart, 0, 0xB1, 0x04, 0, 0, 0, 0, 0xF4, 0x00};
@@ -1256,6 +1667,9 @@ TEST_CASE("sleep window validation") {
   rejects("bedtime");
   LittleEndian::putU16(wire + 6, 1440);
   rejects("wake");
+  LittleEndian::putU16(wire + 4, 420);
+  LittleEndian::putU16(wire + 6, 420);
+  rejects("wake equal to bedtime");
   // Bytes 8-11 are reserved for per-night windows: anything but FF is
   // rejected, including the weekend times earlier firmware accepted.
   LittleEndian::putU16(wire + 8, 60);
