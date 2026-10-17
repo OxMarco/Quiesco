@@ -16,7 +16,7 @@ log live in the unit's external flash, which an update never touches.
   [Making a release](#making-a-release)).
 - A computer with a USB port, and a USB-C cable that carries data (some
   charge-only cables do not).
-- The companion app, connected to the unit. Its **Settings → the unit → Update firmware**
+- The companion app, connected to the unit. Its **Device → Update firmware**
   row appears only when the unit's firmware supports it (capability bit 16,
   `firmware/src/protocol/PROTOCOL.md` §9.2). Without it, see
   [Without the app](#without-the-app).
@@ -24,7 +24,7 @@ log live in the unit's external flash, which an update never touches.
 ## Update steps
 
 1. Plug the unit into the computer with the USB-C cable.
-2. In the app, open **Settings**, tap the unit, tap **Update firmware**, then
+2. In the app, open the **Device** tab, tap **Update firmware**, then
    **Continue**.
    Within about 15 seconds the unit disconnects from the app and restarts as
    a USB drive called `XIAO-BOOT`. It stops measuring until step 4 is done.
@@ -39,7 +39,7 @@ log live in the unit's external flash, which an update never touches.
 4. Copy `quiesco-X.Y.Z.uf2` onto the drive (drag and drop, or copy and
    paste). The drive disappears by itself within a few seconds: that is the
    unit restarting with the new firmware.
-5. In the app, connect again: **Settings → the unit → Firmware** shows the new version.
+5. In the app, connect again: **Device → Firmware** shows the new version.
 
 The computer may complain that the drive was not ejected properly, or (on
 macOS) that the copy could not finish. Both are harmless: the unit restarts
