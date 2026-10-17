@@ -9,14 +9,15 @@ export function Segmented<V extends string | number>({
   disabled,
   label,
 }: {
-  options: { value: V; label: string }[];
+  /** `caption` is a small line under the option's segment, such as its cost. */
+  options: { value: V; label: string; caption?: string }[];
   value: V | null;
   onChange: (v: V) => void;
   disabled?: boolean;
   /** Read out for the group, when the visible label is not next to it. */
   label?: string;
 }) {
-  return (
+  const group = (
     <View
       className={`flex-row bg-raised rounded-full p-1 ${disabled ? 'opacity-40' : ''}`}
       accessibilityRole="radiogroup"
@@ -30,6 +31,7 @@ export function Segmented<V extends string | number>({
             onPress={() => onChange(o.value)}
             accessibilityRole="radio"
             accessibilityState={{ checked: on }}
+            accessibilityHint={o.caption}
             className={`flex-1 h-9 rounded-full items-center justify-center ${on ? 'bg-surface' : ''}`}>
             {/* A fixed-height capsule: capped and shrunk to fit, never clipped. */}
             <T
@@ -43,6 +45,20 @@ export function Segmented<V extends string | number>({
           </Pressable>
         );
       })}
+    </View>
+  );
+  if (!options.some((o) => o.caption)) return group;
+  return (
+    <View className="gap-1.5">
+      {group}
+      {/* Same padding and flex as the segments, so each caption sits under its own. */}
+      <View className="flex-row px-1" importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+        {options.map((o) => (
+          <T key={String(o.value)} className={`flex-1 text-center text-[12px] ${o.value === value ? '' : 'text-muted'}`} maxFontSizeMultiplier={1.4}>
+            {o.caption ?? ''}
+          </T>
+        ))}
+      </View>
     </View>
   );
 }

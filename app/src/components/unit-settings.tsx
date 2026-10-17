@@ -28,20 +28,19 @@ import {
   Capability,
   deviceNameProblem,
   hasCapability,
-  INTERVALS_S,
   IntervalSeconds,
   STATUS_DEVICES,
 } from '@/protocol/codec';
 import { useTheme } from '@/theme';
+import { batteryLabel, intervalChoices } from '@/ui/battery';
 import { ago, intervalLabel } from '@/ui/format';
-import { formatClock } from '@/ui/sleep';
 import { deltaFromUnit, deltaToUnit, tempSymbol, type TempUnit } from '@/ui/units';
 
 /** Everything about one unit: its own settings, calibration, details and removal. */
 export function UnitSettings({ unit }: { unit: db.Unit }) {
   const cache = useSession((s) => s.caches[unit.serial] ?? null);
   const tempUnit = useSession((s) => s.tempUnit);
-  const { panelFollowsSleep, eraseAfterSync, sleepWindow } = useSession((s) => prefsFor(s, unit.serial));
+  const { panelFollowsSleep, eraseAfterSync } = useSession((s) => prefsFor(s, unit.serial));
   const shown = useSession((s) => shownUnit(s)?.serial === unit.serial);
   const s = useStore(link, (x) => x);
   // Each failed write reports next to the control that caused it.
@@ -112,11 +111,6 @@ export function UnitSettings({ unit }: { unit: db.Unit }) {
           onSave={(name) => run('name', () => linkApi.setName(name).then(reloadUnits))}
           error={errorAt('name')}
         />
-        <Row
-          label="Sleep window"
-          value={`${formatClock(sleepWindow.times.bedMin)} – ${formatClock(sleepWindow.times.wakeMin)}`}
-          onPress={() => router.push({ pathname: '/sleep-window', params: { serial: unit.serial } })}
-        />
         <Field label="Screen" error={errorAt('screen')}>
           <ScreenPicker
             disabled={!can(Capability.displayScreen)}
@@ -132,12 +126,12 @@ export function UnitSettings({ unit }: { unit: db.Unit }) {
           />
           {screenApplying && <T className="text-sm text-muted leading-5">The unit’s screen updates in a moment</T>}
         </Field>
-        <Field label="Measure every" hint="More often uses more battery" error={errorAt('interval')}>
+        <Field label="Measure every" hint="Estimated battery life on a full charge" error={errorAt('interval')}>
           <Segmented<IntervalSeconds>
             disabled={!connected}
             value={(config?.intervalSeconds as IntervalSeconds) ?? null}
             onChange={(v) => void run('interval', () => linkApi.setMeasurementInterval(v)).catch(() => {})}
-            options={INTERVALS_S.map((v) => ({ value: v, label: intervalLabel(v) }))}
+            options={intervalChoices(config?.intervalSeconds).map((v) => ({ value: v, label: intervalLabel(v), caption: batteryLabel(v) }))}
           />
         </Field>
         <Field

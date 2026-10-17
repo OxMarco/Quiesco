@@ -21,6 +21,10 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Nights</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'moon.stars', selected: 'moon.stars.fill' }} md="bedtime" />
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="device">
+        <NativeTabs.Trigger.Label>Device</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: 'sensor', selected: 'sensor.fill' }} md="sensors" />
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="unit">
         <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }} md="settings" />
