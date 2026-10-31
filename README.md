@@ -33,6 +33,10 @@ Arduino toolchain, or take it apart and make it your own.
 
 Quiesco is a product of [Impossible Labs](https://impossiblelabs.xyz).
 
+<p align="center">
+  <img src=".github/assets/quiesco-front.jpg" alt="A Quiesco unit standing on a table, its e-ink screen showing CO₂, temperature, humidity, light and noise" width="100%">
+</p>
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/assets/screens-dark.svg">
   <img src=".github/assets/screens-light.svg" alt="The three e-ink screens: Face, Ledger and Bento" width="100%">
@@ -126,6 +130,11 @@ can hold several units, each with its own name and sleep window.
 
 <p align="center">
   <img src=".github/assets/enclosure-front.png" alt="Front view of the enclosure: 53.4 mm square with 5 mm corner radii and a 28 mm e-ink window showing CO₂, temperature, humidity, light and noise" width="420">
+</p>
+
+<p align="center">
+  <img src=".github/assets/quiesco-angle.jpg" alt="Three-quarter view of the black nylon case showing the side ventilation slots" width="49%">
+  <img src=".github/assets/quiesco-back.jpg" alt="Back of the case, closed with four M3 socket-head screws" width="49%">
 </p>
 
 | | |
