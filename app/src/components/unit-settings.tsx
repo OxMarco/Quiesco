@@ -392,7 +392,7 @@ function OffsetsForm({
   return (
     <View className="py-3.5 gap-1 border-b border-line">
       <T className="text-sm text-muted leading-5 mb-1">
-        Add the difference from a trusted reference. Set temperature first; it also corrects humidity.
+        Add the difference from a trusted reference placed beside the unit, both out of direct sun. Set temperature first; it also corrects humidity.
       </T>
       <Stepper
         label="Temperature"

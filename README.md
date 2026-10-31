@@ -88,6 +88,12 @@ your favourite editor.
 The same bands drive the e-ink screen and the app, so the phone and the panel
 always agree. The full policy is in [`firmware/UI.md`](firmware/UI.md#3-comfort-bands).
 
+> [!IMPORTANT]
+> Keep the unit out of direct sunlight. Sun on the case heats the sensors, so
+> temperature reads several degrees high and humidity reads low. On a test
+> bench, afternoon sun pushed the reading to 36 °C. A shaded bedside table or
+> shelf, away from radiators and air vents, gives readings you can trust.
+
 ## ⚙ How it works
 
 ```mermaid
