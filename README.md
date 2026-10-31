@@ -131,7 +131,7 @@ can hold several units, each with its own name and sleep window.
 | **Storage** | Winbond W25Q64 8 MB SPI NOR flash (config + sample log) |
 | **Power** | 3.7 V ~400 mAh LiPo (453035), USB-C charging, switched peripheral rail |
 | **Expansion** | JST I²C and UART headers |
-| **Case** | 3D-printable two-part enclosure, four M3 screws |
+| **Case** | Two-part enclosure, MJF-printed in black PA12 nylon, four M3 screws ([why nylon](hardware/README.md#material)) |
 
 ## 🛠 Build your own
 
@@ -142,8 +142,11 @@ links to the folder with the details.
 
 - The **PCBA**: the board from [`hardware/`](hardware/), ordered assembled
 - A **GDEW0154T8D** 1.54″ e-ink panel (24-pin FPC)
-- A **3.7 V ~400 mAh LiPo** (453035: 4.5 × 30 × 35 mm) with a **JST SH 1.0 2-pin** lead
-- A **3D-printed case** and **4 × M3×10 socket-head screws**
+- A **3.7 V LiPo** that matches your board's battery connector: a ~400 mAh 453035
+  (4.5 × 30 × 35 mm) with a **JST SH 1.0 2-pin** lead for the JST SH board, or
+  the certified **EEMB LP402535-PCM-PTC-LD/-A22852** for the Minitek board (see
+  [`hardware/`](hardware/README.md))
+- A **3D-printed case** (MJF PA12 nylon, dyed black) and **4 × M3×10 socket-head screws**
 - A USB-C cable, a Mac or Linux machine, and a phone with Bluetooth
 
 ### Steps

@@ -1,13 +1,23 @@
 # Quiesco hardware
 
-Everything you need to manufacture a Quiesco unit: the Altium project, the
-fabrication and assembly outputs for PCB **v1** (`L-1K1W1007851A`), and the
-3D-printable enclosure.
+Everything you need to manufacture a Quiesco unit: the PCB **v1**
+(`L-1K1W1007851A`) design and factory files, and the 3D-printable enclosure.
+
+PCB v1 comes in two versions. They are the same board except for the battery
+connector, J2. Each version has its own folder, and the two sets of files
+must not be mixed.
+
+| Version | Folder | J2, battery connector | Battery that plugs in | Design tool |
+|---|---|---|---|---|
+| **JST SH** | [`pcb-jst-sh/`](pcb-jst-sh/) | JST **SM02B-SRSS-TB**, SH 1.0 mm, 2-pin | any 453035-size LiPo with a JST SH 1.0 lead | Altium |
+| **Minitek** | [`pcb-minitek/`](pcb-minitek/) | Amphenol **10144041-02011LF**, Minitek 0.8 mm, 2-pin | EEMB **LP402535-PCM-PTC-LD/-A22852**, IEC 62133-2 certified, used as supplied | KiCad |
+
+In both versions J2 sits in the same place, pin 1 is VBAT and pin 2 is GND.
 
 <table>
   <tr>
-    <td align="center" width="50%"><img src="assembly/L-1K1W1007851A_Top.png" alt="PCB v1, top side" width="100%"><br><sub><b>Top</b>: XIAO module, e-ink FPC, flash, SCD41, VEML7700, mic</sub></td>
-    <td align="center" width="50%"><img src="assembly/L-1K1W1007851A_Bottom.png" alt="PCB v1, bottom side" width="100%"><br><sub><b>Bottom</b></sub></td>
+    <td align="center" width="50%"><img src="pcb-jst-sh/renders/top.png" alt="PCB v1, JST SH version, top side" width="100%"><br><sub><b>Top</b>: XIAO module, e-ink FPC, flash, SCD41, VEML7700, mic</sub></td>
+    <td align="center" width="50%"><img src="pcb-jst-sh/renders/bottom.png" alt="PCB v1, JST SH version, bottom side" width="100%"><br><sub><b>Bottom</b></sub></td>
   </tr>
 </table>
 
@@ -38,7 +48,7 @@ on a **switched 3.3 V rail** that the firmware turns off between measurements.
 | J1 | 24-pin 0.5 mm FPC | GoodDisplay GDEW0154T8D e-ink panel |
 | Q1 | AO3401 P-MOSFET | switched peripheral rail (`3V3ON`, active LOW) |
 | Q2, L1, D1–D3 | SI1308EDL, 10 µH, MBR0530 | e-ink gate-voltage boost |
-| J2 | JST SH 1.0, 2-pin | battery |
+| J2 | 2-pin battery connector: JST SH 1.0 or Amphenol Minitek 0.8, depending on the [version](#quiesco-hardware) | battery |
 | J3 / J4 | JST 4-pin | I²C and UART expansion |
 | T1–T6 | test pads | SWDIO, SWCLK, VBUS, RESET, 3.3 V, GND |
 
@@ -54,40 +64,42 @@ from the firmware's point of view in
 
 ```text
 hardware/
-├── sources/                         Altium project
-│   ├── L-1K1W1007851A.PrjPcb        project
-│   ├── L-1K1W1007851A.SchDoc        schematic
-│   ├── L-1K1W1007851A.PcbDoc        layout
-│   ├── L-1K1W1007851A.pdf           schematic, printable
-│   └── old/                         earlier schematic, for reference
-├── assembly/                        what the factory needs
-│   ├── gerber_L-1K1W1007851A/       Gerbers, drill files, IPC netlist
-│   ├── bom_L-1K1W1007851A/          bill of materials (use bom-new.xlsx)
-│   ├── coord_L-1K1W1007851A/        pick-and-place CSV
-│   ├── PCB Manufacturing Process Specification.xlsx
-│   └── L-1K1W1007851A_Top/Bottom.png  board renders
-└── case/                            enclosure
-    ├── case.STL                     ready to slice
-    ├── L-1K1W1007851A_CASE.STEP     enclosure, editable
-    ├── case_v2.STL                  v2 (in test), ready to slice
-    ├── L-1K1W1007851A_CASE_v2.STEP  v2 (in test), editable
-    ├── L-1K1W1007851A_ASM.STEP      full assembly with the PCBA
-    └── … assembly instructions.docx
-└── renders/                         exploded-view animation
+├── pcb-jst-sh/                  PCB v1, J2 = JST SH 1.0 (SM02B-SRSS-TB)
+│   ├── source/                  Altium project: .PrjPcb, .SchDoc, .PcbDoc
+│   │   ├── schematic.pdf        schematic, printable
+│   │   └── old/                 earlier schematic and BOM, for reference
+│   ├── manufacturing/           what the factory needs
+│   │   ├── gerbers/             Gerbers, drill files, IPC netlist
+│   │   ├── bom.xlsx             bill of materials
+│   │   ├── pick-and-place.csv   centroid file
+│   │   └── process-spec.xlsx    fabrication settings
+│   └── renders/                 top.png, bottom.png
+├── pcb-minitek/                 PCB v1, J2 = Amphenol Minitek (10144041-02011LF)
+│   ├── source/                  KiCad project: .kicad_pro, .kicad_sch, .kicad_pcb
+│   └── manufacturing/
+│       ├── gerbers/             Gerbers and drill files
+│       ├── bom.xlsx             bill of materials
+│       └── pick-and-place.csv   centroid file
+└── case/                        enclosure, shared by both versions
+    ├── v1/                      case-v1.stl (ready to slice), case-v1.step (editable)
+    ├── v2/                      case-v2.stl, case-v2.step (in test)
+    ├── assembly.step            full assembly with the PCBA
+    ├── assembly-instructions.docx
+    └── exploded.mp4             exploded-view animation
 ```
 
 ## Order the board
 
-The v1 board was produced with PCBWay, but any assembly service that accepts
-Altium Gerbers works.
+First pick the [version](#quiesco-hardware), then take every file from that
+version's `manufacturing/` folder only.
 
-1. **Zip the Gerbers.** Compress `assembly/gerber_L-1K1W1007851A/` into one
-   archive and upload it as the PCB.
-2. **Add assembly.** Upload `assembly/bom_L-1K1W1007851A/bom-new.xlsx` as the
-   BOM and `assembly/coord_L-1K1W1007851A/Pick Place for L-1K1W1007851A.csv`
-   as the centroid file.
-3. **Share the process spec.** `assembly/PCB Manufacturing Process Specification.xlsx`
-   holds the fabrication settings used for v1.
+1. **Zip the Gerbers.** Compress `manufacturing/gerbers/` into one archive and
+   upload it as the PCB.
+2. **Add assembly.** Upload `manufacturing/bom.xlsx` as the BOM and
+   `manufacturing/pick-and-place.csv` as the centroid file.
+3. **Share the process spec.** `pcb-jst-sh/manufacturing/process-spec.xlsx`
+   holds the fabrication settings used for the first boards, which PCBWay
+   produced from the Altium outputs.
 4. **Mind the not-fitted parts.** R1, R2, R3, R5, R6, R7, R8 and R9 are marked
    `NC` in the BOM and must stay empty: R1 would flip the microphone's
    channel, R7 is an unused rail bleeder, and the rest are per-sensor I²C
@@ -101,19 +113,40 @@ the BOM):
 | Part | Spec | Notes |
 |---|---|---|
 | E-ink panel | GoodDisplay **GDEW0154T8D**, 1.54″, 152 × 152, 24-pin 0.5 mm FPC | plugs into J1 |
-| Battery | **3.7 V ~400 mAh** LiPo, **453035** size (4.5 × 30 × 35 mm) | the case pocket is about 38 × 30.5 mm with 8.5 mm above the board; 5 mm cells don't fit. Length includes the protection board |
-| Battery lead | **JST SH 1.0 2-pin**, 10 cm, single-ended | into J2 — **check polarity before plugging in** |
+| Battery, JST SH version | **3.7 V ~400 mAh** LiPo, **453035** size (4.5 × 30 × 35 mm), with a **JST SH 1.0 2-pin** lead, 10 cm, single-ended | plugs into J2. **Check polarity before plugging in** |
+| Battery, Minitek version | EEMB **LP402535-PCM-PTC-LD/-A22852**: 3.7 V, 320 mAh typical, 37.0 × 25.5 × 4.3 mm max, with PCM and PTC fitted, 33 mm lead, Amphenol 10145492-02LF plug | plugs into J2 as supplied. Don't cut, crimp or extend the lead: any change voids the cell's IEC 62133-2 certificate |
 | Screws | **4 × M3×10** hex socket head | close the case |
 
 ## Print the case
 
 The enclosure is a two-part shell, about **53 × 53 × 15 mm**.
 
-- **Print** `case/case.STL` as-is.
-- **Modify** `case/L-1K1W1007851A_CASE.STEP` in your CAD tool, and use
-  `L-1K1W1007851A_ASM.STEP` to check clearances against the populated board.
+### Material
 
-**v2, in test.** `case_v2.STL` and `L-1K1W1007851A_CASE_v2.STEP` rework the
+**MJF PA12 nylon, dyed black**, is the production material. Any MJF
+service can print it; order both parts in PA12 with black dyeing.
+
+The same files were printed in three processes to choose it
+([build log with photos](https://hackaday.io/project/207079-quiesco/log/252495-choosing-a-case-material-abs-resin-or-mjf-nylon)):
+
+| Process | Finish | Strength | Per case, 50 units | Verdict |
+|---|---|---|---|---|
+| FDM ABS | layer pattern on every face and in the screw counterbores | good | cheapest | prototypes only; some services can't print the 3.4 mm bezel |
+| Black resin | smoothest, but shows every speck, scratch and fingerprint; standard black looks greyish and streaky | more brittle where the screws bite | ~$4 | no; Imagine Black is deeper but softens at 46 °C |
+| **MJF PA12 nylon** | even matte black, fine grain that hides marks, clean vents | tough, screws thread in well | ~$5 | **chosen** |
+
+Prices are JLC3DP online quotes from October 2026, before import VAT.
+
+### Files
+
+Both PCB versions fit the same case. The case pocket is about 38 × 30.5 mm,
+with 8.5 mm above the board, so either battery fits.
+
+- **Print** `case/v1/case-v1.stl` as-is.
+- **Modify** `case/v1/case-v1.step` in your CAD tool, and use
+  `case/assembly.step` to check clearances against the populated board.
+
+**v2, in test.** `case/v2/case-v2.stl` and `case/v2/case-v2.step` rework the
 vents and the light sensor opening. The display window and the board fit are
 unchanged:
 
@@ -125,8 +158,11 @@ unchanged:
 | Bezel outline | 50.3 mm, 0.1 mm clearance per side | 50.0 mm, 0.25 mm clearance per side |
 
 Both versions have walls down to about 0.5 mm at the bezel corners and one
-inner corner of the shell, below most print services' minimum. They print,
-but they can crack. Use v1 until v2 has been tested.
+inner corner of the shell, below most print services' minimum. In MJF nylon
+they print and hold up, but the 0.5 mm skin over each bezel screw hole
+shows as a small dot on the front. A revision that leaves a 1.0 mm skin
+(pilot holes 2.4 mm deep instead of 2.9 mm) and thickens the shell corner
+is in progress. Use v1 until v2 has been tested.
 
 If you change the window, re-measure how much of the panel it hides: the
 screens leave a 7 px top inset for the v1 case (see

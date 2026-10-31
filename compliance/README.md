@@ -106,8 +106,8 @@ For Quiesco v1 we confirm that:
 These are the facts about the final product that the lab will want for its
 assessment. They are not changes to the module.
 
-- **Enclosure.** A two-part 3D-printed plastic case, about 53 × 53 × 15 mm,
-  closed with four M3 screws.
+- **Enclosure.** A two-part 3D-printed case in PA12 nylon (MJF, dyed black),
+  about 53 × 53 × 15 mm, closed with four M3 screws.
 - **Battery.** A 3.7 V ~400 mAh LiPo (453035 size) sits in the lid, directly
   above the XIAO module.
 - **Power.** Battery-powered. Charged over the module's own USB-C port at
@@ -143,8 +143,12 @@ the product besides the radio:
 
 The full board design is in this repository:
 
-- Schematic: [`hardware/sources/L-1K1W1007851A.pdf`](../hardware/sources/L-1K1W1007851A.pdf)
-- Bill of materials and assembly files: [`hardware/assembly/`](../hardware/assembly/)
+- Schematic: [`hardware/pcb-jst-sh/source/schematic.pdf`](../hardware/pcb-jst-sh/source/schematic.pdf)
+- Bill of materials and assembly files: [`hardware/pcb-jst-sh/manufacturing/`](../hardware/pcb-jst-sh/manufacturing/)
+  (JST SH battery connector) and
+  [`hardware/pcb-minitek/manufacturing/`](../hardware/pcb-minitek/manufacturing/)
+  (Amphenol Minitek battery connector, for the certified EEMB cell). The two
+  boards differ only in J2.
 - Enclosure: [`hardware/case/`](../hardware/case/)
 - Board description: [`hardware/README.md`](../hardware/README.md) and
   [`firmware/HARDWARE.md`](../firmware/HARDWARE.md)

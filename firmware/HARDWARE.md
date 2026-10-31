@@ -7,8 +7,8 @@ is fitted, how it is wired, and the traps in the Arduino core that have
 already cost debugging sessions.
 
 Sources: the Altium project and schematic export
-(`hardware/sources/L-1K1W1007851A.*`), the production BOM and pick-and-place
-(`hardware/assembly/`), the IPC-D-356 netlist extracted from the routed board,
+(`hardware/pcb-jst-sh/source/`), the production BOM and pick-and-place
+(`hardware/pcb-jst-sh/manufacturing/`), the IPC-D-356 netlist extracted from the routed board,
 the Sensirion SCD4x datasheet (v1.7), and measurements on an assembled board
 with the `smoke/sensors` sketch. If anything here disagrees with the board,
 trust the board and fix this file.
@@ -32,7 +32,7 @@ trust the board and fix this file.
 | Q1 | AO3401 (P-channel) | switched peripheral rail | — |
 | Q2, L1, D1–D3 | SI1308EDL, 10 µH, MBR0530 | e-ink gate-voltage boost | — |
 | J1 | 24-pin FPC | e-ink panel | — |
-| J2 | JST SH 2-pin | battery (3.7 V ~400 mAh LiPo, 453035) | — |
+| J2 | JST SH 2-pin, or Amphenol Minitek 0.8 mm 2-pin on the `pcb-minitek` board | battery (3.7 V ~400 mAh LiPo, 453035, or the EEMB LP402535 on Minitek) | — |
 | J3 | JST 4-pin | I2C expansion (+3.3V, SDA, SCL, GND) | I2C |
 | J4 | JST 4-pin | UART expansion (+3.3V, `C_TX`, `C_RX`, GND) | UART |
 
