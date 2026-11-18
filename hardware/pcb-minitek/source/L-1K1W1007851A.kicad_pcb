@@ -13966,6 +13966,18 @@
 			)
 		)
 	)
+	(gr_text "Quiesco v1"
+		(at 125.5511 105.0036 270)
+		(layer "B.SilkS")
+		(uuid "60a9a319-f00d-495d-921d-4e1581e32bf5")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+			(justify mirror)
+		)
+	)
 	(dimension
 		(type aligned)
 		(layer "B.Fab")
