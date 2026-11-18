@@ -1470,7 +1470,7 @@
 				)
 			)
 		)
-		(property "Value" "SM04B-GHS-TB(LF)(SN)"
+		(property "Value" "SM04B-SRSS-TB(LF)(SN)"
 			(at -12.25906 0.054998 0)
 			(unlocked yes)
 			(layer "F.SilkS")
@@ -1777,7 +1777,7 @@
 				)
 			)
 		)
-		(property "Value" "SM04B-GHS-TB(LF)(SN)"
+		(property "Value" "SM04B-SRSS-TB(LF)(SN)"
 			(at -10.68406 -7.120002 0)
 			(unlocked yes)
 			(layer "F.SilkS")

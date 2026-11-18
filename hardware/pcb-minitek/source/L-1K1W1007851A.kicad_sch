@@ -1785,7 +1785,7 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "L-1K1W1007851A-altium-import:root_0_SM04B-GHS-TB(LF)(SN)_SM04B-GHS-TB(LF)(SN).SchLib"
+		(symbol "L-1K1W1007851A-altium-import:root_0_SM04B-SRSS-TB(LF)(SN)_SM04B-SRSS-TB(LF)(SN).SchLib"
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
@@ -1841,7 +1841,7 @@
 					(hide yes)
 				)
 			)
-			(symbol "root_0_SM04B-GHS-TB(LF)(SN)_SM04B-GHS-TB(LF)(SN).SchLib_1_0"
+			(symbol "root_0_SM04B-SRSS-TB(LF)(SN)_SM04B-SRSS-TB(LF)(SN).SchLib_1_0"
 				(rectangle
 					(start -4.127 5.398)
 					(end -5.715 4.763)
@@ -408070,7 +408070,7 @@
 		)
 	)
 	(symbol
-		(lib_id "L-1K1W1007851A-altium-import:root_0_SM04B-GHS-TB(LF)(SN)_SM04B-GHS-TB(LF)(SN).SchLib")
+		(lib_id "L-1K1W1007851A-altium-import:root_0_SM04B-SRSS-TB(LF)(SN)_SM04B-SRSS-TB(LF)(SN).SchLib")
 		(at 40.64 220.8022 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -408087,7 +408087,7 @@
 				(justify left bottom)
 			)
 		)
-		(property "Value" "SM04B-GHS-TB(LF)(SN)"
+		(property "Value" "SM04B-SRSS-TB(LF)(SN)"
 			(at 33.02 228.4222 0)
 			(effects
 				(font
@@ -408123,7 +408123,7 @@
 				(hide yes)
 			)
 		)
-		(property "SNAPEDA_LINK" "https://www.snapeda.com/parts/SM04B-GHS-TB(LF)(SN)/JST/view-part/?ref=snap"
+		(property "SNAPEDA_LINK" "https://www.snapeda.com/parts/SM04B-SRSS-TB(LF)(SN)/JST/view-part/?ref=snap"
 			(at 40.64 220.8022 0)
 			(effects
 				(font
@@ -408163,7 +408163,7 @@
 				(hide yes)
 			)
 		)
-		(property "MP" "SM04B-GHS-TB(LF)(SN)"
+		(property "MP" "SM04B-SRSS-TB(LF)(SN)"
 			(at 40.64 220.8022 0)
 			(effects
 				(font
@@ -408173,7 +408173,7 @@
 				(hide yes)
 			)
 		)
-		(property "CHECK_PRICES" "https://www.snapeda.com/parts/SM04B-GHS-TB(LF)(SN)/JST/view-part/?ref=eda"
+		(property "CHECK_PRICES" "https://www.snapeda.com/parts/SM04B-SRSS-TB(LF)(SN)/JST/view-part/?ref=eda"
 			(at 40.64 220.8022 0)
 			(effects
 				(font
@@ -408533,7 +408533,7 @@
 		)
 	)
 	(symbol
-		(lib_id "L-1K1W1007851A-altium-import:root_0_SM04B-GHS-TB(LF)(SN)_SM04B-GHS-TB(LF)(SN).SchLib")
+		(lib_id "L-1K1W1007851A-altium-import:root_0_SM04B-SRSS-TB(LF)(SN)_SM04B-SRSS-TB(LF)(SN).SchLib")
 		(at 40.64 192.8622 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -408550,7 +408550,7 @@
 				(justify left bottom)
 			)
 		)
-		(property "Value" "SM04B-GHS-TB(LF)(SN)"
+		(property "Value" "SM04B-SRSS-TB(LF)(SN)"
 			(at 33.02 200.4822 0)
 			(effects
 				(font
@@ -408586,7 +408586,7 @@
 				(hide yes)
 			)
 		)
-		(property "SNAPEDA_LINK" "https://www.snapeda.com/parts/SM04B-GHS-TB(LF)(SN)/JST/view-part/?ref=snap"
+		(property "SNAPEDA_LINK" "https://www.snapeda.com/parts/SM04B-SRSS-TB(LF)(SN)/JST/view-part/?ref=snap"
 			(at 40.64 192.8622 0)
 			(effects
 				(font
@@ -408626,7 +408626,7 @@
 				(hide yes)
 			)
 		)
-		(property "MP" "SM04B-GHS-TB(LF)(SN)"
+		(property "MP" "SM04B-SRSS-TB(LF)(SN)"
 			(at 40.64 192.8622 0)
 			(effects
 				(font
@@ -408636,7 +408636,7 @@
 				(hide yes)
 			)
 		)
-		(property "CHECK_PRICES" "https://www.snapeda.com/parts/SM04B-GHS-TB(LF)(SN)/JST/view-part/?ref=eda"
+		(property "CHECK_PRICES" "https://www.snapeda.com/parts/SM04B-SRSS-TB(LF)(SN)/JST/view-part/?ref=eda"
 			(at 40.64 192.8622 0)
 			(effects
 				(font
