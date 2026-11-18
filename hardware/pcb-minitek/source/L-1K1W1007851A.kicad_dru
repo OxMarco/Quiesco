@@ -1,0 +1,7 @@
+(version 1)
+
+# Keep the ground pour 0.4 mm from the board outline and the slot.
+# Tracks, vias and pads follow the board-wide 0.2 mm edge clearance.
+(rule "pour_to_edge"
+	(condition "A.Type == 'Zone'")
+	(constraint edge_clearance (min 0.4mm)))
