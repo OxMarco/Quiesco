@@ -113,3 +113,6 @@ build (`--debug`) or a bench build (`--no-battery`).
   development, not for owners.
 - Check the result: the firmware version in the app, or DIS `2A26` /
   `scripts/ble-test.py info`.
+- Secrets: a gitleaks pre-commit hook runs via `lefthook.yml` (`lefthook
+  install` once per clone) and `secrets.yml` scans every push. The repo is
+  public: never commit keys. CI must be green (`gh run list`).
