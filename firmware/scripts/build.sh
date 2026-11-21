@@ -55,6 +55,18 @@ printf '%s' "$flags" > "$stamp"
   "$root"
 
 # Drag-and-drop image for the XIAO-BOOT drive (AGENT.md at the repository root).
-python3 "$root/scripts/make-uf2.py" "$build_path/firmware.ino.bin" \
-  "$build_path/quiesco-$version.uf2"
-echo "UF2: $build_path/quiesco-$version.uf2"
+# Only a release build gets the plain name owners and the factory are given:
+# any other variant carries its flags in the file name, so a debug or
+# no-battery image cannot be handed over as quiesco-X.Y.Z.uf2.
+variant=""
+[ "$debug" -eq 1 ] && variant+="-debug"
+[ "$trace" -eq 1 ] && variant+="-trace"
+[ "$ble_trace" -eq 1 ] && variant+="-bletrace"
+[ "$no_battery" -eq 1 ] && variant+="-nobattery"
+rm -f "$build_path"/quiesco-*.uf2
+uf2="$build_path/quiesco-$version$variant.uf2"
+python3 "$root/scripts/make-uf2.py" "$build_path/firmware.ino.bin" "$uf2"
+echo "UF2: $uf2"
+if [ -n "$variant" ]; then
+  echo "Not a release image: never ship this file (AGENT.md, Making a release)."
+fi

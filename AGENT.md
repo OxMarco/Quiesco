@@ -102,7 +102,9 @@ Windows, use WSL; the build scripts are bash. Owners never build.
    `make licences`, then `npm run licences` in `app/`, and ship the app with it.
 
 Always ship a **release** build (`make build`). Never give owners a debug
-build (`--debug`) or a bench build (`--no-battery`).
+build (`--debug`) or a bench build (`--no-battery`). Only a release build
+writes `quiesco-X.Y.Z.uf2`; the others carry their variant in the file name
+(`quiesco-X.Y.Z-debug.uf2`, `-nobattery`, `-trace`).
 
 ## For agents: rules
 
