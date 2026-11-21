@@ -94,7 +94,7 @@ unit test:
 RESULT: PASS
 ```
 
-Then check the panel's PASS screen is complete and even, and find
+Then check the panel shows PASS inside a complete dotted border, and find
 `Quiesco TEST XXXX` in a BLE scanner such as nRF Connect. When everything
 passes, flash the release firmware as in [Quick start](#build-and-flash).
 

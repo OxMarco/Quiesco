@@ -44,6 +44,9 @@ class EpaperDisplay {
 
   void setFont(Font font);
   void setTextColor(Ink ink);
+  // Pixel-doubles the current font (setFont resets it to 1). For the factory
+  // test's PASS/FAIL screen only: the 24pt cut has no letters.
+  void setTextScale(uint8_t scale);
   void setCursor(int16_t x, int16_t y);
   int16_t cursorX() const;
   int16_t cursorY() const;

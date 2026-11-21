@@ -283,6 +283,10 @@ void EpaperDisplay::setTextColor(Ink ink) {
   frame.setTextColor(toColor(ink));
 }
 
+void EpaperDisplay::setTextScale(uint8_t scale) {
+  frame.setTextSize(scale);
+}
+
 void EpaperDisplay::setCursor(int16_t x, int16_t y) {
   frame.setCursor(x, y);
 }

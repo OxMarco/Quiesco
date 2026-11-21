@@ -1007,61 +1007,87 @@ void printCentered(const char* text, int16_t baseline) {
   display.print(text);
 }
 
-// The verdict the factory operator reads, so it has to be unmistakable at a
-// glance. PASS is black on white and keeps the test pattern's border,
-// checkerboard band and black bar, so the same screen is the visual check of
-// the panel. FAIL is the whole panel black with white text, listing the parts
-// that failed. A panel that shows anything else (blank, the stripe pattern
-// checkerboard left by checkDisplay, an old screen) means the display failed.
+// The verdict the factory operator reads, and the panel keeps it after the
+// test ends. PASS is the word in a dotted border, black on white. FAIL fills the panel
+// black, with the failed parts in white under it; the serial console has the
+// hints. A panel that shows anything else (blank, the checkerboard left by
+// checkDisplay, an old screen) means the display failed. The 24pt cut has
+// digits only, so the word is the 12pt font pixel-doubled.
+void printVerdictWord(const char* word, int16_t capCentre) {
+  display.setFont(EpaperDisplay::Font::kSemiBold12);
+  // Scale 3 measured as fitting but drew "PAS" on the panel: stay at 2.
+  constexpr uint8_t scale = 2;
+  display.setTextScale(scale);
+  constexpr int16_t kCapHeight12 = 17;  // Fredoka SemiBold 12pt, at scale 1
+  printCentered(word, capCentre + kCapHeight12 * scale / 2);
+  display.setTextScale(1);
+}
+
+// A dotted rounded border just inside the panel edge, to judge centring: the
+// case window hides about 2-3 px per side of the panel, so with the case
+// closed the whole border shows, evenly spaced from the window, only when the
+// panel sits centred.
+void drawDottedBorder(EpaperDisplay::Ink ink) {
+  constexpr int16_t kInset = 5;  // border centreline from the panel edge
+  constexpr int16_t kRadius = 14;
+  constexpr int16_t kDot = 4;    // dot size, px
+  constexpr int16_t kPitch = 8;  // dot spacing along the line, px
+  constexpr int16_t kLo = kInset;
+  constexpr int16_t kHi = EpaperDisplay::kWidth - 1 - kInset;  // square panel
+  auto dot = [&](float x, float y) {
+    display.fillRect(static_cast<int16_t>(lroundf(x)) - kDot / 2,
+                     static_cast<int16_t>(lroundf(y)) - kDot / 2, kDot, kDot,
+                     ink);
+  };
+  for (int16_t t = kLo + kRadius; t <= kHi - kRadius; t += kPitch) {
+    dot(t, kLo);
+    dot(t, kHi);
+    dot(kLo, t);
+    dot(kHi, t);
+  }
+  // Quarter arcs, dots at about the same pitch as the straight runs.
+  constexpr float kStep = static_cast<float>(kPitch) / kRadius;
+  const float cx[] = {kLo + kRadius, kHi - kRadius, kHi - kRadius, kLo + kRadius};
+  const float cy[] = {kLo + kRadius, kLo + kRadius, kHi - kRadius, kHi - kRadius};
+  for (int corner = 0; corner < 4; ++corner) {
+    const float start = static_cast<float>(PI) + corner * static_cast<float>(HALF_PI);
+    for (float a = kStep; a < static_cast<float>(HALF_PI) - kStep / 2; a += kStep) {
+      dot(cx[corner] + kRadius * cosf(start + a),
+          cy[corner] + kRadius * sinf(start + a));
+    }
+  }
+}
+
 bool drawResultScreen(bool pass) {
   using Ink = EpaperDisplay::Ink;
   constexpr int16_t kW = EpaperDisplay::kWidth;
   constexpr int16_t kH = EpaperDisplay::kHeight;
-  constexpr int16_t kCell = kW / 8;
 
   railUpForSpi();
   bool refreshed = false;
   if (display.begin(true)) {
     display.beginFrame();
-    const Ink ink = pass ? Ink::kBlack : Ink::kWhite;
     if (pass) {
-      for (int16_t col = 0; col < 8; ++col) {
-        display.fillRect(col * kCell, (col & 1) ? kCell / 2 : 0, kCell,
-                         kCell / 2, Ink::kBlack);
-      }
-      display.drawFastHLine(0, kH - 1, kW, Ink::kBlack);
-      display.drawFastVLine(0, 0, kH, Ink::kBlack);
-      display.drawFastVLine(kW - 1, 0, kH, Ink::kBlack);
-      display.fillRect(0, kH - 10, kW, 10, Ink::kBlack);
+      drawDottedBorder(Ink::kBlack);
+      display.setTextColor(Ink::kBlack);
+      printVerdictWord("PASS", kH / 2);
     } else {
       display.fillRect(0, 0, kW, kH, Ink::kBlack);
-    }
-    display.setTextColor(ink);
-
-    display.setFont(EpaperDisplay::Font::kSemiBold24);
-    printCentered(pass ? "PASS" : "FAIL", 62);
-
-    if (pass) {
-      display.setFont(EpaperDisplay::Font::kRegular9);
-      printCentered("flash release", 88);
-      printCentered("firmware next", 104);
-    } else {
-      // One part name per line until they run out of room; the serial log
-      // has the full list with hints.
+      drawDottedBorder(Ink::kWhite);
+      display.setTextColor(Ink::kWhite);
+      printVerdictWord("FAIL", 44);
+      // One part name per line until they run out of room.
       display.setFont(EpaperDisplay::Font::kSemiBold9);
       char parts[sizeof failedParts];
       strncpy(parts, failedParts, sizeof parts);
       parts[sizeof parts - 1] = '\0';
-      int16_t baseline = 86;
-      for (char* part = strtok(parts, " "); part != nullptr && baseline <= 118;
+      int16_t baseline = 90;
+      for (char* part = strtok(parts, " "); part != nullptr && baseline <= 130;
            part = strtok(nullptr, " ")) {
         printCentered(part, baseline);
         baseline += 16;
       }
     }
-
-    display.setFont(EpaperDisplay::Font::kRegular7);
-    printCentered(unitSerial, pass ? 132 : 140);
     refreshed = display.endFrame();
   }
   const bool hibernated = display.end();
@@ -1084,7 +1110,7 @@ void finishUnitTest() {
   Serial.print(" display refresh=");
   Serial.print(refreshMs);
   Serial.println("ms");
-  Serial.println("  look at the panel: checkerboard, border, TEST, serial digits, black bar");
+  Serial.println("  look at the panel: the verdict inside a complete dotted border");
   if (bleFailure == nullptr) {
     printBleAdvertising();
   }

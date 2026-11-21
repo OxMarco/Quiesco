@@ -389,7 +389,7 @@ unit test:
   display  PASS
   BLE      PASS
   serial=0123456789ABCDEF display refresh=<ms>
-  look at the panel: checkerboard, border, TEST, serial digits, black bar
+  look at the panel: the verdict inside a complete dotted border
   advertising as "Quiesco TEST CDEF" for 60 s: find it in nRF Connect
 RESULT: PASS
 ```
@@ -408,13 +408,15 @@ plausible indoor range (0–50 °C, 5–95 % RH, 800–1100 hPa, 300–5000 ppm 
   missing rows, grey patches or a bad FPC seat. The refresh time is printed
   (not yet measured on this board: note the first units' times as the
   reference).
-- **result screen**: after the checks the panel shows the verdict. **PASS** is
-  black on white, framed by a checkerboard band at the top, a one-pixel border
-  and a black bar at the bottom, with "flash release firmware next" and the
-  full serial. **FAIL** fills the panel black, with the failed parts in white
-  (`BME280`, `VEML7700`, `SCD41`, `MIC`, `BATTERY`, `FLASH`, `DISPLAY`, `BLE`).
-  Anything else on the panel (blank, the checkerboard test pattern, an old
-  screen) means the display failed. A key pressed on the serial port before the
+- **result screen**: after the checks the panel shows the verdict and keeps
+  it. **PASS** is the word alone in a dotted border with rounded corners,
+  black on white. **FAIL** fills the panel black, with the same border and
+  the failed parts in white (`BME280`, `VEML7700`, `SCD41`, `MIC`, `BATTERY`,
+  `FLASH`, `DISPLAY`, `BLE`). Anything else on the panel (blank, the
+  checkerboard test pattern, an old screen) means the display failed. The
+  border also shows centring: the case window hides about 2-3 px per side,
+  so with the case closed a centred panel shows the whole border, evenly
+  spaced from the window. A key pressed on the serial port before the
   power-up run starts cancels it.
 - **BLE**: the stack starts and advertises as `Quiesco TEST XXXX` for 60 s.
   The radio sits inside the certified module, so that is the automatic
@@ -464,20 +466,22 @@ Give the assembler two files from the same `VERSION`:
 
 1. **Program the test.** Plug the unit into a computer over USB-C and press
    the XIAO's reset button twice quickly. A drive called `XIAO-BOOT` appears.
-   Copy `quiesco-factory-test-X.Y.Z.uf2` onto it; the drive disappears as the
-   unit restarts.
+   Copy `quiesco-factory-test-X.Y.Z.uf2` onto it with Finder or Explorer
+   (a terminal `cp` hung on macOS 27); the drive disappears as the unit
+   restarts.
 2. **Test.** Leave it plugged in. After about 30 s the panel shows the result
-   (§8). Pass only on the **PASS** screen with the whole checkerboard band,
-   border and bottom bar even and black, no missing rows or grey patches.
-   **FAIL**, a blank panel or any other screen is a fail: set the unit aside
-   with the screen as shown (photograph it) for rework. To repeat the test,
-   unplug and replug.
-3. **Record** the serial printed under PASS against the unit.
-4. **Program the release firmware.** Press reset twice again and copy
+   (§8). Pass only on the **PASS** screen with the dotted border complete
+   and even all the way round. **FAIL**, a blank panel or any other screen is
+   a fail: set the unit aside with the screen as shown (photograph it) for
+   rework. To repeat the test, press reset once (unplugging does not reset a
+   unit with its battery fitted).
+3. **Program the release firmware.** Press reset twice again and copy
    `quiesco-X.Y.Z.uf2` onto `XIAO-BOOT`. Within about 15 s the panel draws a
    reading screen (or the phone setup screen). That is the shipping state.
-5. **Close the case and label** the unit with its serial and the firmware
-   version.
+4. **Close the case and label** the unit with the firmware version.
+
+Centring is judged in step 2: lay the case front over the unit and check the
+whole border shows, evenly spaced from the window.
 
 Units ship with Sensirion's factory CO2 calibration; forced recalibration is
 optional and done by the user from the app (SOFTWARE.md, calibration).
@@ -486,6 +490,11 @@ optional and done by the user from the app (SOFTWARE.md, calibration).
 failure. Flash the test as in step 1 (or `make smoke` and upload
 `.build/smoke-sensors` as in §8), open the port at 115200, press `t`, and use
 each failure's hint and §7. Finding `Quiesco TEST XXXX` in nRF Connect, where
-`XXXX` matches the panel's last four serial digits, proves the radio path
+`XXXX` is the last four digits of the console's `serial=` line, proves the radio path
 beyond the automatic BLE check. The test leaves the config and log in flash
 untouched, so a returned unit keeps its history.
+
+A unit running the release firmware ignores the upload tool's 1200-baud reset;
+with the case closed, enter the bootloader from the app (Device → Update
+firmware). The test sketch does honour it, so `arduino-cli upload` can replace
+it directly.
