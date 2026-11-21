@@ -673,10 +673,17 @@ void reportCycle() {
   scd41.collect(reading);
   microphone.collect(reading);
 
+  // The test runs on USB power, where a unit with no cell (unplugged, a bad
+  // crimp on J2, an open cell) still reads 3.7-4.2 V from the charger. Only
+  // the spread across a burst tells the two apart (BatteryMonitor.h), so a
+  // missing cell fails here instead of in the owner's hands.
   bool batteryOk = false;
+  bool cellAbsent = false;
+  float batterySpreadV = 0.0f;
   if (enableBattery) {
     float volts = 0.0f;
-    batteryOk = batteryMonitor.sample(volts);
+    batteryOk = batteryMonitor.sample(volts, &batterySpreadV);
+    cellAbsent = batteryOk && BatteryMonitor::cellAbsent(batterySpreadV);
     if (batteryOk) {
       reading.batteryV = volts;
       reading.valid |= VALID_BATTERY;
@@ -747,7 +754,7 @@ void reportCycle() {
     const bool micOk = (reading.valid & VALID_NOISE) &&
                        microphone.metrics().clipped() == 0 &&
                        inRange(reading.noiseDb, 20.0f, 110.0f);
-    const bool battOk = (reading.valid & VALID_BATTERY) &&
+    const bool battOk = (reading.valid & VALID_BATTERY) && !cellAbsent &&
                         inRange(reading.batteryV, 3.0f, 4.35f);
 
     Serial.println();
@@ -760,8 +767,18 @@ void reportCycle() {
                  "no reply to get_serial_number: run 'x', then meter C20");
     printVerdict("mic      ", micOk, !micPresent,
                  "no PDM data: rail, PIN_CNF, or U4 (HARDWARE.md §4)");
-    printVerdict("battery  ", battOk, !batteryOk,
-                 "SAADC read failed or no cell on J2");
+    printVerdict("battery  ", battOk, !batteryOk || cellAbsent,
+                 cellAbsent
+                     ? "no cell: the voltage is the charger's, swinging. "
+                       "Check the battery plug on J2 and the cell"
+                     : "SAADC read failed");
+    if (enableBattery && batteryOk) {
+      Serial.print("  battery spread ");
+      Serial.print(batterySpreadV * 1000.0f, 0);
+      Serial.print(" mV over the burst (a cell: under ");
+      Serial.print(BatteryMonitor::kAbsentCellSpreadVolts * 1000.0f, 0);
+      Serial.println(" mV)");
+    }
     if (scdPresent && !scdOk && scdTimedOut) {
       Serial.println("  SCD41 answered but no result in 7 s: suspect supply sag");
     }

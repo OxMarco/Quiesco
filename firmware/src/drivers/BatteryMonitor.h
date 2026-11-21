@@ -13,9 +13,23 @@ class BatteryMonitor {
 
   void begin();
 
-  // Blocking for ~2 ms (divider settle). False when the SAADC never signals
-  // completion; volts is untouched in that case.
-  bool sample(float& volts);
+  // A burst of kBurstSamples readings kBurstSpacingMs apart, blocking for
+  // ~50 ms: volts is their mean, spreadVolts (optional) the highest minus the
+  // lowest. False when the SAADC never signals completion; the outputs are
+  // untouched in that case.
+  //
+  // The spread is how a missing cell is told from a real one. With nothing
+  // on the battery connector the charger's output switches between about
+  // 3.75 V and 4.16 V every ~20 ms (measured on a v1 unit, 2026-11-21), so a
+  // single reading looks like a healthy battery. A cell holds the rail
+  // steady to within millivolts.
+  bool sample(float& volts, float* spreadVolts = nullptr);
+  static constexpr uint8_t kBurstSamples = 12;
+  static constexpr uint32_t kBurstSpacingMs = 4;
+  static constexpr float kAbsentCellSpreadVolts = 0.15f;
+  static bool cellAbsent(float spreadVolts) {
+    return spreadVolts > kAbsentCellSpreadVolts;
+  }
 
   // Debounced charger state; call freely (idle polls every step). Returns the
   // stable value, flipping only after kChargeDebounceMs of agreement so a

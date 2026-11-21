@@ -252,4 +252,14 @@ class App {
   // Charger state the current screen reflects; a stable change while idle
   // triggers an immediate cycle instead of waiting out the interval.
   bool renderedCharging_ = false;
+  // Low-battery hold (batteryHold()). The cutoff sits below the battery
+  // screen's 3.5 V so the owner has seen the warning first; the gap to the
+  // resume level keeps a cell that recovers a little at rest from starting a
+  // cycle that drops it straight back.
+  static constexpr float kBatteryHoldVolts = 3.3f;
+  static constexpr float kBatteryResumeVolts = 3.5f;
+  static constexpr uint32_t kBatteryCheckIntervalMs = 60000;
+  bool batteryHold(uint64_t nowMs);
+  bool batteryHold_ = false;
+  uint64_t nextBatteryCheckMs_ = 0;
 };

@@ -31,6 +31,7 @@ uint32_t nextResetBits = 0;
 ResetHistory::Breadcrumb retainedBreadcrumb;
 bool retainedValid = false;
 float batteryVolts = 3.8f;
+float batterySpreadVolts = 0.01f;
 namespace {
 uint32_t ticks = 0;
 uint32_t lastKickTicks = 0;
@@ -900,6 +901,75 @@ TEST_CASE("app ignores the reserved device control opcode 3") {
   FakeBle::disconnect();
   onUsb = false;
 }
+namespace {
+uint32_t recordsOnFlash() {
+  W25Q64Flash flash; flash.begin();
+  SampleLog log;
+  return log.mount(flash) ? log.lastSequence() : 0;
+}
+}
+TEST_CASE("a flat cell holds the unit idle") {
+  // Booting on a flat cell: no rail, no flash write, no Bluetooth.
+  FlashSim::reset(); ticks = 0; onUsb = false; batteryVolts = 3.2f;
+  FakeBle::advertising() = false;
+  {
+    App app; app.begin(); step(app, 1001); run(app, 200);
+    step(app, 300001); run(app, 200);
+    W25Q64Flash flash; flash.begin(); ConfigStore store; Config stored;
+    CHECK_MESSAGE(!store.load(flash, stored), "nothing was written to flash");
+    CHECK_MESSAGE(recordsOnFlash() == 0, "no measurement was logged");
+    CHECK_MESSAGE(!FakeBle::advertising(), "Bluetooth never started");
+    CHECK_MESSAGE(ticks - lastKickTicks < 1000, "the watchdog is still fed");
+    // Resting a little above the cutoff is not enough: it must reach the
+    // resume level, or the first cycle would drop it straight back.
+    batteryVolts = 3.4f; step(app, 60001); run(app, 200);
+    CHECK_MESSAGE(recordsOnFlash() == 0, "held until the resume level");
+    batteryVolts = 3.5f; step(app, 60001); step(app, 1001); run(app, 40);
+    CHECK_MESSAGE(recordsOnFlash() == 1, "recovered: the unit measures again");
+    CHECK_MESSAGE(FakeBle::advertising(), "and starts Bluetooth");
+  }
+  // A running unit whose cell runs down stops at the cutoff, not before.
+  FlashSim::reset(); ticks = 0; batteryVolts = 3.8f;
+  {
+    App app; app.begin(); step(app, 1001); run(app, 40);
+    REQUIRE(recordsOnFlash() == 1);
+    batteryVolts = 3.35f; step(app, 300001); step(app, 1001); run(app, 40);
+    CHECK_MESSAGE(recordsOnFlash() == 2, "low but above the cutoff still measures");
+    batteryVolts = 3.25f; step(app, 300001); step(app, 1001); run(app, 40);
+    CHECK_MESSAGE(recordsOnFlash() == 2, "below the cutoff: held");
+    step(app, 300001); step(app, 1001); run(app, 40);
+    CHECK_MESSAGE(recordsOnFlash() == 2, "and stays held");
+    // The cable goes in: work resumes at once, whatever the cell reads.
+    onUsb = true; step(app); step(app, 1001); run(app, 40);
+    CHECK_MESSAGE(recordsOnFlash() == 3, "USB power lifts the hold");
+    // Pulled again while still flat: held from the next step.
+    onUsb = false; step(app, 300001); step(app, 1001); run(app, 40);
+    CHECK_MESSAGE(recordsOnFlash() == 3, "back on a flat cell: held again");
+  }
+  batteryVolts = 3.8f;
+}
+TEST_CASE("a missing cell is not reported as a battery") {
+  FlashSim::reset(); ticks = 0; onUsb = true;
+  W25Q64Flash flash; flash.begin(); ConfigStore store;
+  CHECK_MESSAGE(store.save(flash, defaultConfig()), "seed config");
+  CHECK_MESSAGE(store.saveBonds(flash, knownBonds()), "seed phone key");
+  // The charger's output with nothing on the connector.
+  batteryVolts = 3.96f; batterySpreadVolts = 0.41f;
+  App app; app.begin(); step(app, 1001); run(app, 40);
+  FakeBle::connect(90); step(app); prove(); step(app);
+  auto reading = FakeBle::read(kReading);
+  REQUIRE(reading.size() >= 19);
+  CHECK_MESSAGE((reading[18] & VALID_BATTERY) == 0, "no battery voltage is published");
+  CHECK_MESSAGE((reading[18] & VALID_TEMPERATURE) != 0, "the other readings are");
+  // A real cell on the charger is steady.
+  batteryVolts = 4.1f; batterySpreadVolts = 0.02f;
+  step(app, 300001); step(app, 1001); run(app, 40);
+  reading = FakeBle::read(kReading);
+  CHECK_MESSAGE((reading[18] & VALID_BATTERY) != 0, "a steady cell is reported");
+  CHECK_MESSAGE(LittleEndian::getU16(reading.data() + 16) == 4100, "at its voltage");
+  FakeBle::disconnect();
+  onUsb = false; batteryVolts = 3.8f; batterySpreadVolts = 0.01f;
+}
 TEST_CASE("app enters the USB update drive") {
   FlashSim::reset(); ticks = 0; usbUpdateEntries = 0; onUsb = false;
   W25Q64Flash flash; flash.begin(); ConfigStore store;
@@ -1086,7 +1156,11 @@ int HCIClass::leRand(uint8_t* bytes) {
   return 0;
 }
 void BatteryMonitor::begin() { chargingStable_ = lastRaw_ = primed_ = false; rawSinceMs_ = 0; }
-bool BatteryMonitor::sample(float& v) { v = batteryVolts; return true; }
+bool BatteryMonitor::sample(float& v, float* spread) {
+  v = batteryVolts;
+  if (spread) *spread = batterySpreadVolts;
+  return true;
+}
 bool BatteryMonitor::pollCharging(uint64_t) { return false; }
 bool BatteryMonitor::usbPowered() const { return onUsb; }
 bool EnvironmentalSampler::begin() { busStarted_ = true; pressureHandedOff_ = false; return true; }

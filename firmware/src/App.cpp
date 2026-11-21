@@ -34,9 +34,43 @@ void App::begin() {
   publishDiagnostics(nowMs);
   renderedCharging_ = pollCharging(nowMs);
   scheduler_.begin(nowMs, config_.measurementIntervalSeconds);
-  if (scheduler_.claimDue(nowMs)) {
+  // Not on a flat cell: a boot that goes straight to the rail and a flash
+  // write is how a brownout becomes a reset loop.
+  if (!batteryHold(nowMs) && scheduler_.claimDue(nowMs)) {
     startCycle(nowMs, CycleKind::kMeasure);
   }
+}
+
+// True while the cell is too low to work from. Every cycle starts from idle,
+// so holding there keeps the rail, the sensors, the flash and the panel off:
+// a sagging cell is not asked for the load that would reset the unit, and no
+// flash write is cut short by one. The panel keeps the battery screen it has
+// shown since kLowBatteryVolts. Measured with the rail off, so this is the
+// resting voltage. USB power lifts the hold at once.
+bool App::batteryHold(uint64_t nowMs) {
+  if (!kBatteryFitted) {
+    return false;
+  }
+  if (batteryMonitor_.usbPowered()) {
+    batteryHold_ = false;
+    nextBatteryCheckMs_ = 0;  // look again as soon as the cable is pulled
+    return false;
+  }
+  if (nowMs < nextBatteryCheckMs_) {
+    return batteryHold_;
+  }
+  nextBatteryCheckMs_ = nowMs + kBatteryCheckIntervalMs;
+  float volts = 0.0f;
+  if (!batteryMonitor_.sample(volts)) {
+    return batteryHold_;  // no reading: keep what was decided last
+  }
+  const bool hold =
+      volts < (batteryHold_ ? kBatteryResumeVolts : kBatteryHoldVolts);
+  if (hold != batteryHold_) {
+    DebugLog::event(hold ? "battery too low, holding" : "battery recovered");
+  }
+  batteryHold_ = hold;
+  return batteryHold_;
 }
 
 void App::step() {
@@ -75,6 +109,9 @@ void App::step() {
 
   switch (state_) {
     case State::kIdle:
+      if (batteryHold(nowMs)) {
+        break;
+      }
       if (updateResetAtMs_ != 0) {
         if (nowMs >= updateResetAtMs_) {
           BootloaderEntry::enterUsbUpdate();
@@ -248,12 +285,19 @@ void App::step() {
       // leave the battery monitor absent and the voltage invalid.
       if (kBatteryFitted) {
         float volts = 0.0f;
-        const bool batteryOk = batteryMonitor_.sample(volts);
+        float spreadVolts = 0.0f;
+        const bool sampled = batteryMonitor_.sample(volts, &spreadVolts);
+        // A cell that has gone open or come unplugged, on USB: the charger's
+        // swinging output is not a battery voltage. Report it missing rather
+        // than as a percentage that jumps between 40 and 95.
+        const bool cellPresent =
+            !(sampled && BatteryMonitor::cellAbsent(spreadVolts));
+        const bool batteryOk = sampled && cellPresent;
         if (batteryOk) {
           reading_.batteryV = volts;
           reading_.valid |= VALID_BATTERY;
         }
-        recordDeviceResult(faults_.battery, true, !batteryOk, batteryOk);
+        recordDeviceResult(faults_.battery, cellPresent, !sampled, batteryOk);
       }
       rawReading_ = reading_;
       hasReading_ = true;

@@ -88,7 +88,7 @@ The names on the screen tell you where to look:
 | `VEML7700` | light sensor (U5) | its solder joints, and the sensor power rail |
 | `SCD41` | CO₂ sensor | its solder joints and decoupling capacitor; a supply that sags under load |
 | `MIC` | microphone (U4) | its solder joints and that its sound hole is clear |
-| `BATTERY` | the cell on J2 | that the battery is plugged in and charged (3.0–4.35 V) |
+| `BATTERY` | the cell on J2 | that the battery is plugged in, its connector fully seated, and charged (3.0–4.35 V). A missing or open cell fails here even though the unit runs from USB |
 | `FLASH` | memory chip (U1) | its solder joints |
 | `DISPLAY` | e-ink panel on J1 | that the flat cable is fully inserted and latched |
 | `BLE` | the radio inside the XIAO module | reseat or replace the XIAO |

@@ -69,14 +69,30 @@ void BatteryMonitor::begin() {
   pinMode(BoardPins::kChargeStatus, INPUT_PULLUP);
 }
 
-bool BatteryMonitor::sample(float& volts) {
+bool BatteryMonitor::sample(float& volts, float* spreadVolts) {
   digitalWrite(BoardPins::kBatteryEnable, LOW);  // connect the divider
   delay(2);
-  int16_t raw = 0;
-  const bool ok = saadcSampleAin7(raw);
+  int32_t sum = 0;
+  int16_t lowest = INT16_MAX;
+  int16_t highest = 0;
+  bool ok = true;
+  for (uint8_t i = 0; i < kBurstSamples && ok; ++i) {
+    if (i != 0) {
+      delay(kBurstSpacingMs);
+    }
+    int16_t raw = 0;
+    ok = saadcSampleAin7(raw);
+    sum += raw;
+    lowest = raw < lowest ? raw : lowest;
+    highest = raw > highest ? raw : highest;
+  }
   digitalWrite(BoardPins::kBatteryEnable, HIGH);  // and stop draining it
   if (ok) {
-    volts = raw * kFullScaleVolts / 4096.0f * kDividerRatio;
+    constexpr float kVoltsPerCount = kFullScaleVolts / 4096.0f * kDividerRatio;
+    volts = static_cast<float>(sum) / kBurstSamples * kVoltsPerCount;
+    if (spreadVolts != nullptr) {
+      *spreadVolts = (highest - lowest) * kVoltsPerCount;
+    }
   }
   return ok;
 }

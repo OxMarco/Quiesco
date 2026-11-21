@@ -360,10 +360,24 @@ this variant. It also debounces the charger's `~CHG` line (1 s); a stable
 change while idle starts a cycle, so the battery screen appears promptly.
 The debounced state goes to the app in status flag bit 3.
 
-Without a cell the charger's output swings between about 3.7 and 4.2 V, and
-the firmware cannot tell that from a battery. Bench units without one are
-built with `scripts/build.sh --no-battery` (`QUIESCO_NO_BATTERY`): no battery
-sample, never charging, and device info tells the app there is no battery.
+Each battery reading is a burst of 12 samples 4 ms apart: the voltage is
+their mean and their spread tells a cell from none. Without a cell the
+charger's output switches between about 3.75 and 4.16 V every ~20 ms (measured
+on a v1 unit), so a spread above 0.15 V means no cell: the reading is marked
+invalid and the battery fault is raised, where a single sample used to report
+a healthy battery jumping between 40 and 95 %. The factory test fails such a
+unit (`BATTERY`). Bench units without a cell are still built with
+`scripts/build.sh --no-battery` (`QUIESCO_NO_BATTERY`): no battery sample,
+never charging, and device info tells the app there is no battery.
+
+**Low-battery hold.** On battery, when the cell rests below 3.3 V (sampled
+with the rail off, once a minute) the unit stays idle: no rail, sensors,
+flash writes or panel refresh, and at boot no Bluetooth either. That keeps a
+sagging cell from resetting the unit in a loop, each boot writing flash. The
+panel keeps the battery screen it has shown since 3.5 V. Work resumes at
+3.5 V, or at once on USB power. The unit does not switch itself off: the
+last protection is the cell's own cutoff. Not yet exercised on a real cell;
+the thresholds assume the divider ratio in `HARDWARE.md` §4.
 
 ### Calibration offsets
 
