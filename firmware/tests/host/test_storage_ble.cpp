@@ -12,6 +12,7 @@
 #include "doctest.h"
 
 #include "W25Q64FlashSim.h"
+#include "drivers/FlashDbPort.h"
 #include "drivers/W25Q64Flash.h"
 #include "model/Config.h"
 #include "model/FaultStatus.h"
@@ -161,7 +162,8 @@ TEST_CASE("config record codec") {
 
   Config decoded;
   uint32_t sequence = 0;
-  CHECK(decodeConfigRecord(record, decoded, sequence));
+  CHECK(decodeConfigRecord(record, sizeof record, decoded, sequence) ==
+        ConfigRecordStatus::kLoaded);
   CHECK_EQ(uint32_t{7}, sequence);
   CHECK_EQ(config.measurementIntervalSeconds,
            decoded.measurementIntervalSeconds);
@@ -177,17 +179,150 @@ TEST_CASE("config record codec") {
   // has zeros there.
   uint8_t older[ConfigRecordLayout::kRecordBytes];
   encodeConfigRecord(defaultConfig(), 3, older);
-  CHECK(decodeConfigRecord(older, decoded, sequence));
+  CHECK(decodeConfigRecord(older, sizeof older, decoded, sequence) ==
+        ConfigRecordStatus::kLoaded);
   CHECK_EQ(uint16_t{0}, decoded.frcTargetPpm);
   CHECK_EQ(uint8_t{TEMPERATURE_UNIT_CELSIUS}, decoded.temperatureUnit);
 
   uint8_t corrupted[ConfigRecordLayout::kRecordBytes];
   memcpy(corrupted, record, sizeof corrupted);
   corrupted[20] ^= 0x01;
-  CHECK(!decodeConfigRecord(corrupted, decoded, sequence));
+  CHECK(decodeConfigRecord(corrupted, sizeof corrupted, decoded, sequence) ==
+        ConfigRecordStatus::kInvalid);
   memcpy(corrupted, record, sizeof corrupted);
   corrupted[0] ^= 0xFF;  // magic
-  CHECK(!decodeConfigRecord(corrupted, decoded, sequence));
+  CHECK(decodeConfigRecord(corrupted, sizeof corrupted, decoded, sequence) ==
+        ConfigRecordStatus::kInvalid);
+}
+
+namespace {
+
+// A record as some later firmware would write it: this version's layout in
+// the first 62 bytes, `extra` bytes of fields this firmware does not know,
+// then the CRC (ConfigRecord.h, compatibility rules).
+uint32_t makeNewerRecord(const Config& config, uint32_t version,
+                         uint32_t extra, uint8_t* out) {
+  uint8_t base[ConfigRecordLayout::kRecordBytes];
+  encodeConfigRecord(config, 9, base);
+  const uint32_t length = ConfigRecordLayout::kRecordBytes + extra;
+  memcpy(out, base, ConfigRecordLayout::kRecordBytes - 2);
+  memset(out + ConfigRecordLayout::kRecordBytes - 2, 0xA5, extra);
+  LittleEndian::putU32(out + 8, version);
+  LittleEndian::putU16(out + length - 2, crc16Ccitt(out, length - 2));
+  return length;
+}
+
+}  // namespace
+
+TEST_CASE("config record from another firmware version") {
+  const Config config = sampleConfig();
+  uint8_t record[ConfigRecordLayout::kMaxRecordBytes];
+  Config decoded = defaultConfig();
+  uint32_t sequence = 0;
+  uint32_t stored = 0;
+
+  // A downgrade: the newer record, same size or longer, is read for the
+  // fields this firmware knows.
+  for (const uint32_t extra : {0u, 12u, 64u}) {
+    const uint32_t length =
+        makeNewerRecord(config, Config::kCurrentVersion + 1, extra, record);
+    decoded = defaultConfig();
+    CHECK(decodeConfigRecord(record, length, decoded, sequence, &stored) ==
+          ConfigRecordStatus::kLoaded);
+    CHECK_EQ(Config::kCurrentVersion + 1, stored);
+    CHECK_EQ(uint32_t{Config::kCurrentVersion}, decoded.version);
+    CHECK(decoded.tempOffsetC == config.tempOffsetC);
+    CHECK_EQ(config.frcCorrectionPpm, decoded.frcCorrectionPpm);
+    CHECK(strcmp(config.deviceName, decoded.deviceName) == 0);
+  }
+
+  // A newer record with a value this firmware does not understand is not
+  // usable, but is told apart from damage so it is not written over.
+  Config future = config;
+  uint32_t length =
+      makeNewerRecord(future, Config::kCurrentVersion + 1, 0, record);
+  record[21] = 9;  // a screen that does not exist yet
+  LittleEndian::putU16(record + length - 2, crc16Ccitt(record, length - 2));
+  decoded = defaultConfig();
+  CHECK(decodeConfigRecord(record, length, decoded, sequence) ==
+        ConfigRecordStatus::kNewerUnreadable);
+  CHECK_EQ(uint8_t{DISPLAY_SCREEN_BENTO}, decoded.displayScreen);  // untouched
+
+  // The same value in a record of this version is damage.
+  length = makeNewerRecord(future, Config::kCurrentVersion, 0, record);
+  record[21] = 9;
+  LittleEndian::putU16(record + length - 2, crc16Ccitt(record, length - 2));
+  CHECK(decodeConfigRecord(record, length, decoded, sequence) ==
+        ConfigRecordStatus::kInvalid);
+
+  // A development build's record, a longer record claiming this version, a
+  // bad CRC on a long record and impossible lengths are all discarded.
+  length = makeNewerRecord(config, Config::kOldestReadableVersion - 1, 0, record);
+  CHECK(decodeConfigRecord(record, length, decoded, sequence) ==
+        ConfigRecordStatus::kInvalid);
+  length = makeNewerRecord(config, Config::kCurrentVersion, 12, record);
+  CHECK(decodeConfigRecord(record, length, decoded, sequence) ==
+        ConfigRecordStatus::kInvalid);
+  length = makeNewerRecord(config, Config::kCurrentVersion + 1, 12, record);
+  record[70] ^= 0x01;
+  CHECK(decodeConfigRecord(record, length, decoded, sequence) ==
+        ConfigRecordStatus::kInvalid);
+  CHECK(decodeConfigRecord(record, ConfigRecordLayout::kRecordBytes - 1,
+                           decoded, sequence) == ConfigRecordStatus::kInvalid);
+  CHECK(decodeConfigRecord(record, ConfigRecordLayout::kMaxRecordBytes + 1,
+                           decoded, sequence) == ConfigRecordStatus::kInvalid);
+}
+
+TEST_CASE("config store keeps a newer firmware's record") {
+  // What an owner's unit holds after running a later firmware, then going
+  // back to this one.
+  const auto seed = [](W25Q64Flash& flash, const uint8_t* record,
+                       uint32_t length) {
+    selectFlashDbDevice(flash);
+    struct fdb_kvdb db = {};
+    REQUIRE(initializeFlashDbKv(flash, &db, "configuration", "config"));
+    struct fdb_blob blob;
+    fdb_blob_make(&blob, record, length);
+    REQUIRE(fdb_kv_set_blob(&db, "config", &blob) == FDB_NO_ERR);
+    fdb_kvdb_deinit(&db);
+  };
+  uint8_t record[ConfigRecordLayout::kMaxRecordBytes];
+
+  {
+    FlashSim::reset();
+    W25Q64Flash flash;
+    flash.begin();
+    const uint32_t length = makeNewerRecord(
+        sampleConfig(), Config::kCurrentVersion + 1, 12, record);
+    seed(flash, record, length);
+    ConfigStore store;
+    Config loaded = defaultConfig();
+    CHECK(store.load(flash, loaded));
+    CHECK(!store.storedConfigIsNewer());
+    CHECK(loaded.tempOffsetC == sampleConfig().tempOffsetC);
+  }
+  {
+    FlashSim::reset();
+    W25Q64Flash flash;
+    flash.begin();
+    uint32_t length = makeNewerRecord(
+        sampleConfig(), Config::kCurrentVersion + 1, 12, record);
+    record[21] = 9;
+    LittleEndian::putU16(record + length - 2, crc16Ccitt(record, length - 2));
+    seed(flash, record, length);
+    ConfigStore store;
+    Config loaded = defaultConfig();
+    CHECK(!store.load(flash, loaded));
+    CHECK(store.healthy());
+    CHECK(store.storedConfigIsNewer());
+    // A blank store is not "newer".
+    FlashSim::reset();
+    W25Q64Flash blank;
+    blank.begin();
+    ConfigStore fresh;
+    CHECK(!fresh.load(blank, loaded));
+    CHECK(!fresh.storedConfigIsNewer());
+  }
 }
 
 TEST_CASE("config store round trip and recovery") {

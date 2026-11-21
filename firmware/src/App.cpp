@@ -492,7 +492,10 @@ bool App::loadSettings(uint64_t nowMs) {
   }
   if (ok) {
     if (loaded) config_ = stored;
-    configSavePending_ = !loaded;
+    // Defaults replace a missing or damaged record, never an intact one
+    // written by a newer firmware (a downgrade): that one stays until the
+    // owner changes a setting.
+    configSavePending_ = !loaded && !configStore_.storedConfigIsNewer();
     nextConfigRetryMs_ = nowMs;
     bonds_ = bonds;
     ble_.setBonds(bonds_);

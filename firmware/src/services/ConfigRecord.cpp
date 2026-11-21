@@ -57,16 +57,40 @@ void encodeConfigRecord(const Config& config, uint32_t sequence,
   le::putU16(out + kOffCrc, crc16Ccitt(out, kOffCrc));
 }
 
-bool decodeConfigRecord(const uint8_t in[kRecordBytes], Config& config,
-                        uint32_t& sequence) {
-  if (le::getU32(in + kOffMagic) != kMagic ||
-      le::getU16(in + kOffCrc) != crc16Ccitt(in, kOffCrc) ||
+ConfigRecordStatus decodeConfigRecord(const uint8_t* in, uint32_t length,
+                                      Config& config, uint32_t& sequence,
+                                      uint32_t* storedVersion) {
+  if (length < kRecordBytes || length > kMaxRecordBytes ||
+      le::getU32(in + kOffMagic) != kMagic ||
+      le::getU16(in + length - 2) != crc16Ccitt(in, length - 2)) {
+    return ConfigRecordStatus::kInvalid;
+  }
+  const uint32_t version = le::getU32(in + kOffVersion);
+  const uint32_t decodedSequence = le::getU32(in + kOffSequence);
+  if (version < Config::kOldestReadableVersion || decodedSequence == 0 ||
+      decodedSequence == UINT32_MAX) {
+    return ConfigRecordStatus::kInvalid;
+  }
+  if (storedVersion != nullptr) {
+    *storedVersion = version;
+  }
+  // From here the record is intact. What this firmware cannot use is damage
+  // when it wrote the record itself, and a newer firmware's business when it
+  // did not: that record must survive a downgrade and the upgrade back.
+  const ConfigRecordStatus unusable = version > Config::kCurrentVersion
+                                          ? ConfigRecordStatus::kNewerUnreadable
+                                          : ConfigRecordStatus::kInvalid;
+  // A longer record is only ever written by a newer version.
+  if ((length != kRecordBytes && version <= Config::kCurrentVersion) ||
       in[kOffBleAlways] > 1 ||
       in[kOffName + Config::kDeviceNameMaxLength] != '\0') {
-    return false;
+    return unusable;
   }
   Config decoded = {};
-  decoded.version = le::getU32(in + kOffVersion);
+  // Migration point: a record older than kCurrentVersion is brought up to
+  // date here, field by field, before validation. Version 5 is the oldest
+  // readable one, so there is nothing to migrate yet.
+  decoded.version = Config::kCurrentVersion;
   decoded.measurementIntervalSeconds = le::getU32(in + kOffInterval);
   decoded.fullRefreshEveryCycles = le::getU32(in + kOffFullRefresh);
   decoded.bleAlwaysAvailable = in[kOffBleAlways] != 0;
@@ -81,13 +105,9 @@ bool decodeConfigRecord(const uint8_t in[kRecordBytes], Config& config,
   decoded.frcTargetPpm = le::getU16(in + kOffFrcTarget);
   decoded.frcCorrectionPpm = le::getI16(in + kOffFrcCorrection);
   if (!isValidConfig(decoded)) {
-    return false;
-  }
-  const uint32_t decodedSequence = le::getU32(in + kOffSequence);
-  if (decodedSequence == 0 || decodedSequence == UINT32_MAX) {
-    return false;
+    return unusable;
   }
   config = decoded;
   sequence = decodedSequence;
-  return true;
+  return ConfigRecordStatus::kLoaded;
 }

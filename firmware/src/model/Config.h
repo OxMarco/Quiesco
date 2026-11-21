@@ -21,13 +21,17 @@ enum TemperatureUnit : uint8_t {
 };
 
 struct Config {
-  // Bumped with no record-layout change: isValidConfig rejects any other
-  // version, so this is what discards a stored config and lets a changed
-  // defaultConfig() take effect on an already-provisioned device. Every field
-  // reverts to its default on the next boot, calibration offsets included.
-  // Only worth spending while the default screen is still moving; once the UI
-  // settles, change screens over BLE instead of wiping every other setting.
+  // The version this firmware writes. Shipped units keep their settings
+  // across every update, in both directions (ConfigRecord.h):
+  //  - a stored record from kOldestReadableVersion up to this one is read and
+  //    rewritten as this version. A bump must come with its migration in
+  //    decodeConfigRecord; it never discards a stored config.
+  //  - a record from a newer firmware (a downgrade) is read for the fields
+  //    this version knows and is not written over at boot.
+  // 5 is the first version that shipped. Older ones were development builds,
+  // whose records are discarded.
   static constexpr uint32_t kCurrentVersion = 5;
+  static constexpr uint32_t kOldestReadableVersion = 5;
   static constexpr uint32_t kDefaultIntervalSeconds = 300;
   static constexpr uint32_t kDefaultFullRefreshEveryCycles = 10;
   static constexpr uint32_t kMaximumFullRefreshEveryCycles = 1000;

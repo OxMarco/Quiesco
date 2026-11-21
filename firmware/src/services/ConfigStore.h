@@ -16,6 +16,11 @@ class W25Q64Flash;
 class ConfigStore {
  public:
   bool load(W25Q64Flash& flash, Config& config);
+  // After a false load(): the store holds an intact config record from a
+  // newer firmware that this version cannot use. Run on defaults without
+  // saving them over it; a later save() (the owner changed a setting) does
+  // replace it.
+  bool storedConfigIsNewer() const { return storedConfigIsNewer_; }
   bool save(W25Q64Flash& flash, const Config& config);
   // Increments the persisted boot counter (1 on a blank store) and returns
   // the new value; call once per boot. False leaves bootCount untouched.
@@ -48,5 +53,6 @@ class ConfigStore {
   struct fdb_kvdb db_ = {};
   bool initialized_ = false;
   bool healthy_ = false;
+  bool storedConfigIsNewer_ = false;
   uint32_t nextSequence_ = 1;
 };

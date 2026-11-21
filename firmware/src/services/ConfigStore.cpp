@@ -46,17 +46,29 @@ bool ConfigStore::load(W25Q64Flash& flash, Config& config) {
     return false;
   }
 
-  uint8_t record[ConfigRecordLayout::kRecordBytes];
+  storedConfigIsNewer_ = false;
+  // Room for a longer record from a newer firmware (ConfigRecord.h).
+  uint8_t record[ConfigRecordLayout::kMaxRecordBytes];
   struct fdb_blob blob;
   fdb_blob_make(&blob, record, sizeof record);
-  const size_t length = fdb_kv_get_blob(&db_, kConfigKey, &blob);
+  fdb_kv_get_blob(&db_, kConfigKey, &blob);
+  // The stored size, not the bytes read: a record too long for the buffer
+  // must fail the length check rather than be decoded from its first part.
+  const size_t length = blob.saved.len;
   uint32_t sequence = 0;
   if (!finishOperation(true)) return false;
-  if (length == sizeof record && decodeConfigRecord(record, config, sequence)) {
+  ConfigRecordStatus status = ConfigRecordStatus::kInvalid;
+  uint32_t storedVersion = 0;
+  if (length >= ConfigRecordLayout::kRecordBytes && length <= sizeof record) {
+    status = decodeConfigRecord(record, static_cast<uint32_t>(length), config,
+                                sequence, &storedVersion);
+  }
+  if (status == ConfigRecordStatus::kLoaded) {
     nextSequence_ = sequence;
     advanceSequence(nextSequence_);
     return true;
   }
+  storedConfigIsNewer_ = status == ConfigRecordStatus::kNewerUnreadable;
   nextSequence_ = 1;
   return false;
 }
