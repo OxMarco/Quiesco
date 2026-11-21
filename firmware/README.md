@@ -68,7 +68,10 @@ set the build flags.
 ## Test a new unit
 
 The `smoke/sensors` sketch is the factory test. It exercises every part through
-the production drivers and prints a PASS/FAIL line for each.
+the production drivers, runs by itself at power-up and ends on a **PASS** or
+**FAIL** screen on the panel, so a factory can use it without a computer
+terminal or phone. `make smoke` also writes
+`.build/smoke-sensors/quiesco-factory-test-X.Y.Z.uf2` for the `XIAO-BOOT` drive.
 
 ```sh
 make smoke
@@ -76,7 +79,7 @@ scripts/arduino-cli.sh upload --fqbn Seeeduino:mbed:xiaonRF52840Plus \
   -p /dev/cu.usbmodem101 --input-dir .build/smoke-sensors smoke/sensors
 ```
 
-Open the serial port at **115200** baud and press **`t`**:
+For the full report, open the serial port at **115200** baud and press **`t`**:
 
 ```text
 unit test:
@@ -91,7 +94,7 @@ unit test:
 RESULT: PASS
 ```
 
-Then check the panel shows a complete test pattern, and find
+Then check the panel's PASS screen is complete and even, and find
 `Quiesco TEST XXXX` in a BLE scanner such as nRF Connect. When everything
 passes, flash the release firmware as in [Quick start](#build-and-flash).
 

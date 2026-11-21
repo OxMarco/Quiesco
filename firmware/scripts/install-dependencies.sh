@@ -24,5 +24,7 @@ libraries=(
 )
 
 for library in "${libraries[@]}"; do
-  "$cli" lib install "$library"
+  # --no-deps: every dependency is pinned above; without it a later
+  # library pulls the newest Adafruit GFX over the pinned one.
+  "$cli" lib install --no-deps "$library"
 done

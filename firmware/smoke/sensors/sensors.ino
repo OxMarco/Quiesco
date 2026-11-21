@@ -2,10 +2,12 @@
 // Quiesco unit test, and the factory test (HARDWARE.md §9).
 //
 // Checks the whole board: BME280, VEML7700, SCD41, PDM mic, battery, the
-// W25Q64 flash, the e-ink panel and the BLE radio. Press 't' for a PASS/FAIL
-// verdict per part; the other commands (press '?') narrow a failure down to
-// the rail, the bus, or one part. HARDWARE.md §7-8 explains how to read the
-// results.
+// W25Q64 flash, the e-ink panel and the BLE radio. The unit test runs by
+// itself at power-up and ends on a PASS or FAIL screen on the panel, so a
+// factory operator needs no computer or phone (HARDWARE.md §9). Over serial,
+// 't' runs it again with a PASS/FAIL line per part, and the other commands
+// (press '?') narrow a failure down to the rail, the bus, or one part.
+// HARDWARE.md §7-8 explains how to read the results.
 //
 // This compiles the *production* drivers -- `src/` here is a tree of symlinks
 // into the firmware's own `src/`, not a copy. A result found here therefore
@@ -54,6 +56,9 @@ constexpr uint32_t kSettleMaxMs = 5000;
 constexpr uint32_t kMonitorStepMs = 100;
 constexpr uint32_t kMonitorHeartbeatMs = 2000;
 constexpr uint32_t kBleAdvertiseMs = 60000;  // long enough to find it on a phone
+// The power-up test waits this long so USB and the charger settle first, and
+// so a bench user who opens the serial port at once still sees it start.
+constexpr uint32_t kAutoTestDelayMs = 3000;
 
 // The flash check erases and programs only this sector, which no partition
 // owns, so it is safe on a unit that already holds a config and a log.
@@ -110,6 +115,17 @@ bool unitTest = false;  // 't': one cycle, then a PASS/FAIL verdict
 // Set by the sensor verdicts; the board checks run once the rail is down.
 bool boardChecksPending = false;
 bool sensorsPassed = false;
+bool autoTestDone = false;  // the power-up run has started (or a key came first)
+// Names of the parts that failed the last unit test, space-separated, for the
+// result screen.
+char failedParts[64] = "";
+
+void noteFailure(const char* part) {
+  if (failedParts[0] != '\0') {
+    strncat(failedParts, " ", sizeof failedParts - strlen(failedParts) - 1);
+  }
+  strncat(failedParts, part, sizeof failedParts - strlen(failedParts) - 1);
+}
 
 enum class Phase : uint8_t {
   kIdle,
@@ -245,7 +261,8 @@ void printHelp() {
   Serial.println();
   Serial.println("commands:");
   Serial.println("  ?  this help");
-  Serial.println("  t  unit test -- sensors, flash, display, BLE; PASS/FAIL per part (start here)");
+  Serial.println("  t  unit test -- sensors, flash, display, BLE; PASS/FAIL per part (start here;");
+  Serial.println("     also runs by itself at power-up and ends on a PASS/FAIL screen)");
   Serial.println("  s  settle sweep -- when does each address first ACK after rail-on");
   Serial.println("  i  I2C scan (rail left on)");
   Serial.println("  c  toggle continuous measurement cycles");
@@ -749,6 +766,11 @@ void reportCycle() {
       Serial.println("  SCD41 answered but no result in 7 s: suspect supply sag");
     }
     sensorsPassed = bmeOk && vemlOk && scdOk && micOk && battOk;
+    if (!bmeOk) noteFailure("BME280");
+    if (!vemlOk) noteFailure("VEML7700");
+    if (!scdOk) noteFailure("SCD41");
+    if (!micOk) noteFailure("MIC");
+    if (!battOk) noteFailure("BATTERY");
     boardChecksPending = true;
   }
 }
@@ -979,6 +1001,74 @@ void runBleCheck() {
   }
 }
 
+void printCentered(const char* text, int16_t baseline) {
+  display.setCursor((EpaperDisplay::kWidth - display.textWidth(text)) / 2,
+                    baseline);
+  display.print(text);
+}
+
+// The verdict the factory operator reads, so it has to be unmistakable at a
+// glance. PASS is black on white and keeps the test pattern's border,
+// checkerboard band and black bar, so the same screen is the visual check of
+// the panel. FAIL is the whole panel black with white text, listing the parts
+// that failed. A panel that shows anything else (blank, the stripe pattern
+// checkerboard left by checkDisplay, an old screen) means the display failed.
+bool drawResultScreen(bool pass) {
+  using Ink = EpaperDisplay::Ink;
+  constexpr int16_t kW = EpaperDisplay::kWidth;
+  constexpr int16_t kH = EpaperDisplay::kHeight;
+  constexpr int16_t kCell = kW / 8;
+
+  railUpForSpi();
+  bool refreshed = false;
+  if (display.begin(true)) {
+    display.beginFrame();
+    const Ink ink = pass ? Ink::kBlack : Ink::kWhite;
+    if (pass) {
+      for (int16_t col = 0; col < 8; ++col) {
+        display.fillRect(col * kCell, (col & 1) ? kCell / 2 : 0, kCell,
+                         kCell / 2, Ink::kBlack);
+      }
+      display.drawFastHLine(0, kH - 1, kW, Ink::kBlack);
+      display.drawFastVLine(0, 0, kH, Ink::kBlack);
+      display.drawFastVLine(kW - 1, 0, kH, Ink::kBlack);
+      display.fillRect(0, kH - 10, kW, 10, Ink::kBlack);
+    } else {
+      display.fillRect(0, 0, kW, kH, Ink::kBlack);
+    }
+    display.setTextColor(ink);
+
+    display.setFont(EpaperDisplay::Font::kSemiBold24);
+    printCentered(pass ? "PASS" : "FAIL", 62);
+
+    if (pass) {
+      display.setFont(EpaperDisplay::Font::kRegular9);
+      printCentered("flash release", 88);
+      printCentered("firmware next", 104);
+    } else {
+      // One part name per line until they run out of room; the serial log
+      // has the full list with hints.
+      display.setFont(EpaperDisplay::Font::kSemiBold9);
+      char parts[sizeof failedParts];
+      strncpy(parts, failedParts, sizeof parts);
+      parts[sizeof parts - 1] = '\0';
+      int16_t baseline = 86;
+      for (char* part = strtok(parts, " "); part != nullptr && baseline <= 118;
+           part = strtok(nullptr, " ")) {
+        printCentered(part, baseline);
+        baseline += 16;
+      }
+    }
+
+    display.setFont(EpaperDisplay::Font::kRegular7);
+    printCentered(unitSerial, pass ? 132 : 140);
+    refreshed = display.endFrame();
+  }
+  const bool hibernated = display.end();
+  railDown();
+  return refreshed && hibernated;
+}
+
 // Runs after the sensor verdicts, with the rail already down.
 void finishUnitTest() {
   const char* flashFailure = checkFlash();
@@ -998,9 +1088,15 @@ void finishUnitTest() {
   if (bleFailure == nullptr) {
     printBleAdvertising();
   }
+  if (flashFailure != nullptr) noteFailure("FLASH");
+  if (displayFailure != nullptr) noteFailure("DISPLAY");
+  if (bleFailure != nullptr) noteFailure("BLE");
   const bool pass = sensorsPassed && flashFailure == nullptr &&
                     displayFailure == nullptr && bleFailure == nullptr;
   Serial.println(pass ? "RESULT: PASS" : "RESULT: FAIL");
+  if (!drawResultScreen(pass)) {
+    Serial.println("  result screen did not refresh: treat the unit as FAIL");
+  }
 }
 
 void serviceCycle() {
@@ -1411,6 +1507,16 @@ void runScd41Exhaustive() {
   Serial.println("done");
 }
 
+void startUnitTest() {
+  abortCycle();
+  enableBme280 = enableVeml7700 = enableScd41 = true;
+  enableMicrophone = enableBattery = true;
+  failedParts[0] = '\0';
+  Serial.println("unit test: one measurement cycle, then flash, display, BLE (~25 s)...");
+  unitTest = true;
+  cycling = true;
+}
+
 void handleCommand(char command) {
   switch (command) {
     case '?':
@@ -1460,12 +1566,7 @@ void handleCommand(char command) {
       runBleCheck();
       break;
     case 't':
-      abortCycle();
-      enableBme280 = enableVeml7700 = enableScd41 = true;
-      enableMicrophone = enableBattery = true;
-      Serial.println("unit test: one measurement cycle, then flash, display, BLE (~20 s)...");
-      unitTest = true;
-      cycling = true;
+      startUnitTest();
       break;
     case 'c':
       cycling = !cycling;
@@ -1536,12 +1637,21 @@ void loop() {
 
   while (Serial.available() > 0) {
     greeted = true;
+    autoTestDone = true;  // someone is at the console: leave it to them
     handleCommand(static_cast<char>(Serial.read()));
   }
 
-  if (!greeted && millis() - lastPromptMs >= 2000) {
+  // The factory path: power up, wait, test, show the verdict on the panel.
+  if (!autoTestDone && millis() >= kAutoTestDelayMs) {
+    autoTestDone = true;
+    startUnitTest();
+  }
+
+  // Quiet while a test runs, so the prompt does not split its report.
+  if (!greeted && !cycling && phase == Phase::kIdle &&
+      millis() - lastPromptMs >= 2000) {
     lastPromptMs = millis();
-    Serial.println("Quiesco unit test -- press 't' to test this unit, '?' for all commands");
+    Serial.println("Quiesco unit test -- runs once at power-up; 't' runs it again, '?' for all commands");
   }
 
   serviceCycle();

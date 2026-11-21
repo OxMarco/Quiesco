@@ -371,7 +371,10 @@ scripts/arduino-cli.sh upload --fqbn Seeeduino:mbed:xiaonRF52840Plus \
   -p /dev/cu.usbmodem101 --input-dir .build/smoke-sensors smoke/sensors
 ```
 
-Open the serial port at 115200 and **press `t`**. It runs one full measurement
+The unit test **runs by itself about 3 s after power-up** and ends on a result
+screen on the panel (below), so the factory needs neither a computer terminal
+nor a phone. On the bench, open the serial port at 115200 and **press `t`** to
+run it again with the full report. It runs one full measurement
 cycle, then the flash, display and BLE checks, and prints a PASS/FAIL line per
 part, with a hint for each failure (about 20 s):
 
@@ -405,6 +408,14 @@ plausible indoor range (0–50 °C, 5–95 % RH, 800–1100 hPa, 300–5000 ppm 
   missing rows, grey patches or a bad FPC seat. The refresh time is printed
   (not yet measured on this board: note the first units' times as the
   reference).
+- **result screen**: after the checks the panel shows the verdict. **PASS** is
+  black on white, framed by a checkerboard band at the top, a one-pixel border
+  and a black bar at the bottom, with "flash release firmware next" and the
+  full serial. **FAIL** fills the panel black, with the failed parts in white
+  (`BME280`, `VEML7700`, `SCD41`, `MIC`, `BATTERY`, `FLASH`, `DISPLAY`, `BLE`).
+  Anything else on the panel (blank, the checkerboard test pattern, an old
+  screen) means the display failed. A key pressed on the serial port before the
+  power-up run starts cancels it.
 - **BLE**: the stack starts and advertises as `Quiesco TEST XXXX` for 60 s.
   The radio sits inside the certified module, so that is the automatic
   verdict; finding the name on a phone proves the air path, and a connection
@@ -443,25 +454,38 @@ recalibration instead.
 
 ## 9. Factory procedure
 
-Per unit, on USB, with the battery fitted. It takes about five minutes. Record
-the results against the unit serial.
+Written for the assembler (PCBWay): no toolchain, no terminal, no phone. Per
+unit, with the battery fitted and the case still open (the XIAO's reset button
+must be reachable). About three minutes.
 
-1. **Program the test sketch.** `make smoke`, then upload
-   `.build/smoke-sensors` as in §8.
-2. **Test.** Open the serial port at 115200 and press `t`. Require
-   `RESULT: PASS`. Look at the panel: the test pattern must be complete and
-   even. Find `Quiesco TEST XXXX` in nRF Connect (any phone), where `XXXX`
-   matches the digits on the panel. Record the `serial=` line.
-3. **On a FAIL**, use the hint and §7 to find the fault, rework, and repeat
-   from step 2. A unit ships only after a passing `t` on the final hardware.
-4. **Program the release firmware.** `make build`, then upload
-   `.build/quiesco_firmware` the same way (sketch directory `.`). Check that
-   the panel draws a reading screen within about 15 s.
-5. **Optional: CO2 forced recalibration**, in known fresh air (outdoors, or
-   by an open window, about 420 ppm) from the app or nRF Connect
-   (`000B`; SOFTWARE.md, calibration). Record the correction from `000E`.
-   Units that skip this ship with Sensirion's factory calibration.
-6. **Label** the unit with its serial and the firmware version (`VERSION`).
+Give the assembler two files from the same `VERSION`:
+`quiesco-factory-test-X.Y.Z.uf2` (`make smoke`, in `.build/smoke-sensors/`) and
+`quiesco-X.Y.Z.uf2` (`make build`, in `.build/quiesco_firmware/`).
 
-The test sketch leaves the config and log in flash untouched, so a unit
-returned for repair can be tested the same way without losing its history.
+1. **Program the test.** Plug the unit into a computer over USB-C and press
+   the XIAO's reset button twice quickly. A drive called `XIAO-BOOT` appears.
+   Copy `quiesco-factory-test-X.Y.Z.uf2` onto it; the drive disappears as the
+   unit restarts.
+2. **Test.** Leave it plugged in. After about 30 s the panel shows the result
+   (§8). Pass only on the **PASS** screen with the whole checkerboard band,
+   border and bottom bar even and black, no missing rows or grey patches.
+   **FAIL**, a blank panel or any other screen is a fail: set the unit aside
+   with the screen as shown (photograph it) for rework. To repeat the test,
+   unplug and replug.
+3. **Record** the serial printed under PASS against the unit.
+4. **Program the release firmware.** Press reset twice again and copy
+   `quiesco-X.Y.Z.uf2` onto `XIAO-BOOT`. Within about 15 s the panel draws a
+   reading screen (or the phone setup screen). That is the shipping state.
+5. **Close the case and label** the unit with its serial and the firmware
+   version.
+
+Units ship with Sensirion's factory CO2 calibration; forced recalibration is
+optional and done by the user from the app (SOFTWARE.md, calibration).
+
+**On the bench** (rework, returns): the serial console gives the reason for a
+failure. Flash the test as in step 1 (or `make smoke` and upload
+`.build/smoke-sensors` as in §8), open the port at 115200, press `t`, and use
+each failure's hint and §7. Finding `Quiesco TEST XXXX` in nRF Connect, where
+`XXXX` matches the panel's last four serial digits, proves the radio path
+beyond the automatic BLE check. The test leaves the config and log in flash
+untouched, so a returned unit keeps its history.
