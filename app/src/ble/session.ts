@@ -515,11 +515,13 @@ export async function forget(serial: string) {
 // --------------------------------------------------- in the background
 
 /**
- * The unit's battery decides what the app does when it leaves the screen. On
- * USB power the link stays up, so live readings keep the widgets current; on
- * battery it is dropped, because a held connection drains the unit, and the
- * next background run syncs again. Out of range, the system is asked to connect
- * whenever the unit comes back (waitFor), which wakes the app to sync.
+ * When the app leaves the screen the link is dropped once any sync has ended,
+ * and the next background run syncs again. The unit takes one connection and
+ * does not advertise while it has one, so a link held in the background kept
+ * every other phone in the home from connecting or being set up (setup needs
+ * USB power, which is exactly when the link used to be held), and on battery
+ * it drains the unit. Out of range, the system is asked to connect whenever
+ * the unit comes back (waitFor), which wakes the app to sync.
  */
 async function settleInBackground() {
   if (AppState.currentState === 'active') return;
@@ -529,17 +531,11 @@ async function settleInBackground() {
   if (l.serial === unit.serial && l.phase === 'ready') {
     const syncing = l.sync && l.sync.state !== 'done' && l.sync.state !== 'failed';
     if (syncing) return; // syncNow settles when it ends
-    if (!unitOnUsb()) await linkApi.disconnect();
+    await linkApi.disconnect();
     return;
   }
   if (l.serial === unit.serial && !SETTLED.includes(l.phase)) return; // still connecting
   waitForUnit(unit);
-}
-
-/** On USB power (or a bench unit with no battery), holding the link costs the unit nothing. */
-function unitOnUsb(): boolean {
-  const info = linkApi.link.get().info;
-  return !!info && (info.noBattery || info.pairingOpen);
 }
 
 let waitingFor: string | null = null;

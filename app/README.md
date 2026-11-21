@@ -104,9 +104,10 @@ without the app being opened:
   system to connect when the unit comes back: on iOS a pending connect,
   which wakes or relaunches the app (`bluetooth-central` and state
   restoration); on Android an autoconnect, while the app's process lives.
-- After a background sync the link stays up only while the unit is on USB
-  power, so live readings keep the widgets current; on battery it is
-  dropped, because a held connection drains the unit.
+- After a background sync the link is dropped, on USB power too. The unit
+  takes one connection and does not advertise while it has one, so a held
+  link kept every other phone in the home out (and drains a unit on
+  battery). Widgets are as fresh as the last background sync.
 - A background run never asks for anything: a unit without a key on this
   phone, or Bluetooth without permission, is skipped.
 
@@ -126,7 +127,6 @@ refreshes them on every new reading, at most once a minute.
 |---|---|---|
 | Periodic background sync | BGTaskScheduler (system-chosen, often overnight) | WorkManager (≥ 15 min, later in Doze) |
 | Reconnect when the unit comes back | Pending connect; relaunches the app if it was closed | Autoconnect while the process lives; else the periodic task |
-| Link kept up in the background on USB power | Yes (`bluetooth-central`) | Yes, while the process lives |
 | Sleep times | Apple Health (HealthKit sleep analysis) | Health Connect (sleep sessions) |
 | Home-screen widget | Small and medium | Resizable, narrow and wide layouts |
 | Lock-screen widget | Rectangular and inline | Not available on Android |

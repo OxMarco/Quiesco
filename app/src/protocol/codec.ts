@@ -582,6 +582,10 @@ export function encodeSleepWindow(w: UnitSleepWindow): Uint8Array {
   if ([w.bedMin, w.wakeMin].some((t) => !Number.isInteger(t) || t < 0 || t >= DAY_MIN)) {
     throw new CodecError('times must be whole minutes after midnight');
   }
+  // The unit refuses a window of no length (firmware SleepWindow.h).
+  if (w.bedMin === w.wakeMin) {
+    throw new CodecError('bedtime and wake time must differ');
+  }
   return new ByteWriter(12)
     .u8(0, w.followSleep ? 1 : 0)
     .i16(2, w.utcOffsetMin)

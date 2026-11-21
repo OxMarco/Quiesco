@@ -211,6 +211,8 @@ describe('characteristic codecs', () => {
     expect(() => encodeSleepWindow({ ...w, utcOffsetMin: 841 })).toThrow();
     expect(() => encodeSleepWindow({ ...w, utcOffsetMin: -721 })).toThrow();
     expect(() => encodeSleepWindow({ ...w, bedMin: 1440 })).toThrow();
+    // The unit refuses a window of no length; say so before writing it.
+    expect(() => encodeSleepWindow({ ...w, bedMin: 420, wakeMin: 420 })).toThrow('differ');
   });
 
   test('calibration state and diagnostics', () => {

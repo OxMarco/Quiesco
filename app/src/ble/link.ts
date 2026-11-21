@@ -1,7 +1,7 @@
 // One live connection to a Quiesco unit: the connect sequence (PROTOCOL.md §2),
 // app-layer auth (§3), confirmed writes (§5) and log download (§7).
 
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import * as db from '@/data/db';
 import {
@@ -339,9 +339,14 @@ async function authenticate(serial: string) {
       continue;
     }
     // Refused twice: the unit no longer knows this key (factory reset, or
-    // evicted by a fifth phone). Forget it and enrol again if on USB.
+    // evicted by a fifth phone), so enrol again if it is on USB. The stored
+    // key stays until a new one replaces it (saveKey above): nothing the unit
+    // says before it has proved anything is worth the owner's key, and a
+    // device posing as the unit could otherwise make the app throw it away.
     trace('key rejected', { keyId: enrolled.keyId });
-    await keys.deleteKey(serial);
+    // Only with the app in front: a setup puts a code on the unit's panel and
+    // asks the user to type it.
+    if (AppState.currentState !== 'active') break;
     enrolled = null;
   }
   link.set({ phase: 'needsUsb' });
@@ -613,7 +618,9 @@ export async function enterUsbUpdate(): Promise<boolean> {
 
 // The unit takes the command from its main loop, which can stall for a few
 // seconds behind a panel refresh.
-const ERASE_CONFIRM_MS = 8_000;
+// With its log not yet mounted the unit checks the command at its next
+// settings save, up to ~15 s later (PROTOCOL.md §9.1).
+const ERASE_CONFIRM_MS = 20_000;
 
 /**
  * Erase the unit's whole log, provided it holds nothing newer than
