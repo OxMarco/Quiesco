@@ -138,6 +138,14 @@ wrong, consumes the challenge and publishes a new one, so a recorded proof
 cannot be replayed; after 5 failed attempts the unit ignores further proofs
 until the phone reconnects.
 
+**Unauthenticated links are dropped.** The unit takes one connection and
+does not advertise while it has one, so it disconnects a link that has not
+authenticated 30 s after connecting, and at once on the fifth failed proof.
+While a setup is pending or an issued key is waiting to be read, the link is
+kept until that ends, but never longer than 240 s in total. The app must
+prove its key, or write ENROL, as soon as it has connected. This does not
+stop a device that reconnects in a loop; it gives the owner's phone its turn.
+
 **Keys.** The unit keeps up to 4 enrolled phones in flash, across resets and
 power loss. Enrolling a fifth evicts the one enrolled longest ago. Factory
 reset (§9) forgets every phone. If a phone's key is rejected (the unit was

@@ -83,7 +83,20 @@ class BleConfig {
   void serviceAuth(uint64_t nowMs);
   void enrol(uint64_t nowMs);
 
+  void dropIdleLink(uint64_t nowMs);
+
   static constexpr uint8_t kMaxAuthFailures = 5;
+  // The unit takes one connection and stops advertising while it has one, so
+  // a link that proves no key would keep the owner's phone out for as long
+  // as it stayed. It is dropped after this long, or at the last failed
+  // proof. The app proves its key, or starts a setup, within a second or two
+  // of connecting.
+  static constexpr uint32_t kUnauthenticatedLinkMs = 30000;
+  // A setup in progress (someone is typing the code from the panel) keeps
+  // the link for the setup's own lifetime, but no connection stays
+  // unauthenticated longer than this in total, however many setups it asks
+  // for.
+  static constexpr uint32_t kSetupLinkMs = 240000;
   // Setup codes issued without a completed setup before ENROL is refused
   // until USB is unplugged and plugged back in. Failures reset with every
   // connection, so without this, reconnecting gave unlimited guesses.
@@ -100,6 +113,8 @@ class BleConfig {
   bool advertising_ = false;  // ArduinoBLE's flag, kept through connections
   bool refreshAdvertising_ = false;  // set at a disconnect
   bool connected_ = false;
+  bool linkTimerPending_ = false;  // set in the connect callback
+  uint64_t connectedSinceMs_ = 0;
   bool authenticated_ = false;
   uint8_t challenge_[BleCodec::kAuthChallengeBytes] = {};
   uint8_t authFailures_ = 0;

@@ -186,6 +186,61 @@ TEST_CASE("enrollment") {
   CHECK_MESSAGE(!adapter.enrollmentPending(), "unplugging cancels setup immediately");
   FakeBle::disconnect();
 }
+TEST_CASE("a link that proves no key is dropped") {
+  const uint8_t enrol[2] = {1, 0};
+  BleConfig adapter;
+  adapter.setBonds(knownBonds());
+  adapter.begin(defaultConfig(), "0123456789abcdef", 0);
+  adapter.setPairingAllowed(false);
+
+  // Silent: held for 30 s from the first poll that saw it, not longer.
+  FakeBle::connect(80); adapter.poll(100000);
+  adapter.poll(100000 + 29999);
+  CHECK_MESSAGE(adapter.connected(), "a new link has 30 s to prove a key");
+  adapter.poll(100000 + 30000);
+  CHECK_MESSAGE(!adapter.connected(), "a silent link is dropped after 30 s");
+
+  // Authenticated: never dropped.
+  FakeBle::connect(81); adapter.poll(200000);
+  auto state = FakeBle::read(kAuth);
+  uint8_t proof[20] = {2, 0, 0x34, 0x12};
+  BleCodec::authProof(key, state.data() + 2, 0x1234, proof + 4);
+  FakeBle::write(kAuth, proof, sizeof proof); adapter.poll(200001);
+  REQUIRE(adapter.authenticated());
+  adapter.poll(200000 + 3600000);
+  CHECK_MESSAGE(adapter.connected(), "an authenticated link stays");
+  FakeBle::disconnect(); adapter.poll(3800001);
+
+  // Five wrong proofs: dropped at once, not after the 30 s.
+  FakeBle::connect(82); adapter.poll(4000000);
+  for (int i = 0; i < 5; ++i) {
+    CHECK_MESSAGE(adapter.connected(), "still connected before the last failure");
+    proof[4] ^= 0xFF;
+    FakeBle::write(kAuth, proof, sizeof proof); adapter.poll(4000001 + i);
+  }
+  CHECK_MESSAGE(!adapter.connected(), "locked out means disconnected");
+
+  // A setup in progress keeps the link while the code can still be typed...
+  adapter.setPairingAllowed(true);
+  FakeBle::connect(83); adapter.poll(5000000);
+  FakeBle::write(kAuth, enrol, sizeof enrol); adapter.poll(5000001);
+  REQUIRE(adapter.enrollmentPending());
+  adapter.poll(5000001 + 179999);
+  CHECK_MESSAGE(adapter.connected(), "a pending setup keeps its link");
+  // ...and the link goes when the setup expires unproved.
+  adapter.poll(5000001 + 180000);
+  CHECK_MESSAGE(!adapter.connected(), "an expired setup drops the link");
+
+  // Asking for setup after setup cannot hold the link past the hard limit.
+  FakeBle::connect(84); adapter.poll(6000000);
+  adapter.poll(6000000 + 29000);
+  FakeBle::write(kAuth, enrol, sizeof enrol); adapter.poll(6000000 + 29001);
+  REQUIRE(adapter.enrollmentPending());
+  adapter.poll(6000000 + 200000);
+  CHECK_MESSAGE(adapter.connected(), "setup started late is still in progress");
+  adapter.poll(6000000 + 240000);
+  CHECK_MESSAGE(!adapter.connected(), "no unauthenticated link outlives the hard limit");
+}
 TEST_CASE("a session change inside a notify keeps values hidden") {
   BleConfig adapter;
   adapter.setBonds(knownBonds());

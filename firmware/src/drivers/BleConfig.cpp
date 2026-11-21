@@ -420,7 +420,27 @@ void BleConfig::poll(uint64_t nowMs) {
     clearEnrolKey();
   }
   serviceAuth(nowMs);
+  dropIdleLink(nowMs);
   updateAdvertising();
+}
+
+void BleConfig::dropIdleLink(uint64_t nowMs) {
+  if (linkTimerPending_) {  // the callback has no clock
+    linkTimerPending_ = false;
+    connectedSinceMs_ = nowMs;
+  }
+  if (!connected_ || authenticated_) {
+    return;
+  }
+  const uint64_t heldMs = nowMs - connectedSinceMs_;
+  // enrolKeyUntilMs_ covers a pending setup and an issued key being read.
+  const bool settingUp = enrolKeyUntilMs_ != 0 && nowMs < enrolKeyUntilMs_;
+  const bool lockedOut = authFailures_ >= kMaxAuthFailures;
+  if (heldMs >= kSetupLinkMs ||
+      (!settingUp && (lockedOut || heldMs >= kUnauthenticatedLinkMs))) {
+    DebugLog::event("ble dropping unauthenticated link");
+    BLE.disconnect();
+  }
 }
 
 void BleConfig::onConnected(BLEDevice device) {
@@ -438,6 +458,7 @@ void BleConfig::onDisconnected(BLEDevice device) {
 void BleConfig::resetSession(bool connected) {
   ++session_;
   connected_ = connected;
+  linkTimerPending_ = connected;
   // A connection pauses advertising without clearing ArduinoBLE's flag, and
   // the stack turns it back on after the disconnect (HCI.cpp), with the data
   // from before: a rename meanwhile would advertise the old name, and on
