@@ -69,7 +69,7 @@ set the build flags.
 
 The `smoke/sensors` sketch is the factory test. It exercises every part through
 the production drivers, runs by itself at power-up and ends on a **PASS** or
-**FAIL** screen on the panel, so a factory can use it without a computer
+**FAIL** screen on the panel, so an assembler can use it without a
 terminal or phone. `make smoke` also writes
 `.build/smoke-sensors/quiesco-factory-test-X.Y.Z.uf2` for the `XIAO-BOOT` drive.
 
@@ -98,10 +98,11 @@ Then check the panel shows PASS inside a complete dotted border, and find
 `Quiesco TEST XXXX` in a BLE scanner such as nRF Connect. When everything
 passes, flash the release firmware as in [Quick start](#build-and-flash).
 
-On a failure, the sketch prints a hint. Its other single-key commands (I²C
-scan, rail settle sweep, live monitor, SCD41 probe and more) are described in
-[`HARDWARE.md` §8](HARDWARE.md#8-unit-test-sketch--smokesensors), and the full
-factory procedure in [§9](HARDWARE.md#9-factory-procedure).
+To test units without a toolchain (copy the `.uf2`, read the screen), follow
+[`TESTING.md`](../TESTING.md). On a failure, the sketch prints a hint. Its
+other single-key commands (I²C scan, rail settle sweep, live monitor, SCD41
+probe and more) are described in
+[`HARDWARE.md` §8](HARDWARE.md#8-unit-test-sketch--smokesensors).
 
 ## Commands
 

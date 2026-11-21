@@ -456,43 +456,17 @@ recalibration instead.
 
 ## 9. Factory procedure
 
-Written for the assembler (PCBWay): no toolchain, no terminal, no phone. Per
-unit, with the battery fitted and the case still open (the XIAO's reset button
-must be reachable). About three minutes.
+The step-by-step procedure for anyone assembling units, with how to read
+the result screen, is [`TESTING.md`](../TESTING.md) at the repository root.
+It needs only the two `.uf2` files from one `VERSION`:
+`quiesco-factory-test-X.Y.Z.uf2` (`make smoke`, in `.build/smoke-sensors/`)
+and `quiesco-X.Y.Z.uf2` (`make build`, in `.build/quiesco_firmware/`).
 
-Give the assembler two files from the same `VERSION`:
-`quiesco-factory-test-X.Y.Z.uf2` (`make smoke`, in `.build/smoke-sensors/`) and
-`quiesco-X.Y.Z.uf2` (`make build`, in `.build/quiesco_firmware/`).
-
-1. **Program the test.** Plug the unit into a computer over USB-C and press
-   the XIAO's reset button twice quickly. A drive called `XIAO-BOOT` appears.
-   Copy `quiesco-factory-test-X.Y.Z.uf2` onto it with Finder or Explorer
-   (a terminal `cp` hung on macOS 27); the drive disappears as the unit
-   restarts.
-2. **Test.** Leave it plugged in. After about 30 s the panel shows the result
-   (§8). Pass only on the **PASS** screen with the dotted border complete
-   and even all the way round. **FAIL**, a blank panel or any other screen is
-   a fail: set the unit aside with the screen as shown (photograph it) for
-   rework. To repeat the test, press reset once (unplugging does not reset a
-   unit with its battery fitted).
-3. **Program the release firmware.** Press reset twice again and copy
-   `quiesco-X.Y.Z.uf2` onto `XIAO-BOOT`. Within about 15 s the panel draws a
-   reading screen (or the phone setup screen). That is the shipping state.
-4. **Close the case and label** the unit with the firmware version.
-
-Centring is judged in step 2: lay the case front over the unit and check the
-whole border shows, evenly spaced from the window.
-
-Units ship with Sensirion's factory CO2 calibration; forced recalibration is
-optional and done by the user from the app (SOFTWARE.md, calibration).
-
-**On the bench** (rework, returns): the serial console gives the reason for a
-failure. Flash the test as in step 1 (or `make smoke` and upload
-`.build/smoke-sensors` as in §8), open the port at 115200, press `t`, and use
-each failure's hint and §7. Finding `Quiesco TEST XXXX` in nRF Connect, where
-`XXXX` is the last four digits of the console's `serial=` line, proves the radio path
-beyond the automatic BLE check. The test leaves the config and log in flash
-untouched, so a returned unit keeps its history.
+On the bench (rework, returns), the serial console gives the reason for a
+failure: open the port at 115200, press `t`, and use each failure's hint and
+§7. Finding `Quiesco TEST XXXX` in nRF Connect, where `XXXX` is the last four
+digits of the console's `serial=` line, proves the radio path beyond the
+automatic BLE check.
 
 A unit running the release firmware ignores the upload tool's 1200-baud reset;
 with the case closed, enter the bootloader from the app (Device → Update

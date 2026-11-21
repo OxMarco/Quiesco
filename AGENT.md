@@ -94,8 +94,10 @@ Windows, use WSL; the build scripts are bash. Owners never build.
 2. `cd firmware && make verify && make build`.
 3. The build writes `.build/quiesco_firmware/quiesco-X.Y.Z.uf2` (made by
    `scripts/make-uf2.py` from the image) next to the `.hex` and `.zip`.
-4. Publish the `.uf2` with the release notes (a GitHub release on
-   `OxMarco/Quiesco`).
+   `make smoke` writes the factory test,
+   `.build/smoke-sensors/quiesco-factory-test-X.Y.Z.uf2`.
+4. Publish both `.uf2` files with the release notes (a GitHub release on
+   `OxMarco/Quiesco`); assemblers need the pair ([`TESTING.md`](TESTING.md)).
 5. If any firmware library changed, refresh the app's licence list:
    `make licences`, then `npm run licences` in `app/`, and ship the app with it.
 

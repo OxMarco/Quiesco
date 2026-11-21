@@ -1,5 +1,5 @@
 # Type-checks, lints and tests the app, and runs the firmware's host tests,
-# on every push to master and every pull request (TESTING.md item 1).
+# on every push to master and every pull request (TEST-PLAN.md item 1).
 name: Check app and firmware
 
 on:

@@ -179,8 +179,8 @@ cd Quiesco
    The STL is ready to slice; STEP files are there if you want to modify it.
 3. **Assemble** → [`hardware/`](hardware/README.md#assemble)
    Seat the display, plug in the battery, close the case.
-4. **Test the unit** → [`firmware/`](firmware/README.md#test-a-new-unit)
-   Flash the factory test sketch and check every part reports `PASS`.
+4. **Test the unit** → [`TESTING.md`](TESTING.md)
+   Copy the factory test onto the unit and check its screen says `PASS`.
 5. **Flash the firmware** → [`firmware/`](firmware/README.md#quick-start)
    `make build`, then upload over USB.
 6. **Install the app** → [`app/`](app/README.md#run-it)
@@ -212,6 +212,8 @@ Going deeper:
 - [`firmware/SOFTWARE.md`](firmware/SOFTWARE.md): firmware architecture and features
 - [`firmware/UI.md`](firmware/UI.md): the e-ink screens, pixel by pixel
 - [`firmware/src/protocol/PROTOCOL.md`](firmware/src/protocol/PROTOCOL.md): the BLE contract between unit and app
+- [`TESTING.md`](TESTING.md): testing each assembled unit, for builders and manufacturers
+- [`TEST-PLAN.md`](TEST-PLAN.md): how the app and firmware are tested in code and CI
 - [`AGENT.md`](AGENT.md): updating a unit's firmware (copy a file onto its USB drive)
 
 ## 🧭 Roadmap
