@@ -370,10 +370,7 @@ describe('log download', () => {
     expect(session.nextCursor()).toBe(1202);
   });
 
-  test('gaps and replaced logs', () => {
-    const session = new LogSession(1000);
-    session.push(fromHex(G.dataHeader + ' ' + G.wireRecord));
-    expect(session.hasGap).toBe(true);
+  test('replaced logs', () => {
     expect(logWasReplaced(1202, 1201)).toBe(false);
     expect(logWasReplaced(1202, 40)).toBe(true);
     expect(logWasReplaced(0, 0)).toBe(false);

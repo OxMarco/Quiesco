@@ -761,8 +761,11 @@ function downloadBatch(cursor: number, before: number): Promise<{ session: LogSe
 
     activeSession = { fail: (m) => finish(new Error(m)) };
     try {
+      // A session ended while a subscription was being set up (a drop, a
+      // cancel) has run its cleanups already: undo the late one at once.
+      const keep = (cleanup: () => void) => (settled ? cleanup() : cleanups.push(cleanup));
       // Subscribe before START, or the first notification stalls the session (§7.1).
-      cleanups.push(
+      keep(
         await ble.subscribe(id(), QUIESCO_SERVICE, Chr.logSyncData, (packet) => {
           const had = before + session.records.length;
           session.push(packet);
@@ -781,7 +784,8 @@ function downloadBatch(cursor: number, before: number): Promise<{ session: LogSe
           else armStall(STALL_MS);
         }),
       );
-      cleanups.push(
+      if (settled) return; // and no START for a session nobody listens to
+      keep(
         onStatus((s) => {
           // Streaming ended without END (abort, stall, flash error): keep what we have.
           if (!s.logDownloadActive && session.records.length > 0 && !session.ended) finish();

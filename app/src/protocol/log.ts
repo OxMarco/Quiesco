@@ -161,11 +161,6 @@ export class LogSession {
     return this.highest >= 0 ? this.highest + 1 : this.requestedFrom;
   }
 
-  /** True when the device no longer holds records we asked for (§7.4 gaps). */
-  get hasGap(): boolean {
-    return this.records.length > 0 && this.records[0].sequence > this.requestedFrom;
-  }
-
   private onData(header: PacketHeader, packet: Uint8Array) {
     this.dropFragments();
     const expected = LOG_HEADER_BYTES + header.recordCount * WIRE_RECORD_BYTES;

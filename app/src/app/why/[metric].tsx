@@ -19,7 +19,8 @@ const ZONE_CLASS: Record<Zone['tone'], string> = {
 export default function WhyScreen() {
   const { metric } = useLocalSearchParams<{ metric: string }>();
   const tempUnit = useSession((s) => s.tempUnit);
-  const e = EVIDENCE[metric as JudgedMetric];
+  // Own keys only: a link to /why/constructor is not a metric.
+  const e = Object.hasOwn(EVIDENCE, metric) ? EVIDENCE[metric as JudgedMetric] : null;
   if (!e) return <NotFound />;
   return (
     <Sheet tone="surface">

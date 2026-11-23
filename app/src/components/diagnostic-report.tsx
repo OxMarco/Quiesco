@@ -98,7 +98,10 @@ function ReportSheet({ report, onClose }: { report: string; onClose: () => void 
 /** The report cut to fit a mailto: link: its head, then the newest lines. */
 function forMailto(report: string): string {
   if (report.length <= MAILTO_MAX) return report;
-  const head = report.slice(0, report.indexOf('## Log'));
-  const tail = report.slice(-(MAILTO_MAX - head.length - 40));
-  return `${head}## Log (cut to fit; use Share for all of it)\n…${tail.slice(tail.indexOf('\n'))}`;
+  const logAt = report.indexOf('## Log');
+  const room = MAILTO_MAX - logAt - 60;
+  // No log section, or a head that fills the link by itself: just the start.
+  if (logAt < 0 || room < 200) return `${report.slice(0, MAILTO_MAX - 60)}\n… (cut to fit; use Share for all of it)`;
+  const tail = report.slice(-room);
+  return `${report.slice(0, logAt)}## Log (cut to fit; use Share for all of it)\n…${tail.slice(tail.indexOf('\n'))}`;
 }

@@ -8,7 +8,7 @@ import { Capability, DeviceInfo } from '@/protocol/codec';
 import { crc8, LOG_HEADER_BYTES, WIRE_RECORD_BYTES } from '@/protocol/log';
 import { Chr } from '@/protocol/uuids';
 
-import { link, subscribeLive, syncLog, SyncProgress } from '../link';
+import { abortSync, link, subscribeLive, syncLog, SyncProgress } from '../link';
 
 // ------------------------------------------------------------- the unit
 
@@ -24,6 +24,8 @@ interface UnitOptions {
   drop?: number[];
   /** Stop sending, without END, after this many packets of the first session. */
   stallAfter?: number;
+  /** Subscribing to log data takes this long, as a busy radio can. */
+  subscribeMs?: number;
 }
 
 const u16 = (b: Uint8Array, at: number, v: number) => new DataView(b.buffer).setUint16(at, v, true);
@@ -92,8 +94,13 @@ class FakeUnit {
   }
 
   async subscribe(chr: string, cb: (data: Uint8Array) => void) {
+    if (chr === Chr.logSyncData && this.o.subscribeMs) await new Promise((r) => setTimeout(r, this.o.subscribeMs));
     this.subs.set(chr, cb);
     return () => this.subs.delete(chr);
+  }
+
+  listening(chr: string) {
+    return this.subs.has(chr);
   }
 
   private notify(chr: string, data: Uint8Array) {
@@ -318,6 +325,20 @@ test('a stream that stalls without END picks up where it stopped', async () => {
   stop();
   expectSavedOnce(range(1, 200));
   expect(unit.starts).toBe(2);
+});
+
+test('the link drops while it subscribes: no listener left behind, no START sent', async () => {
+  const { unit, stop } = await setUp({ log: range(1, 50), subscribeMs: 20 }, 0);
+  const done = syncLog().catch(() => {});
+  await new Promise((r) => setTimeout(r, 5));
+  link.set({ phase: 'idle' });
+  await abortSync(); // ends the session as a drop does
+  await done;
+  await new Promise((r) => setTimeout(r, 40));
+  stop();
+  expect(unit.listening(Chr.logSyncData)).toBe(false);
+  expect(unit.starts).toBe(0);
+  expect(mockDb.saved).toEqual([]);
 });
 
 test('a second sync while one runs joins it', async () => {

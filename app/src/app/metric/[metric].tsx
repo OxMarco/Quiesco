@@ -35,7 +35,8 @@ import { RECENT_S, useReading } from '@/ui/use-reading';
 export default function MetricScreen() {
   const { metric } = useLocalSearchParams<{ metric: string }>();
   const unit = useShownUnit();
-  if (!(metric in METRICS)) return <NotFound />;
+  // Own keys only: a link to /metric/constructor is not a metric.
+  if (!Object.hasOwn(METRICS, metric)) return <NotFound />;
   // Forgotten while the sheet was open, or opened by a link with no unit.
   if (!unit) return <NotFound message="There is no unit on this phone" />;
   return <MetricPage unit={unit} metric={metric as MetricKey} />;

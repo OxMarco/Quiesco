@@ -178,8 +178,12 @@ function StepButton({ label, a11y, onPress }: { label: string; a11y: string; onP
 /** The window on an 18:00 – 12:00 night. */
 function Timeline({ times }: { times: SleepTimes }) {
   const spanMin = 18 * 60;
-  const start = wrapMinutes(times.bedMin - 18 * 60);
-  const length = Math.min(durationMin(times), Math.max(0, spanMin - start));
+  // A bedtime between noon and 18:00 is off the axis: show the part of the
+  // window from 18:00 on.
+  const bed = wrapMinutes(times.bedMin - 18 * 60);
+  const end = bed + durationMin(times);
+  const start = bed < spanMin ? bed : 0;
+  const length = Math.max(0, Math.min(bed < spanMin ? end : end - 24 * 60, spanMin) - start);
   const ticks = [
     { at: 0, label: formatClock(18 * 60) },
     { at: 6 / 18, label: formatClock(0) },
@@ -247,10 +251,15 @@ function useLightsOut(serial: string | null, w: SleepWindow): number | null {
   const [result, setResult] = useState<number | null>(null);
   useEffect(() => {
     if (!serial) return;
+    let live = true;
     const nowS = Date.now() / 1000;
-    Promise.all([db.nightsWithData(serial, 14), db.recordsBetween(serial, nowS - 15 * 86400, nowS)]).then(
-      ([nights, points]) => setResult(typicalLightsOut(points, nights, w)),
-    );
+    // Only a suggestion: without it the sheet works as before.
+    Promise.all([db.nightsWithData(serial, 14), db.recordsBetween(serial, nowS - 15 * 86400, nowS)])
+      .then(([nights, points]) => live && setResult(typicalLightsOut(points, nights, w)))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
   }, [serial, w]);
   return result;
 }
