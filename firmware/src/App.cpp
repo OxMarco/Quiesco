@@ -639,8 +639,14 @@ bool App::saveSettings(uint64_t nowMs) {
     logEraseSequence_ = sampleLog_.lastSequence() + 1;
   }
   // Bonds before config: a factory reset cut off between the two must not
-  // leave default settings that still trust the old phones.
-  if (bondsSavePending_ && configStore_.saveBonds(flash_, bonds_)) {
+  // leave default settings that still trust the old phones. That holds for a
+  // failed write as well as for lost power, so nothing follows a bond table
+  // that did not save.
+  if (bondsSavePending_) {
+    if (!configStore_.saveBonds(flash_, bonds_)) {
+      nextConfigRetryMs_ = nowMs + 60000;
+      return false;
+    }
     bondsSavePending_ = false;
   }
   if (configSavePending_ && configStore_.save(flash_, config_)) {

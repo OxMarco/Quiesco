@@ -232,6 +232,18 @@ TEST_CASE("a link that proves no key is dropped") {
   adapter.poll(5000001 + 180000);
   CHECK_MESSAGE(!adapter.connected(), "an expired setup drops the link");
 
+  // ...or at once when five wrong codes have locked it out.
+  FakeBle::connect(85); adapter.poll(5500000);
+  FakeBle::write(kAuth, enrol, sizeof enrol); adapter.poll(5500001);
+  REQUIRE(adapter.enrollmentPending());
+  for (int i = 0; i < 5; ++i) {
+    CHECK_MESSAGE(adapter.connected(), "setup still open before the last wrong code");
+    proof[4] ^= 0xFF;
+    FakeBle::write(kAuth, proof, sizeof proof); adapter.poll(5500002 + i);
+  }
+  CHECK_MESSAGE(!adapter.enrollmentPending(), "a locked-out setup is over");
+  CHECK_MESSAGE(!adapter.connected(), "and its link is dropped");
+
   // Asking for setup after setup cannot hold the link past the hard limit.
   FakeBle::connect(84); adapter.poll(6000000);
   adapter.poll(6000000 + 29000);
@@ -583,6 +595,30 @@ TEST_CASE("app erase command before the log is mounted") {
   CHECK_MESSAGE(!eraseFlag(), "refused erase leaves bit 2 clear");
   CHECK_MESSAGE(newestSequence() >= 31, "history kept");
   FakeBle::disconnect();
+}
+TEST_CASE("a factory reset never saves defaults over phones it could not forget") {
+  FlashSim::reset(); ticks = 0;
+  {
+    W25Q64Flash flash; flash.begin(); ConfigStore store;
+    Config config = defaultConfig(); config.measurementIntervalSeconds = 600;
+    CHECK_MESSAGE(store.save(flash, config), "seed config");
+    CHECK_MESSAGE(store.saveBonds(flash, knownBonds()), "seed phone key");
+  }
+  {
+    App app; app.begin(); step(app, 1001); run(app, 40);
+    FakeBle::connect(24); step(app); prove(); step(app);
+    const uint8_t reset[4] = {1, 0, 0xC7, 0xFA};
+    FakeBle::write(kReset, reset, sizeof reset);
+    FlashSim::failNextPrograms(1);  // the bond table's write fails
+    run(app, 40);
+    FakeBle::disconnect();
+  }  // reset or power loss before the 60 s retry
+  W25Q64Flash flash; flash.begin(); ConfigStore store;
+  Config stored; BondTable bonds;
+  REQUIRE(store.load(flash, stored));
+  REQUIRE(store.loadBonds(flash, bonds));
+  CHECK_MESSAGE((bonds.count() == 0 || stored.measurementIntervalSeconds == 600),
+                "defaults are stored only once the phones are forgotten");
 }
 TEST_CASE("a radio that fails to start is tried again") {
   FlashSim::reset(); ticks = 0;

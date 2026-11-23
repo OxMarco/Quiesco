@@ -558,6 +558,12 @@ void BleConfig::serviceAuth(uint64_t nowMs) {
   DebugLog::event("ble auth attempt", accepted ? 1 : 0);
   if (!accepted && challengeIssued && authFailures_ < kMaxAuthFailures) {
     authFailures_++;
+    // Locked out, a pending setup can no longer be proved: end it now, so
+    // the code leaves the panel and the link is dropped at once rather than
+    // held for the rest of the setup's three minutes.
+    if (authFailures_ >= kMaxAuthFailures && pendingKeyId_ != 0) {
+      clearEnrolKey();
+    }
   }
   newChallenge();
   if (accepted && connected_ && session == session_) {

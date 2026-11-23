@@ -164,6 +164,9 @@ bool EpaperDisplay::end() {
   // powerOff() waits for BUSY; hibernate()'s own repeat of it is harmless.
   panel.powerOff();
   const bool released = busyReleased();
+  if (!released) {
+    previousFrameValid = false;  // as in endFrame()
+  }
   panel.hibernate();
   // hibernate()'s check code 0xA5 ends in a 1 and MOSI holds the last bit:
   // in a redraw cycle nothing else is sent before the rail drops, and the
@@ -209,6 +212,9 @@ bool EpaperDisplay::endFrame() {
   (void)startMs;  // trace-only
   responsive = sawBusy;
   if (!busyReleased() || !responsive) {
+    // What the panel shows is unknown: a partial refresh over it would
+    // ghost until the next scheduled full one, so the retry is a full one.
+    previousFrameValid = false;
     return false;
   }
   memcpy(previousFrame, frame.data(), sizeof previousFrame);
