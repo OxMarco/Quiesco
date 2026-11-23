@@ -585,27 +585,41 @@ export function onStatus(listener: (s: Status) => void) {
   return () => statusListeners.delete(listener);
 }
 
-/** Start a CO2 forced recalibration (§8); progress arrives in status. */
-export async function startFrc(referencePpm: number) {
+/**
+ * The phone holds one link and moves it between units (a quiet sync of the
+ * others, a switch): a command the user aimed at one unit must never land on
+ * whichever unit holds the link when they tap.
+ */
+function onlyFor(serial: string) {
+  const l = link.get();
+  if (l.phase !== 'ready' || l.serial !== serial) {
+    throw new Error('The phone is no longer connected to this unit. Reconnect and try again.');
+  }
+}
+
+/** Start a CO2 forced recalibration (§8) on the unit `serial`; progress arrives in status. */
+export async function startFrc(serial: string, referencePpm: number) {
+  onlyFor(serial);
   await writeQ(Chr.calibrationControl, encodeFrc(referencePpm));
 }
 
-/** Factory reset (§6.11). The unit forgets every phone, so drop our key too. */
-export async function factoryReset(eraseLog: boolean) {
-  const serial = link.get().serial;
+/** Factory reset (§6.11) of the unit `serial`. It forgets every phone, so drop our key too. */
+export async function factoryReset(serial: string, eraseLog: boolean) {
+  onlyFor(serial);
   await writeQ(Chr.deviceControl, encodeFactoryReset(eraseLog && can(Capability.logErase)));
-  if (serial) await keys.deleteKey(serial);
+  await keys.deleteKey(serial);
 }
 
 // A busy unit finishes its measurement (up to ~15 s) before it restarts.
 const USB_UPDATE_WAIT_MS = 25_000;
 
 /**
- * Restart the unit into its XIAO-BOOT drive for a firmware update (§9.2).
+ * Restart the unit `serial` into its XIAO-BOOT drive for a firmware update (§9.2).
  * True once it dropped the link to restart; false if it stayed, which means
  * it is not on USB power.
  */
-export async function enterUsbUpdate(): Promise<boolean> {
+export async function enterUsbUpdate(serial: string): Promise<boolean> {
+  onlyFor(serial);
   if (!can(Capability.usbUpdate)) throw new Error('This unit’s firmware cannot start an update from the app.');
   await writeQ(Chr.deviceControl, encodeEnterUsbUpdate());
   const deadline = Date.now() + USB_UPDATE_WAIT_MS;

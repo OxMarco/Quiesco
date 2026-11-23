@@ -1,4 +1,4 @@
-import { mergeSpans, nightlySleep, sleepForNight, usualTimes } from '@/ui/health-sleep';
+import { asleepOrInBed, mergeSpans, nightlySleep, sleepForNight, usualTimes } from '@/ui/health-sleep';
 
 const at = (d: number, h: number, min = 0) => new Date(2026, 9, d, h, min).getTime();
 const span = (d1: number, h1: number, m1: number, d2: number, h2: number, m2: number) => ({
@@ -33,6 +33,16 @@ describe('recorded sleep', () => {
       span(13, 23, 35, 14, 7, 0),
     ];
     expect(usualTimes(spans)).toEqual({ bedMin: 23 * 60 + 45, wakeMin: 7 * 60 });
+  });
+
+  test('in bed counts only on nights with no asleep sample, night by night', () => {
+    const asleep = [span(10, 23, 30, 11, 3, 0), span(11, 3, 10, 11, 7, 0)];
+    const inBedSameNight = span(10, 23, 0, 11, 7, 30);
+    const inBedOtherNight = span(12, 0, 20, 12, 7, 0); // the night of the 11th, no watch worn
+    const spans = asleepOrInBed(asleep, [inBedSameNight, inBedOtherNight]);
+    expect(spans).toEqual([...asleep, inBedOtherNight]);
+    expect([...nightlySleep(spans).keys()]).toEqual(['2026-10-10', '2026-10-11']);
+    expect(asleepOrInBed([], [inBedSameNight])).toEqual([inBedSameNight]);
   });
 
   test('too few nights give no usual times', () => {

@@ -28,6 +28,18 @@ export function mergeSpans(spans: SleepSpan[], gapMs = SAME_SLEEP_GAP_MS): Sleep
   return out;
 }
 
+/**
+ * Apple Health records "in bed" and "asleep" separately. Asleep is the better
+ * measure, so in-bed samples count only on nights with no asleep sample
+ * (older watches and manual entries record just that). Decided night by
+ * night: one query covers many nights, and a night without the watch must
+ * not lose its in-bed span because another night has stages.
+ */
+export function asleepOrInBed(asleep: SleepSpan[], inBed: SleepSpan[]): SleepSpan[] {
+  const staged = new Set(asleep.map((s) => nightOf(s.startMs)));
+  return [...asleep, ...inBed.filter((s) => !staged.has(nightOf(s.startMs)))];
+}
+
 /** Each night's main sleep: the longest merged span starting in it, at least 3 h long. */
 export function nightlySleep(spans: SleepSpan[]): Map<string, SleepSpan> {
   const byNight = new Map<string, SleepSpan>();

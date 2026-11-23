@@ -48,8 +48,10 @@ export default function ConnectScreen() {
   };
 
   useEffect(() => {
-    const serial = link.get().serial;
-    if (chosen && phase === 'ready' && !openError && serial) {
+    // Still ready on the unit shown before, until that link is dropped: only
+    // the chosen unit's link counts.
+    const { serial, peripheralId } = link.get();
+    if (chosen && phase === 'ready' && !openError && serial && peripheralId === chosen.id) {
       // A new unit is shown from now on, then named and given its sleep window.
       const next = () => {
         selectUnit(serial).catch(() => {});

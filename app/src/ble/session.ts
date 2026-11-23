@@ -369,7 +369,9 @@ export async function boot() {
   // or walks out of range) gets the same treatment as leaving the screen.
   let wasReady = false;
   linkApi.link.subscribe(() => {
-    const ready = linkApi.link.get().phase === 'ready';
+    const phase = linkApi.link.get().phase;
+    if (phase === 'connecting') releasedInBackground = false;
+    const ready = phase === 'ready';
     if (wasReady && !ready && AppState.currentState !== 'active') settleInBackground().catch(() => {});
     wasReady = ready;
   });
@@ -531,12 +533,19 @@ async function settleInBackground() {
   if (l.serial === unit.serial && l.phase === 'ready') {
     const syncing = l.sync && l.sync.state !== 'done' && l.sync.state !== 'failed';
     if (syncing) return; // syncNow settles when it ends
+    releasedInBackground = true;
     await linkApi.disconnect();
     return;
   }
   if (l.serial === unit.serial && !SETTLED.includes(l.phase)) return; // still connecting
+  // Dropped on purpose, the unit is in range and advertising again: waiting
+  // for it would reconnect at once, for a second sync that holds the unit.
+  if (releasedInBackground) return;
   waitForUnit(unit);
 }
+
+// From dropping the link on purpose until the next connect starts.
+let releasedInBackground = false;
 
 let waitingFor: string | null = null;
 

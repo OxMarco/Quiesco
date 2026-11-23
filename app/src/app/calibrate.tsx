@@ -1,9 +1,10 @@
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
 import * as linkApi from '@/ble/link';
 import { link } from '@/ble/link';
+import { stopBackgroundSync } from '@/ble/session';
 import { useStore } from '@/ble/store';
 import { Stepper } from '@/components/controls';
 import { Button, Card, Sheet, SheetHeader, T } from '@/components/ui';
@@ -13,17 +14,22 @@ import { useTheme } from '@/theme';
 // CO2 forced recalibration (PROTOCOL.md §8).
 export default function CalibrateScreen() {
   const t = useTheme();
-  const frc = useStore(link, (s) => s.status?.frcState ?? FrcState.Idle);
-  const correction = useStore(link, (s) => s.status?.frcCorrectionPpm ?? 0);
-  const connected = useStore(link, (s) => s.phase === 'ready');
+  // The unit the user chose in Settings: the link can be on another one.
+  const { serial } = useLocalSearchParams<{ serial: string }>();
+  const connected = useStore(link, (s) => s.phase === 'ready' && s.serial === serial);
+  const frc = useStore(link, (s) => (s.serial === serial ? s.status?.frcState : undefined) ?? FrcState.Idle);
+  const correction = useStore(link, (s) => (s.serial === serial ? s.status?.frcCorrectionPpm : undefined) ?? 0);
   const [reference, setReference] = useState(420);
   const [started, setStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The link stays on this unit: no quiet sync of the others meanwhile.
+  useEffect(() => stopBackgroundSync(), []);
+
   const start = () => {
     setError(null);
     linkApi
-      .startFrc(reference)
+      .startFrc(serial, reference)
       .then(() => setStarted(true))
       .catch((e) => setError(linkApi.describeError(e)));
   };

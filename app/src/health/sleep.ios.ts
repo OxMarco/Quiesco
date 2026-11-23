@@ -9,7 +9,7 @@ import {
 } from '@kingstinct/react-native-healthkit';
 
 import { trace } from '@/debug/trace';
-import type { SleepSpan } from '@/ui/health-sleep';
+import { asleepOrInBed, type SleepSpan } from '@/ui/health-sleep';
 
 export const HEALTH_STORE: string | null = 'Apple Health';
 
@@ -47,7 +47,7 @@ export async function sleepSpans(fromMs: number, toMs: number): Promise<SleepSpa
       if (s.value === CategoryValueSleepAnalysis.inBed) inBed.push(span);
       else if (s.value !== CategoryValueSleepAnalysis.awake) asleep.push(span);
     }
-    return asleep.length > 0 ? asleep : inBed;
+    return asleepOrInBed(asleep, inBed);
   } catch (e) {
     trace('health read failed', e);
     return [];

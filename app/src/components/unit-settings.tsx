@@ -222,7 +222,7 @@ export function UnitSettings({ unit }: { unit: db.Unit }) {
               ? `Last ${calibration.lastFrcEpochS ? ago(calibration.lastFrcEpochS * 1000) : 'done'}`
               : 'Never'
           }
-          onPress={can(Capability.frc) ? () => router.push('/calibrate') : undefined}
+          onPress={can(Capability.frc) ? () => router.push({ pathname: '/calibrate', params: { serial: unit.serial } }) : undefined}
           last
         />
       </Card>
@@ -230,7 +230,7 @@ export function UnitSettings({ unit }: { unit: db.Unit }) {
       <SectionLabel>Unit details</SectionLabel>
       <Card className="py-1">
         <Row label="Firmware" value={(connected ? s.firmware : null) ?? unit.firmware ?? '--'} />
-        {can(Capability.usbUpdate) && <UpdateFirmwareRow />}
+        {can(Capability.usbUpdate) && <UpdateFirmwareRow serial={unit.serial} />}
         <Row label="Serial" value={unit.serial} />
         <Row label="Last synced" value={ago(unit.lastSyncMs)} last={!(s.status && connected)} />
         {s.status && connected && (
@@ -245,13 +245,13 @@ export function UnitSettings({ unit }: { unit: db.Unit }) {
 }
 
 /** Restarts the unit into its USB drive; the user copies the new firmware onto it. */
-function UpdateFirmwareRow() {
+function UpdateFirmwareRow({ serial }: { serial: string }) {
   const [busy, setBusy] = useState(false);
 
   const start = () => {
     setBusy(true);
     linkApi
-      .enterUsbUpdate()
+      .enterUsbUpdate(serial)
       .then((restarted) =>
         restarted
           ? Alert.alert(
@@ -494,7 +494,7 @@ function DangerZone({
   const reset = (erase: boolean) => {
     setError(null);
     return linkApi
-      .factoryReset(erase)
+      .factoryReset(serial, erase)
       .then(() =>
         setDone(
           'The unit is back to its factory settings and has forgotten every phone, and this phone has dropped its key. To use it again, plug the unit into USB power and add it again in the app.',

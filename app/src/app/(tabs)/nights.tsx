@@ -91,8 +91,15 @@ export default function NightsScreen() {
 
   useEffect(() => {
     if (!unit || !selected) return;
+    // A slower load for the night shown before must not replace this one's.
+    let live = true;
     const { fromS, toS } = nightView(selected, sleepWindow, slept);
-    db.recordsBetween(unit.serial, fromS, toS).then(setPoints).catch((e) => setError(errorText(e)));
+    db.recordsBetween(unit.serial, fromS, toS)
+      .then((records) => live && setPoints(records))
+      .catch((e) => live && setError(errorText(e)));
+    return () => {
+      live = false;
+    };
   }, [unit, selected, dataVersion, sleepWindow, slept, attempt]);
 
   if (error) {
