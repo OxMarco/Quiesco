@@ -635,9 +635,12 @@ Read:
 
 Write ENROL (2 bytes), accepted only while enrolment is open, no setup is
 pending, the connection has fewer than 5 failed proofs, and fewer than 10
-setup codes have been shown since the unit was plugged in without one of
-them completing a setup. Past that, unplug and plug the unit back in; this
-bounds guessing across reconnects:
+setup codes are outstanding. A code is outstanding from when it is shown
+until a setup completes, the unit is unplugged and plugged back in, or an
+hour passes per code (the tenth code back makes room for one more an hour
+after the first was shown). This bounds guessing across reconnects to 120
+guesses a day, and a stranger in range who uses the codes up delays the
+owner's setup by at most an hour, or not at all with a replug:
 
 | Offset | Type | Field |
 |---|---|---|

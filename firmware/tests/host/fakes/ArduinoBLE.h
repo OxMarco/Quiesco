@@ -55,6 +55,8 @@ inline std::array<BLEDeviceEventHandler, 2>& handlers() {
   return entries;
 }
 inline BLEDevice& peer() { static BLEDevice device; return device; }
+// BLE.begin() fails this many more times (an HCI start-up failure).
+inline int& beginFailures() { static int left = 0; return left; }
 // ArduinoBLE's GAP advertising flag: set by advertise(), cleared only by
 // stopAdvertise(). A connection pauses advertising, and the stack resumes it
 // on its own after the disconnect, with the data it had (HCI.cpp).
@@ -134,7 +136,10 @@ class BLEService {
 };
 class BLEClass {
  public:
-  int begin() { return 1; }
+  int begin() {
+    if (FakeBle::beginFailures() > 0) { --FakeBle::beginFailures(); return 0; }
+    return 1;
+  }
   void poll() {
     while (!FakeBle::events().empty()) {
       auto event = FakeBle::events().front();

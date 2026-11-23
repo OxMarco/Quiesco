@@ -264,7 +264,7 @@ TEST_CASE("a session change inside a notify keeps values hidden") {
   FakeBle::duringNotify() = nullptr;
   FakeBle::disconnect();
 }
-TEST_CASE("setup codes are limited per plug-in") {
+TEST_CASE("setup codes are limited, and the limit wears off") {
   const uint8_t enrol[2] = {1, 0};
   BleConfig adapter;
   BondTable empty; adapter.setBonds(empty);
@@ -272,7 +272,7 @@ TEST_CASE("setup codes are limited per plug-in") {
   adapter.setPairingAllowed(true);
   uint32_t code = 0;
   // Each reconnect resets the failure count, but not the codes issued.
-  for (int i = 0; i < 10; ++i) {  // kMaxSetupCodesPerPlug
+  for (int i = 0; i < 10; ++i) {  // kMaxSetupCodes
     FakeBle::connect(40 + i); adapter.poll(i * 10);
     FakeBle::write(kAuth, enrol, sizeof enrol); adapter.poll(i * 10 + 1);
     CHECK_MESSAGE(adapter.takeEnrollment(code), "a code is shown");
@@ -280,10 +280,29 @@ TEST_CASE("setup codes are limited per plug-in") {
   }
   FakeBle::connect(60); adapter.poll(1000);
   FakeBle::write(kAuth, enrol, sizeof enrol); adapter.poll(1001);
-  CHECK_MESSAGE(!adapter.enrollmentPending(), "no further code until a replug");
+  CHECK_MESSAGE(!adapter.enrollmentPending(), "no further code at once");
   adapter.setPairingAllowed(false); adapter.setPairingAllowed(true);
   FakeBle::write(kAuth, enrol, sizeof enrol); adapter.poll(1002);
   CHECK_MESSAGE(adapter.enrollmentPending(), "a replug allows setup again");
+  FakeBle::disconnect(); adapter.poll(1003);
+  // A stranger who uses the codes up must not lock setup out for good: one
+  // code comes back per hour, counted from the first one shown.
+  const uint64_t hour = 3600000;
+  for (int i = 0; i < 9; ++i) {  // the replug's code above was the first
+    FakeBle::connect(70 + i); adapter.poll(2000 + i * 10);
+    FakeBle::write(kAuth, enrol, sizeof enrol); adapter.poll(2001 + i * 10);
+    CHECK_MESSAGE(adapter.takeEnrollment(code), "a code is shown");
+    FakeBle::disconnect(); adapter.poll(2002 + i * 10);
+  }
+  FakeBle::connect(90); adapter.poll(3000);
+  FakeBle::write(kAuth, enrol, sizeof enrol); adapter.poll(1002 + hour - 1);
+  CHECK_MESSAGE(!adapter.enrollmentPending(), "still refused within the hour");
+  FakeBle::disconnect(); FakeBle::connect(91); adapter.poll(1002 + hour);
+  FakeBle::write(kAuth, enrol, sizeof enrol); adapter.poll(1002 + hour + 1);
+  CHECK_MESSAGE(adapter.takeEnrollment(code), "one code is back after an hour");
+  FakeBle::disconnect(); FakeBle::connect(92); adapter.poll(1002 + hour + 10);
+  FakeBle::write(kAuth, enrol, sizeof enrol); adapter.poll(1002 + hour + 11);
+  CHECK_MESSAGE(!adapter.enrollmentPending(), "and only one");
   adapter.setPairingAllowed(false);
   FakeBle::disconnect();
 }
@@ -563,6 +582,23 @@ TEST_CASE("app erase command before the log is mounted") {
   CHECK_MESSAGE(FlashSim::sampleSectorErases() == before, "unmounted log is checked before erasing");
   CHECK_MESSAGE(!eraseFlag(), "refused erase leaves bit 2 clear");
   CHECK_MESSAGE(newestSequence() >= 31, "history kept");
+  FakeBle::disconnect();
+}
+TEST_CASE("a radio that fails to start is tried again") {
+  FlashSim::reset(); ticks = 0;
+  W25Q64Flash flash; flash.begin(); ConfigStore store;
+  CHECK_MESSAGE(store.save(flash, defaultConfig()), "seed config");
+  CHECK_MESSAGE(store.saveBonds(flash, knownBonds()), "seed phone key");
+  FakeBle::beginFailures() = 2;  // at boot, and at the first retry
+  const int advertised = FakeBle::advertiseCalls();
+  App app; app.begin(); step(app, 1001); run(app, 40);  // first cycle done
+  CHECK_MESSAGE(FakeBle::advertiseCalls() == advertised, "radio down, unit measures on");
+  step(app, 60000); run(app, 5);
+  CHECK_MESSAGE(FakeBle::advertiseCalls() == advertised, "first retry failed too");
+  step(app, 60000); run(app, 5);
+  CHECK_MESSAGE(FakeBle::advertiseCalls() > advertised, "advertising after the second retry");
+  FakeBle::connect(23); step(app); prove(); step(app);
+  CHECK_MESSAGE(newestSequence() >= 1, "status published once the radio is up");
   FakeBle::disconnect();
 }
 TEST_CASE("status reports the log's newest record before the first measurement") {

@@ -90,6 +90,10 @@ void App::step() {
     RetainedRam::store(breadcrumb_);
   }
   ble_.poll(nowMs);
+  if (configLoaded_ && !ble_.active() && state_ == State::kIdle &&
+      nowMs >= nextBleRetryMs_) {
+    startBle(nowMs);
+  }
   if (bleSession_ != ble_.session()) {
     bleSession_ = ble_.session();
     syncPending_ = false;
@@ -575,10 +579,24 @@ bool App::loadSettings(uint64_t nowMs) {
   scheduler_.changeInterval(nowMs, config_.measurementIntervalSeconds);
   configLoaded_ = true;
   publishDeviceInfo();
-  const bool bleReady = ble_.begin(config_, serialNumber_, nowMs);
-  recordDeviceResult(faults_.ble, bleReady, false, bleReady);
-  publishStatus();  // the newest sequence, before the first measurement
+  startBle(nowMs);
   return true;
+}
+
+// A radio that fails to start (HCI start-up) is tried again from idle:
+// nothing else would, and the unit measured on, unreachable, until a power
+// cycle, with the watchdog fed all the while.
+void App::startBle(uint64_t nowMs) {
+  nextBleRetryMs_ = nowMs + kBleRetryMs;
+  const bool ready = ble_.begin(config_, serialNumber_, nowMs);
+  recordDeviceResult(faults_.ble, ready, false, ready);
+  if (!ready) {
+    return;
+  }
+  publishStatus();  // the newest sequence, before the first measurement
+  if (hasReading_) {
+    ble_.publishReading(reading_);  // dropped while the radio was down
+  }
 }
 
 void App::commitConfig(uint64_t nowMs) {

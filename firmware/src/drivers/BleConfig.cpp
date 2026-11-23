@@ -586,11 +586,16 @@ void BleConfig::enrol(uint64_t nowMs) {
     publishAuthState();
     return;
   }
+  while (setupCodesIssued_ > 0 &&
+         nowMs - setupRefillFromMs_ >= kSetupCodeRefillMs) {
+    --setupCodesIssued_;
+    setupRefillFromMs_ += kSetupCodeRefillMs;
+  }
   // enrolKeyUntilMs_ also covers an issued key the phone has not read yet:
   // a new setup would replace it in 0011, leaving a stored key no phone holds.
   if (pendingKeyId_ != 0 || enrolKeyUntilMs_ != 0 ||
       authFailures_ >= kMaxAuthFailures ||
-      setupCodesIssued_ >= kMaxSetupCodesPerPlug) {
+      setupCodesIssued_ >= kMaxSetupCodes) {
     DebugLog::event("ble enrol ignored (pending or locked out)");
     publishAuthState();
     return;
@@ -641,6 +646,9 @@ void BleConfig::enrol(uint64_t nowMs) {
   }
   pendingKeyId_ = keyId;
   pendingCode_ = code;
+  if (setupCodesIssued_ == 0) {
+    setupRefillFromMs_ = nowMs;
+  }
   setupCodesIssued_++;
   memcpy(pendingKey_, key, sizeof pendingKey_);
   enrollmentScreenPending_ = true;

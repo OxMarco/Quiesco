@@ -112,6 +112,7 @@ class App {
   void finishSync();
   uint16_t syncRemainingRecords() const;
   void publishStatus();
+  void startBle(uint64_t nowMs);
   // Debounced ~CHG; always false on a --no-battery build.
   bool pollCharging(uint64_t nowMs);
 
@@ -205,6 +206,9 @@ class App {
   uint32_t logEraseSequence_ = 0;
   bool logEraseCompleted_ = false;
   uint32_t bleSession_ = 0;
+  // The radio can fail to start; tried again this often while idle.
+  static constexpr uint32_t kBleRetryMs = 60000;
+  uint64_t nextBleRetryMs_ = 0;
   bool persistConfigSaved_ = false;
   // SCD41 forced recalibration: one-shot, rides a measurement cycle.
   bool frcPending_ = false;

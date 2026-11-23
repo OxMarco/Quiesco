@@ -97,10 +97,15 @@ class BleConfig {
   // unauthenticated longer than this in total, however many setups it asks
   // for.
   static constexpr uint32_t kSetupLinkMs = 240000;
-  // Setup codes issued without a completed setup before ENROL is refused
-  // until USB is unplugged and plugged back in. Failures reset with every
-  // connection, so without this, reconnecting gave unlimited guesses.
-  static constexpr uint8_t kMaxSetupCodesPerPlug = 10;
+  // Setup codes issued without a completed setup before ENROL is refused.
+  // Failures reset with every connection, so without this, reconnecting
+  // gave unlimited guesses. The allowance comes back one code per
+  // kSetupCodeRefillMs, and at once when USB is unplugged and plugged back
+  // in: a stranger in range asking for ten codes must not lock the owner out
+  // of setup for as long as the unit stays plugged in. At five guesses a
+  // code, that is 120 guesses a day in a million.
+  static constexpr uint8_t kMaxSetupCodes = 10;
+  static constexpr uint32_t kSetupCodeRefillMs = 60UL * 60 * 1000;
   static constexpr uint32_t kEnrolKeyVisibleMs = 180000;
   // How long the issued key stays in 0011 for the phone to read.
   static constexpr uint32_t kIssuedKeyVisibleMs = 30000;
@@ -118,7 +123,8 @@ class BleConfig {
   bool authenticated_ = false;
   uint8_t challenge_[BleCodec::kAuthChallengeBytes] = {};
   uint8_t authFailures_ = 0;
-  uint8_t setupCodesIssued_ = 0;  // since USB was plugged in
+  uint8_t setupCodesIssued_ = 0;  // not yet given back (kSetupCodeRefillMs)
+  uint64_t setupRefillFromMs_ = 0;  // start of the hour that returns the next
   uint32_t session_ = 0;
   bool challengePending_ = false;
   uint16_t pendingKeyId_ = 0;
