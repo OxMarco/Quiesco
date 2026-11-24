@@ -117,6 +117,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "996a30ad-9d9d-47bd-9cac-046600d7d7e9"
+      }
+    },
+    "owner": "anelito"
   }
 }
