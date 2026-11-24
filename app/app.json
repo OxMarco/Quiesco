@@ -85,7 +85,7 @@
         "@kingstinct/react-native-healthkit",
         {
           "NSHealthShareUsageDescription": "Quiesco reads when you slept, so each night is judged over the hours you were actually asleep. It never writes to Apple Health, and nothing leaves your phone.",
-          "NSHealthUpdateUsageDescription": false,
+          "NSHealthUpdateUsageDescription": "Quiesco never writes to Apple Health. It only reads when you slept, so each night is judged over the hours you were actually asleep.",
           "background": false
         }
       ],
