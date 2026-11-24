@@ -5,8 +5,8 @@ export const LINKS = {
   github: 'https://github.com/OxMarco/Quiesco',
   // The build guide is the README section on GitHub; there is no separate docs site.
   buildYourOwn: 'https://github.com/OxMarco/Quiesco#-build-your-own',
-  // Where "Get yours" leads. Until Crowd Supply's pre-launch page exists, the Hackaday page carries
-  // build logs and launch news. TODO: point it at the Crowd Supply pre-launch page, then at the campaign.
+  // Where "Get yours" leads. Until the campaign's pre-launch page exists, the Hackaday page carries
+  // build logs and launch news. TODO: point it at the pre-launch page, then at the campaign.
   campaign: 'https://hackaday.io/project/207079-quiesco',
   privacy: '/privacy',
   support: 'mailto:info@impossiblelabs.xyz',
