@@ -24,8 +24,8 @@
 
 Quiesco is a pocket-sized monitor made for the room you sleep in. It measures
 **CO₂, temperature, humidity, light and noise**, shows them on an e-ink screen
-that reads from across the room, and syncs every night to your phone over
-Bluetooth. There is no Wi-Fi, no cloud and no account: your data stays yours.
+that reads from across the room, and syncs every night straight to your
+phone. There is no Wi-Fi, no cloud and no account: your data stays yours.
 
 Everything is open. This repository holds the PCB, the case, the firmware and
 the companion app, so you can build one from scratch, reflash it from the
@@ -140,7 +140,7 @@ can hold several units, each with its own name and sleep window.
 | | |
 |---|---|
 | **MCU** | Nordic nRF52840 on a Seeed XIAO nRF52840 Plus module, Arduino bootloader |
-| **Connectivity** | Bluetooth Low Energy; only an enrolled phone can read data or change settings |
+| **Connectivity** | Direct to the phone over the nRF52840's Bluetooth LE radio; only an enrolled phone can read data or change settings |
 | **Sensors** | CO₂, temperature, humidity, pressure, light, noise |
 | **Display** | GoodDisplay GDEW0154T8D, 1.54″ 152 × 152 e-ink, holds its image unpowered |
 | **Storage** | Winbond W25Q64 8 MB SPI NOR flash (config + sample log) |
