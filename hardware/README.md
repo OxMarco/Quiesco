@@ -96,7 +96,10 @@ version's `manufacturing/` folder only.
 1. **Zip the Gerbers.** Compress `manufacturing/gerbers/` into one archive and
    upload it as the PCB.
 2. **Add assembly.** Upload `manufacturing/bom.xlsx` as the BOM and
-   `manufacturing/pick-and-place.csv` as the centroid file.
+   `manufacturing/pick-and-place.csv` as the centroid file. The BOM's
+   **Substitution** column tells the factory which parts it may swap for an
+   equivalent (passives, diodes, inductor) and which it must not (connectors,
+   sensors, the XIAO module, the screen and the battery).
 3. **Share the process spec.** `pcb-jst-sh/manufacturing/process-spec.xlsx`
    holds the fabrication settings used for the first boards, which PCBWay
    produced from the Altium outputs.
